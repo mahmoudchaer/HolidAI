@@ -1,0 +1,29 @@
+# HotelPlanner - Python Dependencies
+
+# Core LangGraph and LangChain
+langgraph>=0.2.0
+langchain>=0.2.0
+langchain-core>=0.2.0
+
+# HTTP requests for SerpApi
+requests>=2.31.0
+
+# Web framework
+Flask>=2.3.0
+
+# LLM Integration
+anthropic>=0.7.0
+langchain-anthropic>=0.1.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Type hints
+typing-extensions>=4.9.0
+
+# Data validation
+pydantic>=2.5.0
+
+# Optional: For async support
+aiohttp>=3.9.0
+
