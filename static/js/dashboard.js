@@ -21,6 +21,7 @@ class HolidAIDashboard {
         document.getElementById('loginForm')?.addEventListener('submit', (e) => this.handleLogin(e));
         document.getElementById('registerForm')?.addEventListener('submit', (e) => this.handleRegister(e));
         document.getElementById('searchForm')?.addEventListener('submit', (e) => this.handleSearch(e));
+        document.getElementById('flightSearchForm')?.addEventListener('submit', (e) => this.handleFlightSearch(e));
         
         // Chat functionality
         document.getElementById('chatInput')?.addEventListener('keypress', (e) => {
@@ -57,6 +58,7 @@ class HolidAIDashboard {
         const nextWeek = new Date(today);
         nextWeek.setDate(nextWeek.getDate() + 7);
 
+        // Hotel search dates
         const checkInInput = document.getElementById('checkIn');
         const checkOutInput = document.getElementById('checkOut');
         
@@ -76,6 +78,27 @@ class HolidAIDashboard {
             const minCheckOut = new Date(checkInDate);
             minCheckOut.setDate(minCheckOut.getDate() + 1);
             checkOutInput.min = minCheckOut.toISOString().split('T')[0];
+        });
+
+        // Flight search dates
+        const flightDepartureInput = document.getElementById('flightDepartureDate');
+        const flightReturnInput = document.getElementById('flightReturnDate');
+        
+        if (flightDepartureInput) {
+            flightDepartureInput.value = tomorrow.toISOString().split('T')[0];
+            flightDepartureInput.min = today.toISOString().split('T')[0];
+        }
+        
+        if (flightReturnInput) {
+            flightReturnInput.min = tomorrow.toISOString().split('T')[0];
+        }
+
+        // Update return date minimum when departure date changes
+        flightDepartureInput?.addEventListener('change', (e) => {
+            const departureDate = new Date(e.target.value);
+            const minReturn = new Date(departureDate);
+            minReturn.setDate(minReturn.getDate() + 1);
+            flightReturnInput.min = minReturn.toISOString().split('T')[0];
         });
     }
 
@@ -457,6 +480,28 @@ class HolidAIDashboard {
         this.sendMessage();
     }
 
+    async handleFlightSearch(e) {
+        e.preventDefault();
+        
+        const flightData = {
+            origin: document.getElementById('flightOrigin').value,
+            destination: document.getElementById('flightDestination').value,
+            departureDate: document.getElementById('flightDepartureDate').value,
+            returnDate: document.getElementById('flightReturnDate').value,
+            passengers: document.getElementById('flightPassengers').value,
+            cabinClass: document.getElementById('flightCabinClass').value
+        };
+
+        this.closeFlightSearchModal();
+        this.openChat();
+        
+        // Send flight search query to chat
+        const chatInput = document.getElementById('chatInput');
+        const returnText = flightData.returnDate ? ` and return on ${flightData.returnDate}` : '';
+        chatInput.value = `Find flights from ${flightData.origin} to ${flightData.destination} departing on ${flightData.departureDate}${returnText} for ${flightData.passengers} passengers in ${flightData.cabinClass} class`;
+        this.sendMessage();
+    }
+
     async sendMessage() {
         const input = document.getElementById('chatInput');
         const message = input.value.trim();
@@ -593,6 +638,18 @@ class HolidAIDashboard {
         document.getElementById('searchModal').style.display = 'none';
     }
 
+    showFlightSearchModal() {
+        if (!this.isLoggedIn) {
+            this.showLoginModal();
+            return;
+        }
+        document.getElementById('flightSearchModal').style.display = 'flex';
+    }
+
+    closeFlightSearchModal() {
+        document.getElementById('flightSearchModal').style.display = 'none';
+    }
+
     openChat() {
         document.getElementById('chatModal').style.display = 'flex';
     }
@@ -659,6 +716,14 @@ function showSearchModal() {
 
 function closeSearchModal() {
     dashboard.closeSearchModal();
+}
+
+function showFlightSearchModal() {
+    dashboard.showFlightSearchModal();
+}
+
+function closeFlightSearchModal() {
+    dashboard.closeFlightSearchModal();
 }
 
 function openChat() {

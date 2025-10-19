@@ -30,6 +30,9 @@
                     <a href="#search" class="nav-link" onclick="showSearchModal()">
                         <i class="fas fa-search"></i> Search Hotels
                     </a>
+                    <a href="#flights" class="nav-link" onclick="showFlightSearchModal()">
+                        <i class="fas fa-plane"></i> Search Flights
+                    </a>
                 </div>
                 
                 <div class="user-menu">
@@ -106,6 +109,14 @@
                     </div>
                     <div class="quick-action-title">Search Hotels</div>
                     <div class="quick-action-subtitle">Find your perfect stay</div>
+                </a>
+                
+                <a href="#flights" class="quick-action" onclick="showFlightSearchModal()">
+                    <div class="quick-action-icon">
+                        <i class="fas fa-plane"></i>
+                    </div>
+                    <div class="quick-action-title">Search Flights</div>
+                    <div class="quick-action-subtitle">Find the best flights</div>
                 </a>
                 
                 <a href="/chat" class="quick-action">
@@ -231,6 +242,73 @@
                         <button type="button" class="btn btn-secondary" onclick="closeSearchModal()">Cancel</button>
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-search"></i> Search Hotels
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flight Search Modal -->
+    <div id="flightSearchModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Search Flights</h3>
+                <button class="modal-close" onclick="closeFlightSearchModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="flightSearchForm">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label class="input-label">From</label>
+                            <input type="text" class="input" id="flightOrigin" placeholder="Departure city or airport" required>
+                        </div>
+                        <div class="input-group">
+                            <label class="input-label">To</label>
+                            <input type="text" class="input" id="flightDestination" placeholder="Destination city or airport" required>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label class="input-label">Departure Date</label>
+                            <input type="date" class="input" id="flightDepartureDate" required>
+                        </div>
+                        <div class="input-group">
+                            <label class="input-label">Return Date (Optional)</label>
+                            <input type="date" class="input" id="flightReturnDate">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label class="input-label">Passengers</label>
+                            <select class="input" id="flightPassengers">
+                                <option value="1">1 Passenger</option>
+                                <option value="2" selected>2 Passengers</option>
+                                <option value="3">3 Passengers</option>
+                                <option value="4">4 Passengers</option>
+                                <option value="5">5 Passengers</option>
+                                <option value="6">6 Passengers</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label class="input-label">Cabin Class</label>
+                            <select class="input" id="flightCabinClass">
+                                <option value="economy" selected>Economy</option>
+                                <option value="premium_economy">Premium Economy</option>
+                                <option value="business">Business</option>
+                                <option value="first">First Class</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeFlightSearchModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plane"></i> Search Flights
                         </button>
                     </div>
                 </form>
