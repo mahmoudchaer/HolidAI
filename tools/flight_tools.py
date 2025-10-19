@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 def get_serpapi_key():
     """Get SerpApi key from environment variables."""
-    return os.getenv('SERPAPI_API_KEY')
+    return os.getenv('SERPAPI_KEY')
 
 
 @tool
@@ -41,7 +41,7 @@ def search_flights(
     """
     api_key = get_serpapi_key()
     if not api_key:
-        return {"error": "SerpApi key not found. Please configure SERPAPI_API_KEY."}
+        return {"error": "SerpApi key not found. Please configure SERPAPI_KEY."}
     
     try:
         # Prepare search parameters
