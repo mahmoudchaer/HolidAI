@@ -67,14 +67,27 @@ from tools.presentation_tools import (
     format_budget_summary
 )
 from tools.booking_tools import (
-    initiate_booking,
-    select_room_type,
-    add_guest_information,
-    process_payment,
-    confirm_booking,
-    get_booking_summary,
-    cancel_booking,
-    modify_booking
+    quick_book_hotel,
+    format_booking_confirmation,
+    save_booking_to_database,
+    get_user_bookings,
+    cancel_booking_in_database
+)
+from tools.flight_tools import (
+    search_flights,
+    search_flights_by_price,
+    search_flights_by_airline,
+    search_flights_by_duration,
+    get_flight_deals,
+    compare_flight_options
+)
+from tools.flight_booking_tools import (
+    quick_book_flight,
+    format_flight_booking_confirmation,
+    save_flight_booking_to_database,
+    get_user_flight_bookings,
+    cancel_flight_booking_in_database,
+    format_flight_bookings_list
 )
 
 def create_hotel_agent():
@@ -115,14 +128,32 @@ def create_hotel_agent():
         # Exploration tools
         get_nearby_places,              # Get nearby attractions
         
-        # Simplified booking tools (only essential ones)
-        initiate_booking,                # Start booking process
-        get_booking_summary,            # Get booking summary
-        confirm_booking                 # Confirm booking
+        # Flight search tools
+        search_flights,                 # Search for flights
+        search_flights_by_price,        # Search flights by price range
+        search_flights_by_airline,      # Search flights by airline
+        search_flights_by_duration,     # Search flights by duration
+        get_flight_deals,              # Get flight deals
+        compare_flight_options,         # Compare flight options
+        
+        # Flight booking tools
+        quick_book_flight,             # Complete flight booking
+        format_flight_booking_confirmation, # Format flight confirmation
+        save_flight_booking_to_database,    # Save flight booking
+        get_user_flight_bookings,      # Get user's flight bookings
+        cancel_flight_booking_in_database,  # Cancel flight booking
+        format_flight_bookings_list,   # Format flight bookings list
+        
+        # Hotel booking tools
+        quick_book_hotel,               # Complete booking process
+        format_booking_confirmation,    # Format booking confirmation
+        save_booking_to_database,       # Save booking to database
+        get_user_bookings,              # Get user's booking history
+        cancel_booking_in_database      # Cancel booking
     ]
     
     # Simplified system message to prevent recursion
-    system_message = SystemMessage(content="""You are HotelPlanner, an AI travel assistant. Help users find and book hotels efficiently.
+    system_message = SystemMessage(content="""You are HolidAI, an AI travel assistant. Help users find and book hotels AND flights efficiently.
 
 SEARCH & FILTERING:
 - fetch_hotels: Search hotels (city, dates, guests)
@@ -142,18 +173,38 @@ ANALYSIS & PRESENTATION:
 - calculate_total_budget: Calculate total costs
 - get_nearby_places: Find nearby attractions
 
-SIMPLE BOOKING:
-- initiate_booking: Start booking process (hotel, dates, guests)
-- get_booking_summary: Show booking details
-- confirm_booking: Confirm and finalize booking
+FLIGHT SEARCH:
+- search_flights: Search flights (origin, destination, dates, passengers)
+- search_flights_by_price: Search flights by price range
+- search_flights_by_airline: Search flights by specific airline
+- search_flights_by_duration: Search flights by duration
+- get_flight_deals: Get flight deals and offers
+- compare_flight_options: Compare different flight options
+
+HOTEL BOOKING:
+- quick_book_hotel: Complete hotel booking (hotel, dates, guests, guest info)
+- format_booking_confirmation: Show formatted hotel booking confirmation
+- save_booking_to_database: Save hotel booking to database
+- get_user_bookings: Show user's hotel booking history
+- cancel_booking_in_database: Cancel existing hotel booking
+
+FLIGHT BOOKING:
+- quick_book_flight: Complete flight booking (flight data, passenger info)
+- format_flight_booking_confirmation: Show formatted flight booking confirmation
+- save_flight_booking_to_database: Save flight booking to database
+- get_user_flight_bookings: Show user's flight booking history
+- cancel_flight_booking_in_database: Cancel existing flight booking
+- format_flight_bookings_list: Format flight bookings list
 
 GUIDELINES:
-1. Ask for missing info (city, dates, preferences)
-2. Use format_hotel_cards for clean presentation
-3. Show max 5 hotels to avoid overwhelming users
-4. For bookings: use initiate_booking with all details at once
-5. Keep responses concise and focused
-6. Always use real data from tools""")
+1. Ask for missing info (city, dates, preferences for hotels; origin, destination, dates for flights)
+2. Use format_hotel_cards for clean hotel presentation
+3. Show max 5 hotels/flights to avoid overwhelming users
+4. For hotel bookings: use quick_book_hotel with all details at once
+5. For flight bookings: use quick_book_flight with flight data and passenger info
+6. Keep responses concise and focused
+7. Always use real data from tools
+8. Support both hotel and flight search/booking requests""")
     
     # Create ReAct agent with tools
     agent = create_react_agent(llm, tools)
