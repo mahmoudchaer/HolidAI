@@ -79,7 +79,8 @@ from tools.flight_tools import (
     search_flights_by_airline,
     search_flights_by_duration,
     get_flight_deals,
-    compare_flight_options
+    compare_flight_options,
+    suggest_flight_dates
 )
 from tools.flight_booking_tools import (
     quick_book_flight,
@@ -135,6 +136,7 @@ def create_hotel_agent():
         search_flights_by_duration,     # Search flights by duration
         get_flight_deals,              # Get flight deals
         compare_flight_options,         # Compare flight options
+        suggest_flight_dates,          # Suggest alternative dates when no flights found
         
         # Flight booking tools
         quick_book_flight,             # Complete flight booking
@@ -180,6 +182,7 @@ FLIGHT SEARCH:
 - search_flights_by_duration: Search flights by duration
 - get_flight_deals: Get flight deals and offers
 - compare_flight_options: Compare different flight options
+- suggest_flight_dates: Suggest alternative dates when no flights found
 
 HOTEL BOOKING:
 - quick_book_hotel: Complete hotel booking (hotel, dates, guests, guest info)
@@ -204,7 +207,10 @@ GUIDELINES:
 5. For flight bookings: use quick_book_flight with flight data and passenger info
 6. Keep responses concise and focused
 7. Always use real data from tools
-8. Support both hotel and flight search/booking requests""")
+8. Support both hotel and flight search/booking requests
+9. When no flights found: use suggest_flight_dates to offer alternatives
+10. Explain why flights might not be available (dates too far ahead, route issues, etc.)
+11. Provide helpful suggestions and alternative options when searches fail""")
     
     # Create ReAct agent with tools
     agent = create_react_agent(llm, tools)

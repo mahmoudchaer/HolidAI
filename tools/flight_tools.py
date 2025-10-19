@@ -79,7 +79,7 @@ def search_flights(
         
         # Extract flight information
         flights = []
-        if "flights" in data:
+        if "flights" in data and data["flights"]:
             for flight in data["flights"]:
                 flight_info = {
                     "airline": flight.get("airline", "Unknown"),
@@ -93,6 +93,41 @@ def search_flights(
                     "flight_number": flight.get("flight_number", "")
                 }
                 flights.append(flight_info)
+        
+        # Check if no flights were found
+        if not flights:
+            # Provide helpful suggestions
+            suggestions = []
+            
+            # Check if date is too far in the future
+            departure_dt = datetime.strptime(departure_date, "%Y-%m-%d")
+            today = datetime.now()
+            days_ahead = (departure_dt - today).days
+            
+            if days_ahead > 330:  # More than 11 months
+                suggestions.append("Try searching for dates within the next 11 months, as airlines typically don't publish schedules further ahead")
+            elif days_ahead < 0:
+                suggestions.append("Please select a future departure date")
+            else:
+                suggestions.append("Try searching for different dates or check if the route is available")
+            
+            suggestions.append("Consider searching for nearby airports if direct flights aren't available")
+            suggestions.append("Check airline websites directly for more options")
+            
+            return {
+                "success": False,
+                "error": "No flights found for the specified criteria",
+                "origin": origin,
+                "destination": destination,
+                "departure_date": departure_date,
+                "return_date": return_date,
+                "passengers": passengers,
+                "cabin_class": cabin_class,
+                "flights": [],
+                "total_results": 0,
+                "suggestions": suggestions,
+                "search_url": data.get("search_metadata", {}).get("google_flights_url", "")
+            }
         
         return {
             "success": True,
@@ -111,6 +146,64 @@ def search_flights(
         return {"error": f"API request failed: {str(e)}"}
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
+
+
+@tool
+def suggest_flight_dates(
+    origin: str,
+    destination: str,
+    preferred_date: str,
+    passengers: int = 1,
+    cabin_class: str = "economy"
+) -> Dict[str, Any]:
+    """
+    Suggest alternative flight dates when no flights are found for the preferred date.
+    
+    Args:
+        origin: Departure city/airport code
+        destination: Arrival city/airport code
+        preferred_date: Original preferred departure date
+        passengers: Number of passengers
+        cabin_class: Cabin class preference
+    
+    Returns:
+        Dictionary containing suggested dates and flight availability
+    """
+    try:
+        # Calculate suggested dates (within next 3 months)
+        preferred_dt = datetime.strptime(preferred_date, "%Y-%m-%d")
+        today = datetime.now()
+        
+        # Generate suggestions: 1 week, 2 weeks, 1 month, 2 months ahead
+        suggestions = []
+        date_offsets = [7, 14, 30, 60, 90]  # days ahead
+        
+        for offset in date_offsets:
+            suggested_date = today + timedelta(days=offset)
+            suggested_date_str = suggested_date.strftime("%Y-%m-%d")
+            
+            # Test if flights are available for this date
+            test_result = search_flights(origin, destination, suggested_date_str, None, passengers, cabin_class)
+            
+            if test_result.get("success") and test_result.get("total_results", 0) > 0:
+                suggestions.append({
+                    "date": suggested_date_str,
+                    "days_from_today": offset,
+                    "available_flights": test_result.get("total_results", 0),
+                    "sample_price": test_result.get("flights", [{}])[0].get("price", "N/A") if test_result.get("flights") else "N/A"
+                })
+        
+        return {
+            "success": True,
+            "origin": origin,
+            "destination": destination,
+            "preferred_date": preferred_date,
+            "suggested_dates": suggestions,
+            "message": f"Found {len(suggestions)} alternative dates with available flights"
+        }
+        
+    except Exception as e:
+        return {"error": f"Failed to suggest dates: {str(e)}"}
 
 
 @tool
