@@ -1,9 +1,10 @@
-# HotelPlanner - Python Dependencies
+# HolidAI - Python Dependencies
 
 # Core LangGraph and LangChain
 langgraph>=0.2.0
 langchain>=0.2.0
 langchain-core>=0.2.0
+langchain-openai>=0.1.0
 
 # HTTP requests for SerpApi
 requests>=2.31.0
@@ -23,6 +24,15 @@ typing-extensions>=4.9.0
 
 # Data validation
 pydantic>=2.5.0
+
+# Database ORM
+SQLAlchemy>=2.0.0
+
+# Authentication and Security
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+
+# Note: uuid, hashlib, base64, secrets, json, logging, datetime are part of Python standard library
 
 # Optional: For async support
 aiohttp>=3.9.0
