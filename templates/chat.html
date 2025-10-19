@@ -3,8 +3,11 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>HotelPlanner LLM Chat</title>
+	<title>HolidAI Chat Assistant</title>
 	<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+	<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 	<style>
 		/* Chat specific styles */
 		.chat-container { max-width: 900px; margin: 40px auto; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); overflow: hidden; }
@@ -25,13 +28,52 @@
 		.typing { opacity: 0.7; font-style: italic; }
 	</style>
 </head>
-<body>
+<body class="dashboard">
+	<!-- Navigation Header -->
+	<header class="dashboard-header">
+		<div class="container">
+			<nav class="dashboard-nav">
+				<div class="logo">
+					<i class="fas fa-plane"></i> HolidAI
+				</div>
+				
+				<div class="nav-menu">
+					<a href="/" class="nav-link">
+						<i class="fas fa-home"></i> Dashboard
+					</a>
+					<a href="/chat" class="nav-link active">
+						<i class="fas fa-comments"></i> AI Assistant
+					</a>
+					<a href="#bookings" class="nav-link" onclick="showBookings()">
+						<i class="fas fa-calendar-check"></i> My Bookings
+					</a>
+					<a href="#search" class="nav-link" onclick="showSearchModal()">
+						<i class="fas fa-search"></i> Search Hotels
+					</a>
+				</div>
+				
+				<div class="user-menu">
+					<div class="user-avatar" id="userAvatar">
+						<i class="fas fa-user"></i>
+					</div>
+					<div class="user-info">
+						<div class="user-name" id="userName">Welcome!</div>
+						<div class="user-email" id="userEmail">Please log in</div>
+					</div>
+					<button class="btn btn-secondary btn-sm" onclick="logout()">
+						<i class="fas fa-sign-out-alt"></i> Logout
+					</button>
+				</div>
+			</nav>
+		</div>
+	</header>
+
 	<div class="container">
-		<div class="chat-container">
-			<div class="chat-header">
-				<h1>🤖 HotelPlanner LLM Agent</h1>
-				<div class="small">Chat with Claude-powered agent. I can search hotels, filter, budget, and explore using real tools!</div>
-			</div>
+			<div class="chat-container">
+				<div class="chat-header">
+					<h1><i class="fas fa-robot"></i> HolidAI Assistant</h1>
+					<div class="small">Your intelligent travel planning companion. I can search hotels, help with bookings, and plan your perfect trip!</div>
+				</div>
 			<div id="chat" class="chat-body"></div>
 			<div class="chat-footer">
 				<input id="messageInput" type="text" placeholder="Tell me about your trip plans... e.g., 'I want to go to Paris for 4 nights'">
@@ -115,5 +157,6 @@
 			}
 		}
 	</script>
+	<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

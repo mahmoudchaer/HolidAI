@@ -172,21 +172,71 @@ def select_hotel_by_index(hotels: List[Dict[str, Any]], index: int) -> Optional[
 @tool
 def get_hotel_summary(hotel: Dict[str, Any]) -> str:
     """
-    Get a brief summary of a hotel.
+    Get a clean, concise summary of a hotel.
     
     Args:
         hotel: Hotel property dictionary
     
     Returns:
-        Brief formatted string with hotel summary
+        Clean formatted string with hotel summary
     """
     name = hotel.get("name", "Unknown")
     rating = hotel.get("overall_rating", "N/A")
     reviews = hotel.get("reviews", 0)
+    hotel_class = hotel.get("hotel_class", 0)
     rate = hotel.get("rate_per_night", {})
     price = rate.get("lowest", "N/A")
-    amenities = ", ".join(hotel.get("amenities", [])[:3])  # Only 3 amenities
+    amenities = hotel.get("amenities", [])[:3]  # Only top 3 amenities
     
-    # Shorter format to save tokens
-    return f"{name} | {rating}⭐ ({reviews} reviews) | {price}/night | {amenities}"
+    # Format amenities nicely
+    amenity_text = ", ".join(amenities) if amenities else "Standard amenities"
+    
+    # Create clean summary
+    summary = f"🏨 **{name}**\n"
+    summary += f"⭐ {rating}/5 ({reviews:,} reviews) • {hotel_class}-star • {price}/night\n"
+    summary += f"✨ {amenity_text}"
+    
+    return summary
+
+
+@tool
+def format_hotels_list(hotels: List[Dict[str, Any]], max_hotels: int = 5) -> str:
+    """
+    Format a list of hotels in a clean, readable format.
+    
+    Args:
+        hotels: List of hotel properties
+        max_hotels: Maximum number of hotels to display
+    
+    Returns:
+        Clean formatted string with hotel list
+    """
+    if not hotels:
+        return "No hotels found matching your criteria."
+    
+    # Limit to max_hotels
+    hotels = hotels[:max_hotels]
+    
+    result = f"🏨 **Found {len(hotels)} hotel{'s' if len(hotels) > 1 else ''}:**\n\n"
+    
+    for i, hotel in enumerate(hotels, 1):
+        name = hotel.get("name", "Unknown Hotel")
+        rating = hotel.get("overall_rating", 0)
+        reviews = hotel.get("reviews", 0)
+        hotel_class = hotel.get("hotel_class", 0)
+        rate = hotel.get("rate_per_night", {})
+        price = rate.get("lowest", "N/A")
+        amenities = hotel.get("amenities", [])[:3]
+        
+        # Format amenities
+        amenity_text = ", ".join(amenities) if amenities else "Standard amenities"
+        
+        # Format reviews count
+        reviews_text = f"{reviews:,}" if reviews > 0 else "No reviews"
+        
+        result += f"**{i}. {name}**\n"
+        result += f"   ⭐ {rating}/5 ({reviews_text}) • {hotel_class}-star • {price}/night\n"
+        result += f"   ✨ {amenity_text}\n\n"
+    
+    return result.strip()
 
