@@ -1,0 +1,47 @@
+{
+  "get_traveldoc_requirement": {
+    "description": "Get visa requirements for travel between countries using TravelDoc.aero. This tool automates the visa requirement lookup and returns structured information about visa requirements, passport requirements, and other travel conditions. The tool uses browser automation to query the TravelDoc website and extracts comprehensive visa information.",
+    "inputs": {
+      "nationality": "string – required – The traveler's nationality/passport country (e.g., 'Lebanon', 'United States', 'France')",
+      "leaving_from": "string – required – The origin country where the traveler is departing from (e.g., 'Lebanon', 'United States', 'France')",
+      "going_to": "string – required – The destination country the traveler is going to (e.g., 'Qatar', 'France', 'United States')"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, TIMEOUT, BROWSER_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "result": "string – formatted visa requirement information including travel summary, visa requirements, passport requirements, and other conditions",
+      "nationality": "string – the nationality that was queried",
+      "leaving_from": "string – the origin country that was queried",
+      "going_to": "string – the destination country that was queried",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Check visa requirements for Lebanese traveler",
+        "body": {
+          "nationality": "Lebanon",
+          "leaving_from": "Lebanon",
+          "going_to": "Qatar"
+        }
+      },
+      {
+        "title": "Check visa requirements for US citizen traveling to France",
+        "body": {
+          "nationality": "United States",
+          "leaving_from": "United States",
+          "going_to": "France"
+        }
+      },
+      {
+        "title": "Check visa requirements for transit",
+        "body": {
+          "nationality": "India",
+          "leaving_from": "India",
+          "going_to": "United Kingdom"
+        }
+      }
+    ]
+  }
+}
+

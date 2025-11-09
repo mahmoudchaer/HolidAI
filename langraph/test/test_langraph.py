@@ -39,6 +39,30 @@ async def test_langraph():
         print(f"✓ Route: {result.get('route')}")
         print(f"✓ Response: {result.get('last_response', 'N/A')[:200]}")
         
+        # Test 4: Visa requirement delegation
+        print("\n4. Testing visa requirement delegation...")
+        result = await run("What are the visa requirements for a Lebanese citizen traveling from Lebanon to Qatar?")
+        print(f"✓ Route: {result.get('route')}")
+        print(f"✓ Response: {result.get('last_response', 'N/A')[:200]}")
+        
+        # Test 5: Visa requirement with different countries
+        print("\n5. Testing visa requirement (US to France)...")
+        result = await run("I'm a US citizen traveling from the United States to France. Do I need a visa?")
+        print(f"✓ Route: {result.get('route')}")
+        print(f"✓ Response: {result.get('last_response', 'N/A')[:200]}")
+        
+        # Test 6: Flight search delegation (one-way)
+        print("\n6. Testing flight search delegation (one-way)...")
+        result = await run("Find me a one-way flight from JFK to LAX on 2025-12-10")
+        print(f"✓ Route: {result.get('route')}")
+        print(f"✓ Response: {result.get('last_response', 'N/A')[:200]}")
+        
+        # Test 7: Flight search delegation (round-trip)
+        print("\n7. Testing flight search delegation (round-trip)...")
+        result = await run("I need a round-trip flight from NYC to London from 2025-12-10 to 2025-12-17 for 2 adults")
+        print(f"✓ Route: {result.get('route')}")
+        print(f"✓ Response: {result.get('last_response', 'N/A')[:200]}")
+        
     except Exception as e:
         print(f"\n✗ Error testing LangGraph: {e}")
         import traceback

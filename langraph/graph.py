@@ -5,9 +5,11 @@ from typing import Literal
 from langgraph.graph import StateGraph, END
 from state import AgentState
 from nodes.main_agent_node import main_agent_node
+from nodes.visa_agent_node import visa_agent_node
+from nodes.flight_agent_node import flight_agent_node
 
 
-def route_decision(state: AgentState) -> Literal["main_agent", "hotel_agent", "end"]:
+def route_decision(state: AgentState) -> Literal["main_agent", "hotel_agent", "visa_agent", "flight_agent", "end"]:
     """Route decision function based on state.route.
     
     Args:
@@ -20,6 +22,10 @@ def route_decision(state: AgentState) -> Literal["main_agent", "hotel_agent", "e
     
     if route == "hotel_agent":
         return "hotel_agent"
+    elif route == "visa_agent":
+        return "visa_agent"
+    elif route == "flight_agent":
+        return "flight_agent"
     elif route == "main_agent":
         # If we have a response, end the workflow
         if state.get("last_response"):
@@ -40,6 +46,8 @@ def create_graph() -> StateGraph:
     
     # Add nodes
     graph.add_node("main_agent", main_agent_node)
+    graph.add_node("visa_agent", visa_agent_node)
+    graph.add_node("flight_agent", flight_agent_node)
     
     # Set entry point
     graph.set_entry_point("main_agent")
@@ -51,6 +59,28 @@ def create_graph() -> StateGraph:
         {
             "main_agent": "main_agent",
             "hotel_agent": "hotel_agent",
+            "visa_agent": "visa_agent",
+            "flight_agent": "flight_agent",
+            "end": END
+        }
+    )
+    
+    # Add conditional routing from visa_agent (returns to main_agent or ends)
+    graph.add_conditional_edges(
+        "visa_agent",
+        route_decision,
+        {
+            "main_agent": "main_agent",
+            "end": END
+        }
+    )
+    
+    # Add conditional routing from flight_agent (returns to main_agent or ends)
+    graph.add_conditional_edges(
+        "flight_agent",
+        route_decision,
+        {
+            "main_agent": "main_agent",
             "end": END
         }
     )

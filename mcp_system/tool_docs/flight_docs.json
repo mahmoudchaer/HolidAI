@@ -1,0 +1,177 @@
+{
+  "agent_get_flights": {
+    "description": "Search for one-way or round-trip flights using SerpAPI Google Flights. This tool provides comprehensive flight search capabilities with extensive filtering and sorting options. Supports filtering by airline, price, duration, departure/arrival times, direct flights, stopovers, and more. Returns detailed flight information including prices, airlines, flight numbers, departure/arrival times, and booking details.",
+    "inputs": {
+      "trip_type": "string – required – Type of trip: 'one-way' or 'round-trip'",
+      "departure": "string – required – Departure airport/city code (e.g., 'JFK', 'NYC', 'LAX', 'LHR')",
+      "arrival": "string – required – Arrival airport/city code (e.g., 'LAX', 'LHR', 'CDG', 'JFK')",
+      "departure_date": "string – required – Departure date in YYYY-MM-DD format (e.g., '2025-12-10')",
+      "arrival_date": "string – optional – Return date for round-trip flights in YYYY-MM-DD format (required for round-trip)",
+      "currency": "string – optional – Currency code (default: 'USD', e.g., 'EUR', 'GBP', 'JPY')",
+      "airline": "string – optional – Filter by airline name (e.g., 'American Airlines', 'United', 'Delta')",
+      "max_price": "number – optional – Maximum price filter (e.g., 500.0 for $500)",
+      "direct_only": "boolean – optional – Only show direct flights (default: false)",
+      "max_duration": "integer – optional – Maximum flight duration in minutes (e.g., 480 for 8 hours)",
+      "dep_after": "string – optional – Departure time after in HH:MM format (e.g., '08:00')",
+      "dep_before": "string – optional – Departure time before in HH:MM format (e.g., '20:00')",
+      "arr_after": "string – optional – Arrival time after in HH:MM format (e.g., '10:00')",
+      "arr_before": "string – optional – Arrival time before in HH:MM format (e.g., '22:00')",
+      "stopover": "string – optional – Filter by stopover airport code (e.g., 'DFW', 'ATL')",
+      "sort_by": "string – optional – Sort by 'price', 'duration', 'departure', or 'arrival' (default: unsorted)",
+      "ascending": "boolean – optional – Sort ascending (default: true)",
+      "adults": "integer – optional – Number of adults (default: 1, minimum: 0)",
+      "children": "integer – optional – Number of children (default: 0, minimum: 0)",
+      "infants": "integer – optional – Number of infants (default: 0, minimum: 0)",
+      "travel_class": "string – optional – Travel class: 'economy', 'premium', 'business', or 'first' (default: 'economy')"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, TIMEOUT, API_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "outbound": "array – list of outbound flight options with details (price, airline, flight numbers, times, duration, etc.)",
+      "return": "array – list of return flight options for round-trip (empty for one-way)",
+      "passengers": "object – passenger information (adults, children, infants)",
+      "trip_type": "string – the trip type that was searched",
+      "departure": "string – departure airport code",
+      "arrival": "string – arrival airport code",
+      "departure_date": "string – departure date",
+      "arrival_date": "string – return date (for round-trip)",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "One-way flight search",
+        "body": {
+          "trip_type": "one-way",
+          "departure": "JFK",
+          "arrival": "LAX",
+          "departure_date": "2025-12-10",
+          "adults": 1,
+          "travel_class": "economy"
+        }
+      },
+      {
+        "title": "Round-trip flight search",
+        "body": {
+          "trip_type": "round-trip",
+          "departure": "NYC",
+          "arrival": "LHR",
+          "departure_date": "2025-12-10",
+          "arrival_date": "2025-12-17",
+          "adults": 2,
+          "travel_class": "business"
+        }
+      },
+      {
+        "title": "Flight search with filters",
+        "body": {
+          "trip_type": "one-way",
+          "departure": "LAX",
+          "arrival": "JFK",
+          "departure_date": "2025-12-15",
+          "airline": "American Airlines",
+          "max_price": 500,
+          "direct_only": true,
+          "sort_by": "price",
+          "adults": 1
+        }
+      },
+      {
+        "title": "Flight search with time constraints",
+        "body": {
+          "trip_type": "one-way",
+          "departure": "JFK",
+          "arrival": "LAX",
+          "departure_date": "2025-12-10",
+          "dep_after": "08:00",
+          "dep_before": "18:00",
+          "arr_after": "11:00",
+          "adults": 2,
+          "children": 1
+        }
+      }
+    ]
+  },
+  "agent_get_flights_flexible": {
+    "description": "Search for flights with flexible dates. This tool performs flight searches across multiple dates (±days_flex around the specified departure date), allowing users to find the best prices when travel dates are flexible. Perfect for users who want to find cheaper flights by adjusting their travel dates slightly. The tool automatically searches dates around the center date and returns results sorted by price (or specified sort criteria).",
+    "inputs": {
+      "trip_type": "string – required – Type of trip: 'one-way' or 'round-trip'",
+      "departure": "string – required – Departure airport/city code (e.g., 'JFK', 'NYC', 'LAX', 'LHR')",
+      "arrival": "string – required – Arrival airport/city code (e.g., 'LAX', 'LHR', 'CDG', 'JFK')",
+      "departure_date": "string – required – Center departure date in YYYY-MM-DD format (e.g., '2025-12-10')",
+      "arrival_date": "string – optional – Return date for round-trip flights in YYYY-MM-DD format (required for round-trip)",
+      "currency": "string – optional – Currency code (default: 'USD', e.g., 'EUR', 'GBP', 'JPY')",
+      "airline": "string – optional – Filter by airline name (e.g., 'American Airlines', 'United', 'Delta')",
+      "max_price": "number – optional – Maximum price filter (e.g., 500.0 for $500)",
+      "direct_only": "boolean – optional – Only show direct flights (default: false)",
+      "max_duration": "integer – optional – Maximum flight duration in minutes (e.g., 480 for 8 hours)",
+      "dep_after": "string – optional – Departure time after in HH:MM format (e.g., '08:00')",
+      "dep_before": "string – optional – Departure time before in HH:MM format (e.g., '20:00')",
+      "arr_after": "string – optional – Arrival time after in HH:MM format (e.g., '10:00')",
+      "arr_before": "string – optional – Arrival time before in HH:MM format (e.g., '22:00')",
+      "stopover": "string – optional – Filter by stopover airport code (e.g., 'DFW', 'ATL')",
+      "sort_by": "string – optional – Sort by 'price', 'duration', 'departure', or 'arrival' (default: 'price')",
+      "ascending": "boolean – optional – Sort ascending (default: true)",
+      "adults": "integer – optional – Number of adults (default: 1, minimum: 0)",
+      "children": "integer – optional – Number of children (default: 0, minimum: 0)",
+      "infants": "integer – optional – Number of infants (default: 0, minimum: 0)",
+      "travel_class": "string – optional – Travel class: 'economy', 'premium', 'business', or 'first' (default: 'economy')",
+      "days_flex": "integer – optional – Number of days flexibility (±days_flex around departure_date, default: 3, max: 7)"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, TIMEOUT, API_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "flights": "array – list of flight options across multiple dates with details (price, airline, flight numbers, times, duration, search_date, etc.)",
+      "passengers": "object – passenger information (adults, children, infants)",
+      "trip_type": "string – the trip type that was searched",
+      "departure": "string – departure airport code",
+      "arrival": "string – arrival airport code",
+      "departure_date": "string – center departure date",
+      "arrival_date": "string – return date (for round-trip)",
+      "days_flex": "integer – number of days flexibility used",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Flexible one-way flight search",
+        "body": {
+          "trip_type": "one-way",
+          "departure": "JFK",
+          "arrival": "LAX",
+          "departure_date": "2025-12-10",
+          "days_flex": 3,
+          "adults": 1
+        }
+      },
+      {
+        "title": "Flexible round-trip flight search",
+        "body": {
+          "trip_type": "round-trip",
+          "departure": "NYC",
+          "arrival": "LHR",
+          "departure_date": "2025-12-10",
+          "arrival_date": "2025-12-17",
+          "days_flex": 2,
+          "adults": 2,
+          "travel_class": "economy"
+        }
+      },
+      {
+        "title": "Flexible flight search with filters",
+        "body": {
+          "trip_type": "one-way",
+          "departure": "LAX",
+          "arrival": "JFK",
+          "departure_date": "2025-12-15",
+          "days_flex": 5,
+          "max_price": 400,
+          "direct_only": true,
+          "sort_by": "price",
+          "adults": 1
+        }
+      }
+    ]
+  }
+}
+
