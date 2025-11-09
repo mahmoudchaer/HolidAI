@@ -1,0 +1,188 @@
+{
+  "get_hotel_rates": {
+    "description": "Retrieve detailed rate information for hotels. Supports multi-room bookings and flexible location search (by hotel IDs, city/country, or IATA code). The function accepts minimal input and auto-fills defaults for currency (USD), guest nationality (US), max rates per hotel (1), refundable rates only (false), and room mapping (true). Returns an array of hotel offers with comprehensive rate details including pricing and room specifications.",
+    "inputs": {
+      "checkin": "string – required – check-in date in YYYY-MM-DD format (ISO 8601)",
+      "checkout": "string – required – check-out date in YYYY-MM-DD format (ISO 8601)",
+      "occupancies": "array – required – array of objects specifying number of guests per room. Each object must have 'adults' (integer, required) and optionally 'children' (array of integers, ages)",
+      "hotelIds": "array of strings – optional – array of hotel IDs to search for availability and pricing. At least one location identifier must be provided: hotelIds, (cityName and countryCode), or iataCode",
+      "cityName": "string – optional – name of the city to search for hotels in. Must be paired with countryCode",
+      "countryCode": "string – optional – country code in ISO 2-letter format (e.g., 'US', 'FR', 'SG'). Must be paired with cityName",
+      "iataCode": "string – optional – IATA code of the search location, typically an airport code. At least one location identifier must be provided",
+      "currency": "string – optional – currency in which prices will be displayed. Default: USD",
+      "guestNationality": "string – optional – guest's nationality in ISO 2-letter country code format. Default: US",
+      "maxRatesPerHotel": "integer – optional – number of room rates to return per hotel, sorted by price (cheapest first). Default: 1",
+      "refundableRatesOnly": "boolean – optional – if true, only refundable rates will be included. Default: false",
+      "roomMapping": "boolean – optional – enable room mapping to retrieve mappedRoomId for each room. Default: true",
+      "k": "integer – optional – number of hotels to return (limited to top k results). Must be between 1 and 200. Default: 10"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "hotels": "array – list of hotel offers with rate details, pricing, and room specifications",
+      "search_params": "object – parameters used in this search including top_k: k",
+      "message": "string – optional helpful message when no hotels found",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Search by city and country",
+        "body": {
+          "checkin": "2025-12-10",
+          "checkout": "2025-12-17",
+          "occupancies": [{"adults": 2}],
+          "cityName": "Paris",
+          "countryCode": "FR"
+        }
+      },
+      {
+        "title": "Search by hotel IDs",
+        "body": {
+          "checkin": "2025-11-10",
+          "checkout": "2025-11-17",
+          "occupancies": [{"adults": 2, "children": [5, 8]}],
+          "hotelIds": ["HTL001", "HTL002", "HTL003"]
+        }
+      },
+      {
+        "title": "Search by IATA code with custom currency",
+        "body": {
+          "checkin": "2025-12-01",
+          "checkout": "2025-12-03",
+          "occupancies": [{"adults": 1}],
+          "iataCode": "JFK",
+          "currency": "EUR",
+          "guestNationality": "FR"
+        }
+      },
+      {
+        "title": "Multi-room booking",
+        "body": {
+          "checkin": "2025-12-15",
+          "checkout": "2025-12-20",
+          "occupancies": [
+            {"adults": 2},
+            {"adults": 1, "children": [10]}
+          ],
+          "cityName": "London",
+          "countryCode": "GB",
+          "maxRatesPerHotel": 3
+        }
+      },
+      {
+        "title": "Search with custom limit (k=5)",
+        "body": {
+          "checkin": "2025-12-10",
+          "checkout": "2025-12-17",
+          "occupancies": [{"adults": 2}],
+          "cityName": "Paris",
+          "countryCode": "FR",
+          "k": 5
+        }
+      }
+    ]
+  },
+
+  "get_hotel_rates_by_price": {
+    "description": "Retrieve detailed rate information for hotels sorted by price (lowest first) and return the top k cheapest hotels. Supports multi-room bookings and flexible location search (by hotel IDs, city/country, or IATA code). The function accepts minimal input and auto-fills defaults for currency (USD), guest nationality (US), max rates per hotel (1), refundable rates only (false), and room mapping (true). Returns an array of hotel offers sorted by price in ascending order with comprehensive rate details including pricing and room specifications.",
+    "inputs": {
+      "checkin": "string – required – check-in date in YYYY-MM-DD format (ISO 8601)",
+      "checkout": "string – required – check-out date in YYYY-MM-DD format (ISO 8601)",
+      "occupancies": "array – required – array of objects specifying number of guests per room. Each object must have 'adults' (integer, required) and optionally 'children' (array of integers, ages)",
+      "k": "integer – required – number of top cheapest hotels to return (e.g., 5 returns top 5 cheapest hotels). Must be between 1 and 200",
+      "hotelIds": "array of strings – optional – array of hotel IDs to search for availability and pricing. At least one location identifier must be provided: hotelIds, (cityName and countryCode), or iataCode",
+      "cityName": "string – optional – name of the city to search for hotels in. Must be paired with countryCode",
+      "countryCode": "string – optional – country code in ISO 2-letter format (e.g., 'US', 'FR', 'SG'). Must be paired with cityName",
+      "iataCode": "string – optional – IATA code of the search location, typically an airport code. At least one location identifier must be provided",
+      "currency": "string – optional – currency in which prices will be displayed. Default: USD",
+      "guestNationality": "string – optional – guest's nationality in ISO 2-letter country code format. Default: US",
+      "maxRatesPerHotel": "integer – optional – number of room rates to return per hotel, sorted by price (cheapest first). Default: 1",
+      "refundableRatesOnly": "boolean – optional – if true, only refundable rates will be included. Default: false",
+      "roomMapping": "boolean – optional – enable room mapping to retrieve mappedRoomId for each room. Default: true"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "hotels": "array – list of top k hotel offers sorted by price (lowest first) with rate details, pricing, and room specifications",
+      "search_params": "object – parameters used in this search including top_k: k and sort_by: 'price'",
+      "message": "string – optional helpful message when no hotels found",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get top 5 cheapest hotels by city",
+        "body": {
+          "checkin": "2025-12-10",
+          "checkout": "2025-12-17",
+          "occupancies": [{"adults": 2}],
+          "cityName": "Paris",
+          "countryCode": "FR",
+          "k": 5
+        }
+      },
+      {
+        "title": "Get top 10 cheapest hotels by IATA code",
+        "body": {
+          "checkin": "2025-12-01",
+          "checkout": "2025-12-03",
+          "occupancies": [{"adults": 1}],
+          "iataCode": "JFK",
+          "k": 10
+        }
+      },
+      {
+        "title": "Get cheapest hotel from specific hotel IDs",
+        "body": {
+          "checkin": "2025-11-10",
+          "checkout": "2025-11-17",
+          "occupancies": [{"adults": 2}],
+          "hotelIds": ["HTL001", "HTL002", "HTL003"],
+          "k": 1
+        }
+      }
+    ]
+  },
+
+  "get_hotel_details": {
+    "description": "Retrieve detailed information about a specific hotel using its unique identifier. Returns comprehensive hotel data including name, address, rating, amenities, images, description, room types, facilities, policies, and sentiment analysis. The function accepts minimal input and auto-fills defaults for language (API default) and timeout (4.0 seconds).",
+    "method": "GET",
+    "url": "https://api.liteapi.travel/v3.0/data/hotel",
+    "inputs": {
+      "hotelId": "string – required – unique ID of the hotel",
+      "language": "string – optional – language code for results (e.g., 'en', 'fr'). Default: None (uses API default)",
+      "timeout": "float – optional – request timeout in seconds. Default: 4.0"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "hotel": "object – detailed hotel information including id, name, description, images, facilities, rooms, policies, rating, location, etc.",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get hotel details by ID",
+        "body": {
+          "hotelId": "lp1897"
+        }
+      },
+      {
+        "title": "Get hotel details with language",
+        "body": {
+          "hotelId": "lp1897",
+          "language": "fr"
+        }
+      },
+      {
+        "title": "Get hotel details with custom timeout",
+        "body": {
+          "hotelId": "lp1897",
+          "timeout": 6.0
+        }
+      }
+    ]
+  }
+}
+
