@@ -69,7 +69,10 @@ async def test_tripadvisor_agent():
                 if location_id == 'N/A' and first_location:
                     print(f"    (Available fields: {list(first_location.keys())[:5]}...)")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
             if result.get("suggestion"):
                 print(f"  Suggestion: {result.get('suggestion')}")
         
@@ -84,7 +87,10 @@ async def test_tripadvisor_agent():
             locations_count = len(result.get("data", []))
             print(f"✓ Found {locations_count} hotel locations")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
         
         # Test 3: Search locations with coordinates and radius
         print("\n3. Testing search_locations (with coordinates and radius)...")
@@ -100,7 +106,10 @@ async def test_tripadvisor_agent():
             locations_count = len(result.get("data", []))
             print(f"✓ Found {locations_count} restaurant locations near coordinates")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
         
         # Test 4: Get location details (using location ID from test 1)
         print("\n4. Testing get_location_details...")
@@ -148,7 +157,10 @@ async def test_tripadvisor_agent():
             else:
                 print("✗ No location data returned")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
             if result.get("suggestion"):
                 print(f"  Suggestion: {result.get('suggestion')}")
         
@@ -168,7 +180,10 @@ async def test_tripadvisor_agent():
                 rating = first_review.get("rating", "N/A")
                 print(f"  First review rating: {rating}")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
             if result.get("suggestion"):
                 print(f"  Suggestion: {result.get('suggestion')}")
         
@@ -208,7 +223,10 @@ async def test_tripadvisor_agent():
                         elif "url" in photo:
                             print(f"      URL: {photo.get('url')}")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
             if result.get("suggestion"):
                 print(f"  Suggestion: {result.get('suggestion')}")
         
@@ -225,7 +243,10 @@ async def test_tripadvisor_agent():
             locations_count = len(result.get("data", []))
             print(f"✓ Found {locations_count} nearby attractions")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
             if result.get("suggestion"):
                 print(f"  Suggestion: {result.get('suggestion')}")
         
@@ -245,7 +266,156 @@ async def test_tripadvisor_agent():
             else:
                 print("✗ No location data returned")
         else:
-            print(f"✗ Error: {result.get('error_message')}")
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 9: Search locations by price
+        print("\n9. Testing search_locations_by_price...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "search_locations_by_price",
+            search_query="restaurants Paris",
+            max_price_level=2,
+            category="restaurants"
+        )
+        if not result.get("error"):
+            locations_count = len(result.get("data", []))
+            print(f"✓ Found {locations_count} budget-friendly restaurants (price level ≤ 2)")
+            if locations_count > 0:
+                first = result['data'][0]
+                print(f"  First: {first.get('name', 'N/A')}")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 10: Search nearby by price
+        print("\n10. Testing search_nearby_by_price...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "search_nearby_by_price",
+            lat_long="40.7128,-74.0060",
+            max_price_level=2,
+            category="restaurants",
+            radius=5,
+            radius_unit="km"
+        )
+        if not result.get("error"):
+            locations_count = len(result.get("data", []))
+            print(f"✓ Found {locations_count} budget-friendly restaurants nearby (price level ≤ 2)")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 11: Search nearby by distance
+        print("\n11. Testing search_nearby_by_distance...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "search_nearby_by_distance",
+            lat_long="40.7128,-74.0060",
+            category="restaurants",
+            radius=5,
+            radius_unit="km"
+        )
+        if not result.get("error"):
+            locations_count = len(result.get("data", []))
+            print(f"✓ Found {locations_count} restaurants sorted by distance (closest first)")
+            if locations_count > 0:
+                first = result['data'][0]
+                distance = first.get('distance') or first.get('distanceValue', 'N/A')
+                print(f"  Closest: {first.get('name', 'N/A')} (distance: {distance})")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 12: Find closest location
+        print("\n12. Testing find_closest_location...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "find_closest_location",
+            lat_long="40.7128,-74.0060",
+            category="restaurants",
+            radius=5,
+            radius_unit="km"
+        )
+        if not result.get("error"):
+            closest = result.get("data", {})
+            if closest:
+                print(f"✓ Found closest restaurant: {closest.get('name', 'N/A')}")
+                distance = closest.get('distance') or closest.get('distanceValue', 'N/A')
+                print(f"  Distance: {distance}")
+            else:
+                print("  No locations found")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 13: Search restaurants by cuisine
+        print("\n13. Testing search_restaurants_by_cuisine...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "search_restaurants_by_cuisine",
+            search_query="restaurants Rome",
+            cuisine_types=["Italian"]
+        )
+        if not result.get("error"):
+            locations_count = len(result.get("data", []))
+            print(f"✓ Found {locations_count} Italian restaurants")
+            if result.get("message"):
+                print(f"  Note: {result.get('message')}")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 14: Get multiple location details
+        print("\n14. Testing get_multiple_location_details...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "get_multiple_location_details",
+            location_ids=[60763, 186338]  # Eiffel Tower and another location
+        )
+        if not result.get("error"):
+            locations = result.get("data", [])
+            summary = result.get("summary", {})
+            print(f"✓ Retrieved details for {summary.get('successful', 0)}/{summary.get('requested', 0)} locations")
+            for i, loc in enumerate(locations[:2], 1):
+                print(f"  {i}. {loc.get('name', 'N/A')}")
+            if result.get("errors"):
+                print(f"  Errors: {len(result.get('errors', []))} failed")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 15: Compare locations
+        print("\n15. Testing compare_locations...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "compare_locations",
+            location_ids=[60763, 186338]  # Compare 2 locations
+        )
+        if not result.get("error"):
+            comparison = result.get("data", {})
+            locations = comparison.get("locations", [])
+            comp_summary = comparison.get("comparison", {})
+            print(f"✓ Compared {len(locations)} locations")
+            for i, loc in enumerate(locations, 1):
+                print(f"  {i}. {loc.get('name', 'N/A')} - Rating: {loc.get('rating', 'N/A')}, Price: {loc.get('price_level', 'N/A')}")
+            if comp_summary:
+                if "highest_rated" in comp_summary:
+                    print(f"  Highest rated: {comp_summary.get('highest_rated')}")
+                if "most_affordable" in comp_summary:
+                    print(f"  Most affordable: Price level {comp_summary.get('most_affordable')}")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
         
         # Test end-to-end scenario
         print("\n" + "=" * 60)
@@ -557,28 +727,23 @@ async def test_tripadvisor_agent():
         # Scenario: Find pizzerias in Napoli, get details, photos, reviews, and nearby attractions
         print("\n📋 Scenario: Exploring Pizzerias in Napoli, Italy")
         print("-" * 60)
-        print("Step 1: Searching for restaurants near Napoli coordinates...")
+        print("Step 1: Searching for pizzerias in Napoli (user-friendly text search)...")
         
-        # Napoli coordinates: approximately 40.8518, 14.2681
-        napoli_coords = "40.8518,14.2681"
-        
+        # User-friendly approach: search by text query (like a real user would)
         scenario2_result = await TripAdvisorAgentClient.call_tool(
-            "search_nearby",
-            lat_long=napoli_coords,
+            "search_locations",
+            search_query="pizzeria Napoli",
             category="restaurants",
-            radius=5,
-            radius_unit="km",
             language="en"
         )
         
         if scenario2_result.get("error"):
-            print(f"✗ Error searching nearby: {scenario2_result.get('error_message')}")
-            print("  Trying alternative: search by query...")
-            # Fallback to search by query
+            print(f"✗ Error searching: {scenario2_result.get('error_message')}")
+            print("  Trying alternative search...")
+            # Fallback: try without category filter
             scenario2_result = await TripAdvisorAgentClient.call_tool(
                 "search_locations",
-                search_query="pizzeria Napoli",
-                category="restaurants"
+                search_query="pizza Napoli Italy"
             )
         
         if not scenario2_result.get("error"):
@@ -871,6 +1036,7 @@ async def test_tripadvisor_agent():
                     print("Step 5: Searching for nearby attractions in Napoli...")
                     
                     if lat_long_pizzeria:
+                        # Use pizzeria coordinates if available
                         nearby_attractions_result = await TripAdvisorAgentClient.call_tool(
                             "search_nearby",
                             lat_long=lat_long_pizzeria,
@@ -879,13 +1045,12 @@ async def test_tripadvisor_agent():
                             radius_unit="km"
                         )
                     else:
-                        # Use Napoli coordinates
+                        # Fallback: search attractions by text query
+                        print("  (Coordinates not available, searching attractions by text query)")
                         nearby_attractions_result = await TripAdvisorAgentClient.call_tool(
-                            "search_nearby",
-                            lat_long=napoli_coords,
-                            category="attractions",
-                            radius=3,
-                            radius_unit="km"
+                            "search_locations",
+                            search_query="attractions Napoli",
+                            category="attractions"
                         )
                     
                     if not nearby_attractions_result.get("error"):
@@ -965,11 +1130,11 @@ async def test_tripadvisor_agent():
                     print(f"  • Nearby attractions found: {len(nearby_attractions_result.get('data', [])) if not nearby_attractions_result.get('error') else 0}")
                     print(f"  • Additional pizzerias found: {len(more_restaurants_result.get('data', [])) if not more_restaurants_result.get('error') else 0}")
                     print(f"\n  🎯 All 5 tools used:")
-                    print(f"    1. ✓ search_nearby (find restaurants near Napoli)")
+                    print(f"    1. ✓ search_locations (find pizzerias in Napoli - user-friendly text search)")
                     print(f"    2. ✓ get_location_details (get pizzeria details)")
                     print(f"    3. ✓ get_location_photos (get pizzeria photos)")
                     print(f"    4. ✓ get_location_reviews (get pizzeria reviews)")
-                    print(f"    5. ✓ search_locations (find more pizzerias)")
+                    print(f"    5. ✓ search_nearby/search_locations (find nearby attractions and more pizzerias)")
                 else:
                     print("✗ Could not extract location ID from search results")
             else:

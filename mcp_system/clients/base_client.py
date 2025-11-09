@@ -23,7 +23,8 @@ class BaseAgentClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create an HTTP client."""
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient(base_url=self.server_url, timeout=30.0)
+            # Use a longer default timeout for the client
+            self._http_client = httpx.AsyncClient(base_url=self.server_url, timeout=60.0)
         return self._http_client
     
     async def list_tools(self) -> List[Dict[str, Any]]:
@@ -86,9 +87,15 @@ class BaseAgentClient:
         
         try:
             client = await self._get_client()
+            # Use longer timeout for tools that might take longer (like details, reviews)
+            # These tools make multiple API calls or call slow endpoints
+            slow_tools = ["get_location_details", "get_location_reviews", "get_multiple_location_details", 
+                         "compare_locations", "search_restaurants_by_cuisine", "get_location_photos"]
+            timeout = 60.0 if tool_name in slow_tools else 40.0
             response = await client.post(
                 "/tools/invoke",
-                json={"tool": tool_name, "parameters": kwargs}
+                json={"tool": tool_name, "parameters": kwargs},
+                timeout=timeout
             )
             response.raise_for_status()
             result = response.json()
@@ -97,6 +104,8 @@ class BaseAgentClient:
             if isinstance(result, dict) and "result" in result:
                 return result["result"]
             return result
+        except (httpx.TimeoutException, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            raise RuntimeError(f"Failed to call tool '{tool_name}': Request timeout. The operation took too long. Please try again.")
         except httpx.HTTPStatusError as e:
             error_detail = "Unknown error"
             try:

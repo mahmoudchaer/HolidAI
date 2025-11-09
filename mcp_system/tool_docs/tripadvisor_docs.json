@@ -214,6 +214,352 @@
         }
       }
     ]
+  },
+  "search_locations_by_rating": {
+    "description": "Search for locations on TripAdvisor and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. This is perfect for users who want to find the best-rated places. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
+    "inputs": {
+      "searchQuery": "string – required – text to search for (e.g., 'pizzeria Napoli', 'hotels Paris')",
+      "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be returned (e.g., 4.0 for 4+ stars only)",
+      "sort_by_rating": "boolean – optional – if true, sort by rating descending (highest first). Default: true",
+      "top_k": "integer – optional – number of top-rated locations to return (1-10). Default: all results",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location objects sorted by rating (highest first), optionally filtered by min_rating",
+      "search_params": "object – parameters used in this search including min_rating, sort_by_rating, top_k",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Find top-rated pizzerias in Napoli",
+        "body": {
+          "searchQuery": "pizzeria Napoli",
+          "category": "restaurants",
+          "min_rating": 4.0,
+          "top_k": 5
+        }
+      },
+      {
+        "title": "Find best hotels in Paris",
+        "body": {
+          "searchQuery": "hotels Paris",
+          "category": "hotels",
+          "min_rating": 4.5,
+          "top_k": 10
+        }
+      },
+      {
+        "title": "Find highly rated attractions",
+        "body": {
+          "searchQuery": "museums London",
+          "category": "attractions",
+          "min_rating": 4.0
+        }
+      }
+    ]
+  },
+  "search_nearby_by_rating": {
+    "description": "Search for locations near given coordinates and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. Perfect for finding the best-rated places near a specific location. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
+    "inputs": {
+      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be returned (e.g., 4.0 for 4+ stars only)",
+      "sort_by_rating": "boolean – optional – if true, sort by rating descending (highest first). Default: true",
+      "top_k": "integer – optional – number of top-rated locations to return (1-10). Default: all results",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "radius": "number – optional – search radius (must be positive)",
+      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location objects sorted by rating (highest first), optionally filtered by min_rating",
+      "search_params": "object – parameters used in this search including min_rating, sort_by_rating, top_k",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Find top-rated restaurants near coordinates",
+        "body": {
+          "latLong": "40.7128,-74.0060",
+          "category": "restaurants",
+          "min_rating": 4.0,
+          "radius": 2,
+          "radiusUnit": "km",
+          "top_k": 5
+        }
+      },
+      {
+        "title": "Find best hotels near location",
+        "body": {
+          "latLong": "48.8566,2.3522",
+          "category": "hotels",
+          "min_rating": 4.5,
+          "radius": 5,
+          "radiusUnit": "km"
+        }
+      }
+    ]
+  },
+  "get_top_rated_locations": {
+    "description": "Get the top k highest-rated locations matching a search query. This is the easiest way to find the best-rated places - just provide a search query and how many results you want. Perfect for queries like 'show me the top 5 restaurants in Paris' or 'find the 3 best hotels in Rome'. The function automatically sorts by rating (highest first) and optionally filters by minimum rating. The function accepts minimal input and auto-fills defaults for language (en).",
+    "inputs": {
+      "searchQuery": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
+      "k": "integer – required – number of top-rated locations to return (1-10, e.g., 5 for top 5)",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be considered (e.g., 4.0 for 4+ stars only)",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of top k location objects sorted by rating (highest first)",
+      "search_params": "object – parameters used in this search including k, min_rating, sorted_by",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get top 5 restaurants in Paris",
+        "body": {
+          "searchQuery": "restaurants Paris",
+          "k": 5,
+          "category": "restaurants"
+        }
+      },
+      {
+        "title": "Get top 3 hotels in Rome with 4+ stars",
+        "body": {
+          "searchQuery": "hotels Rome",
+          "k": 3,
+          "category": "hotels",
+          "min_rating": 4.0
+        }
+      },
+      {
+        "title": "Get top 10 attractions in New York",
+        "body": {
+          "searchQuery": "attractions New York",
+          "k": 10,
+          "category": "attractions"
+        }
+      }
+    ]
+  },
+  "search_locations_by_price": {
+    "description": "Search for locations on TripAdvisor and filter by maximum price level. Perfect for budget-conscious users who want to find affordable options. The function accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
+    "inputs": {
+      "searchQuery": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
+      "max_price_level": "integer – required – maximum price level (1-4, where 1=cheapest, 4=most expensive)",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location objects filtered by price level",
+      "search_params": "object – parameters used in this search including max_price_level",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Find budget restaurants in Paris",
+        "body": {
+          "searchQuery": "restaurants Paris",
+          "max_price_level": 2,
+          "category": "restaurants"
+        }
+      },
+      {
+        "title": "Find affordable hotels",
+        "body": {
+          "searchQuery": "hotels Barcelona",
+          "max_price_level": 2,
+          "category": "hotels"
+        }
+      }
+    ]
+  },
+  "search_nearby_by_price": {
+    "description": "Search for locations near given coordinates and filter by maximum price level. Perfect for finding budget-friendly places nearby. The function accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
+    "inputs": {
+      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "max_price_level": "integer – required – maximum price level (1-4, where 1=cheapest, 4=most expensive)",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "radius": "number – optional – search radius (must be positive)",
+      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location objects filtered by price level",
+      "search_params": "object – parameters used in this search including max_price_level",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Find budget restaurants nearby",
+        "body": {
+          "latLong": "40.7128,-74.0060",
+          "max_price_level": 2,
+          "category": "restaurants",
+          "radius": 2,
+          "radiusUnit": "km"
+        }
+      }
+    ]
+  },
+  "search_nearby_by_distance": {
+    "description": "Search for locations near given coordinates and return them sorted by distance (closest first). Perfect for finding the nearest places. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by distance in ascending order.",
+    "inputs": {
+      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "sort_by_distance": "boolean – optional – if true, sort by distance ascending (closest first). Default: true",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "radius": "number – optional – search radius (must be positive)",
+      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location objects sorted by distance (closest first)",
+      "search_params": "object – parameters used in this search including sort_by_distance",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Find closest restaurants",
+        "body": {
+          "latLong": "40.7128,-74.0060",
+          "category": "restaurants",
+          "radius": 5,
+          "radiusUnit": "km"
+        }
+      }
+    ]
+  },
+  "find_closest_location": {
+    "description": "Find the single closest location to given coordinates. Perfect for 'find nearest' queries. The function accepts minimal input and auto-fills defaults for language (en). Returns only the closest location.",
+    "inputs": {
+      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "radius": "number – optional – search radius (must be positive)",
+      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "object – single closest location object",
+      "search_params": "object – parameters used in this search including total_found",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Find nearest restaurant",
+        "body": {
+          "latLong": "40.7128,-74.0060",
+          "category": "restaurants"
+        }
+      }
+    ]
+  },
+  "search_restaurants_by_cuisine": {
+    "description": "Search for restaurants and filter by cuisine type(s). Perfect for finding specific types of food. The function accepts minimal input and auto-fills defaults for language (en). This function automatically gets location details for restaurants that don't have cuisine information in search results, ensuring accurate filtering. It intelligently limits API calls to maintain performance.",
+    "inputs": {
+      "searchQuery": "string – required – text to search for (e.g., 'restaurants Paris')",
+      "cuisine_types": "array – required – list of cuisine types to filter by (e.g., ['Italian', 'French'])",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of restaurant location objects filtered by cuisine",
+      "search_params": "object – parameters used in this search including cuisine_types, filtered_count, total_searched",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Find Italian restaurants",
+        "body": {
+          "searchQuery": "restaurants Rome",
+          "cuisine_types": ["Italian"]
+        }
+      },
+      {
+        "title": "Find multiple cuisine types",
+        "body": {
+          "searchQuery": "restaurants New York",
+          "cuisine_types": ["Italian", "French", "Japanese"]
+        }
+      }
+    ]
+  },
+  "get_multiple_location_details": {
+    "description": "Get details for multiple locations at once. More efficient than calling get_location_details multiple times. The function accepts minimal input and auto-fills defaults for language (en) and currency (USD). Maximum 10 location IDs can be requested at once.",
+    "inputs": {
+      "location_ids": "array – required – list of TripAdvisor location IDs (max 10, e.g., [60763, 186338])",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
+      "currency": "string – optional – ISO 4217 currency code for pricing (default: 'USD', e.g., 'EUR', 'GBP', 'JPY')"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred (true only if all requests failed)",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location detail objects",
+      "errors": "array – optional list of errors for individual location IDs that failed",
+      "summary": "object – summary including requested, successful, and failed counts",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get details for multiple locations",
+        "body": {
+          "location_ids": [60763, 186338, 187147]
+        }
+      }
+    ]
+  },
+  "compare_locations": {
+    "description": "Compare 2-3 locations side by side. Returns a structured comparison of ratings, prices, distances, and other key attributes. Perfect for helping users make decisions between similar options. The function accepts minimal input and auto-fills defaults for language (en) and currency (USD). Uses robust data extraction to handle various API response formats and provides comprehensive comparison metrics including highest/lowest/average ratings and most expensive/affordable options.",
+    "inputs": {
+      "location_ids": "array – required – list of 2-3 TripAdvisor location IDs to compare (e.g., [60763, 186338])",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
+      "currency": "string – optional – ISO 4217 currency code for pricing (default: 'USD', e.g., 'EUR', 'GBP', 'JPY')"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "object – comparison object containing locations array and comparison summary (highest_rated, lowest_rated, average_rating, most_expensive, most_affordable)",
+      "summary": "object – summary including compared and successful counts",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Compare two hotels",
+        "body": {
+          "location_ids": [60763, 186338]
+        }
+      },
+      {
+        "title": "Compare three restaurants",
+        "body": {
+          "location_ids": [187147, 186338, 60763]
+        }
+      }
+    ]
   }
 }
 
