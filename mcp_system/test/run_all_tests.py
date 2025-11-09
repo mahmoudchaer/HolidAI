@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from test.test_hotel_agent import test_hotel_agent
 from test.test_permissions import test_permissions
+from test.test_tripadvisor_agent import test_tripadvisor_agent
 
 
 async def run_all_tests():
@@ -24,6 +25,11 @@ async def run_all_tests():
     
     # Run Permission tests
     await test_permissions()
+    
+    print("\n\n")
+    
+    # Run TripAdvisor Agent tests
+    await test_tripadvisor_agent()
     
     print("\n" + "=" * 60)
     print("All Tests Complete!")

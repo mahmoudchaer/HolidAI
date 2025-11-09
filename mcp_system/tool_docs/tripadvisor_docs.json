@@ -1,0 +1,219 @@
+{
+  "search_locations": {
+    "description": "Search for locations on TripAdvisor. Returns up to 10 locations based on a text query. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, address, latitude/longitude, and radius. The function accepts minimal input and auto-fills defaults for language (en).",
+    "inputs": {
+      "searchQuery": "string – required – text to search for (e.g., 'Eiffel Tower', 'Paris hotels')",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "phone": "string – optional – phone number (no '+' prefix)",
+      "address": "string – optional – address text to filter results",
+      "latLong": "string – optional – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "radius": "number – optional – search radius (must be positive)",
+      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "language": "string – optional – response language code (default: 'en'). Supported: en, ar, zh, zh_TW, da, nl, en_AU, en_CA, en_HK, en_IN, en_IE, en_MY, en_NZ, en_PH, en_SG, en_ZA, en_UK, fr, fr_BE, fr_CA, fr_CH, de_AT, de, el, iw, in, it, it_CH, ja, ko, no, pt_PT, pt, ru, es_AR, es_CO, es_MX, es_PE, es, es_VE, es_CL, sv, th, tr, vi"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location objects with details including locationId, name, address, category, rating, etc.",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Search for hotels in Paris",
+        "body": {
+          "searchQuery": "Paris hotels",
+          "category": "hotels"
+        }
+      },
+      {
+        "title": "Search for restaurants near coordinates",
+        "body": {
+          "searchQuery": "Italian restaurants",
+          "latLong": "40.7128,-74.0060",
+          "radius": 5,
+          "radiusUnit": "km",
+          "category": "restaurants"
+        }
+      },
+      {
+        "title": "Search attractions with language",
+        "body": {
+          "searchQuery": "Eiffel Tower",
+          "category": "attractions",
+          "language": "fr"
+        }
+      }
+    ]
+  },
+  "get_location_reviews": {
+    "description": "Get reviews for a specific TripAdvisor location. Returns up to 5 recent reviews ordered by recency. Higher limits may be available for beta access. The function accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
+    "inputs": {
+      "locationId": "integer – required – TripAdvisor location ID (positive integer)",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
+      "limit": "integer – optional – number of reviews to return (max 5, default: 5)",
+      "offset": "integer – optional – index of first review to return (default: 0, non-negative)"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of review objects with details including rating, title, text, author, date, etc.",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get reviews for a location",
+        "body": {
+          "locationId": 60763
+        }
+      },
+      {
+        "title": "Get reviews with language and limit",
+        "body": {
+          "locationId": 60763,
+          "language": "fr",
+          "limit": 3
+        }
+      },
+      {
+        "title": "Get reviews with offset",
+        "body": {
+          "locationId": 60763,
+          "limit": 5,
+          "offset": 5
+        }
+      }
+    ]
+  },
+  "get_location_photos": {
+    "description": "Get photos for a specific TripAdvisor location. Returns up to 5 high-quality photos ordered by recency. Photos are available in multiple sizes: Thumbnail (50x50), Small (150x150), Medium (max 250px), Large (max 550px), and Original (full resolution). The function accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
+    "inputs": {
+      "locationId": "integer – required – TripAdvisor location ID (positive integer)",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
+      "limit": "integer – optional – number of photos to return (max 5, default: 5)",
+      "offset": "integer – optional – index of first photo to return (default: 0, non-negative)",
+      "source": "string – optional – filter by photo source: 'Expert', 'Management', 'Traveler' (comma-separated, e.g., 'Expert,Traveler')"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of photo objects with details including URLs for different sizes (thumbnail, small, medium, large, original), caption, attribution, etc.",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get photos for a location",
+        "body": {
+          "locationId": 60763
+        }
+      },
+      {
+        "title": "Get photos with limit and source filter",
+        "body": {
+          "locationId": 60763,
+          "limit": 3,
+          "source": "Traveler"
+        }
+      },
+      {
+        "title": "Get photos with language",
+        "body": {
+          "locationId": 60763,
+          "language": "fr",
+          "limit": 5
+        }
+      }
+    ]
+  },
+  "get_location_details": {
+    "description": "Get full details about a TripAdvisor location. Returns comprehensive information including name, address, category, rating, ranking, coordinates, contact information, TripAdvisor URLs, amenities (for hotels), cuisine (for restaurants), features (for attractions), and pricing information. The function accepts minimal input and auto-fills defaults for language (en) and currency (USD).",
+    "inputs": {
+      "locationId": "integer – required – TripAdvisor location ID (positive integer)",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
+      "currency": "string – optional – ISO 4217 currency code for pricing (default: 'USD', e.g., 'EUR', 'GBP', 'JPY')"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "object – detailed location information including id, name, address, category, rating, ranking, coordinates, contact info, TripAdvisor URLs, amenities, cuisine, features, pricing, etc.",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get location details",
+        "body": {
+          "locationId": 60763
+        }
+      },
+      {
+        "title": "Get location details with language and currency",
+        "body": {
+          "locationId": 60763,
+          "language": "fr",
+          "currency": "EUR"
+        }
+      },
+      {
+        "title": "Get location details in Japanese",
+        "body": {
+          "locationId": 60763,
+          "language": "ja",
+          "currency": "JPY"
+        }
+      }
+    ]
+  },
+  "search_nearby": {
+    "description": "Search for locations near a given latitude/longitude on TripAdvisor. Returns up to 10 locations within a specified radius. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, and address. The function accepts minimal input and auto-fills defaults for language (en).",
+    "inputs": {
+      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
+      "phone": "string – optional – phone number (no '+' prefix)",
+      "address": "string – optional – address text to filter results",
+      "radius": "number – optional – search radius (must be positive)",
+      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "data": "array – list of location objects with details including locationId, name, address, category, rating, distance, etc.",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Search nearby hotels",
+        "body": {
+          "latLong": "40.7128,-74.0060",
+          "category": "hotels",
+          "radius": 5,
+          "radiusUnit": "km"
+        }
+      },
+      {
+        "title": "Search nearby restaurants",
+        "body": {
+          "latLong": "48.8566,2.3522",
+          "category": "restaurants",
+          "radius": 2,
+          "radiusUnit": "mi",
+          "language": "fr"
+        }
+      },
+      {
+        "title": "Search nearby attractions",
+        "body": {
+          "latLong": "51.5074,-0.1278",
+          "category": "attractions",
+          "radius": 10,
+          "radiusUnit": "km"
+        }
+      }
+    ]
+  }
+}
+

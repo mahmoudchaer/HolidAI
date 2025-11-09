@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tools.hotel_tools import register_hotel_tools
 from tools.coordinator_tools import register_coordinator_tools
+from tools.tripadvisor_tools import register_tripadvisor_tools
 
 
 class FastMCP:
@@ -230,6 +231,7 @@ mcp = FastMCP("TravelAgentTools")
 # Register tool groups
 register_hotel_tools(mcp)
 register_coordinator_tools(mcp)
+register_tripadvisor_tools(mcp)
 
 
 if __name__ == "__main__":
