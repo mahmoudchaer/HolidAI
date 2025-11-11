@@ -568,6 +568,7 @@ def register_tripadvisor_tools(mcp):
         category: Optional[str] = None,
         phone: Optional[str] = None,
         address: Optional[str] = None,
+        location: Optional[str] = None,
         lat_long: Optional[str] = None,
         radius: Optional[float] = None,
         radius_unit: Optional[str] = None,
@@ -580,6 +581,7 @@ def register_tripadvisor_tools(mcp):
             category: Filter by category: hotels | attractions | restaurants | geos
             phone: Phone number (no "+")
             address: Address text
+            location: Location/city name (alias for address, used if address not provided)
             lat_long: Latitude and longitude in format "lat,lon" (e.g., "40.7128,-74.0060")
             radius: Search radius
             radius_unit: Unit for radius: km | mi | m
@@ -594,6 +596,10 @@ def register_tripadvisor_tools(mcp):
                 "data": [],
                 "suggestion": "Please provide a search query."
             }
+        
+        # Use location as address if address is not provided
+        if not address and location:
+            address = location
         
         # Validate parameters
         is_valid, error_msg = _validate_category(category)

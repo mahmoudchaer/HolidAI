@@ -38,7 +38,12 @@ Available specialized agents:
 - hotel_agent: Handles hotel searches. Use task "get_hotel_rates" for hotel rate searches.
 - visa_agent: Handles visa requirement checks. Use task "get_traveldoc_requirement" for visa requirement lookups.
 - flight_agent: Handles flight searches. Use task "agent_get_flights" or "agent_get_flights_flexible" for flight searches.
-- tripadvisor_agent: Handles location searches, reviews, and attractions. Use various TripAdvisor tasks.
+- tripadvisor_agent: Handles location searches, reviews, and attractions. Use these specific tasks:
+  * "get_top_rated_locations" - For finding top-rated/good restaurants or attractions (use when user asks for "good", "best", "top" places)
+  * "search_locations_by_rating" - For searching locations filtered by minimum rating
+  * "search_locations" - For general location/restaurant searches
+  * "get_location_details" - For getting detailed information about a specific location
+  * "get_location_reviews" - For getting reviews of a location
 
 The delegate tool takes:
 - agent: "hotel_agent", "visa_agent", "flight_agent", or "tripadvisor_agent"
@@ -68,13 +73,22 @@ For flight searches, extract:
 - Optional: airline, max_price, direct_only, travel_class, adults, children, infants, etc.
 - If user mentions flexible dates or wants cheapest options, use task "agent_get_flights_flexible"
 
-For TripAdvisor searches, extract location, query, or other relevant parameters based on the task.
+For TripAdvisor searches:
+- For "good", "best", or "top" restaurants/attractions: Use task "get_top_rated_locations"
+  * Extract: search_query (e.g., "restaurants in Beirut"), k (number of top results, default 5), category (optional: "restaurants", "attractions", "hotels", "geos"), min_rating (optional, e.g., 4.0 for 4+ stars), location (optional, city name)
+- For general restaurant/attraction searches: Use task "search_locations"
+  * Extract: search_query (required), category (optional: "restaurants", "attractions", "hotels", "geos"), location (optional, city name)
+- For location details: Use task "get_location_details"
+  * Extract: location_id (required)
+- For reviews: Use task "get_location_reviews"
+  * Extract: location_id (required)
 
 IMPORTANT: After agents return with information, you must:
 1. Review what information you have collected
 2. Determine if the user's query is fully answered
-3. If more information is needed, delegate to another agent
-4. If you have all necessary information, route to "conversational_agent" (set route to "conversational_agent")
+3. If you already have results from an agent (e.g., tripadvisor_result, hotel_result), DO NOT delegate to that same agent again - route to conversational_agent instead
+4. If more information is needed from a different agent, delegate to that agent
+5. If you have all necessary information, route to "conversational_agent" (use route_to_conversational tool)
 """
     
     if agents_called:
@@ -134,8 +148,16 @@ async def main_agent_node(state: AgentState) -> AgentState:
         if agents_called:
             context_message += f"Agents called: {', '.join(agents_called)}. "
         if collected_info:
-            context_message += "Information has been collected from agents. "
-        context_message += "Review if you need to call more agents or if you're ready to generate the final response."
+            context_message += "Information has been collected from agents: "
+            if collected_info.get("tripadvisor_result"):
+                context_message += "TripAdvisor results available. "
+            if collected_info.get("hotel_result"):
+                context_message += "Hotel results available. "
+            if collected_info.get("flight_result"):
+                context_message += "Flight results available. "
+            if collected_info.get("visa_result"):
+                context_message += "Visa results available. "
+        context_message += "If you have the necessary information, route to conversational_agent. DO NOT delegate the same task again if results already exist."
     
     # Prepare messages for LLM
     messages = [
@@ -202,6 +224,30 @@ async def main_agent_node(state: AgentState) -> AgentState:
             import json
             args = json.loads(tool_call.function.arguments)
             agent_name = args["agent"]
+            task_name = args["task"]
+            
+            # Check if we already have results for this agent/task combination
+            # This prevents infinite loops where we keep delegating the same task
+            if agent_name == "tripadvisor_agent" and collected_info.get("tripadvisor_result"):
+                # We already have tripadvisor results, route to conversational agent instead
+                updated_state["route"] = "conversational_agent"
+                updated_state["ready_for_response"] = True
+                return updated_state
+            elif agent_name == "hotel_agent" and collected_info.get("hotel_result"):
+                # We already have hotel results, route to conversational agent instead
+                updated_state["route"] = "conversational_agent"
+                updated_state["ready_for_response"] = True
+                return updated_state
+            elif agent_name == "flight_agent" and collected_info.get("flight_result"):
+                # We already have flight results, route to conversational agent instead
+                updated_state["route"] = "conversational_agent"
+                updated_state["ready_for_response"] = True
+                return updated_state
+            elif agent_name == "visa_agent" and collected_info.get("visa_result"):
+                # We already have visa results, route to conversational agent instead
+                updated_state["route"] = "conversational_agent"
+                updated_state["ready_for_response"] = True
+                return updated_state
             
             # Track which agent we're calling
             if agent_name not in agents_called:
@@ -211,7 +257,7 @@ async def main_agent_node(state: AgentState) -> AgentState:
             delegation_result = await MainAgentClient.invoke(
                 "delegate",
                 agent=agent_name,
-                task=args["task"],
+                task=task_name,
                 args=args.get("args", {})
             )
             
@@ -219,7 +265,7 @@ async def main_agent_node(state: AgentState) -> AgentState:
             updated_state["route"] = agent_name
             updated_state["agents_called"] = agents_called
             updated_state["context"] = {
-                "task": args["task"],
+                "task": task_name,
                 "args": args.get("args", {}),
                 "delegation_result": delegation_result
             }

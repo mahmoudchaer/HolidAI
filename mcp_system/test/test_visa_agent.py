@@ -57,7 +57,7 @@ async def test_visa_agent():
         print("\n1. Testing get_traveldoc_requirement (Lebanon to Qatar)...")
         print("   Note: This test uses browser automation and may take 30-60 seconds")
         result = await VisaAgentClient.call_tool(
-            "get_traveldoc_requirement",
+            "get_traveldoc_requirement_tool",
             nationality="Lebanon",
             leaving_from="Lebanon",
             going_to="Qatar"
@@ -82,7 +82,7 @@ async def test_visa_agent():
         print("\n2. Testing get_traveldoc_requirement (United States to France)...")
         print("   Note: This test uses browser automation and may take 30-60 seconds")
         result = await VisaAgentClient.call_tool(
-            "get_traveldoc_requirement",
+            "get_traveldoc_requirement_tool",
             nationality="United States",
             leaving_from="United States",
             going_to="France"
@@ -109,7 +109,7 @@ async def test_visa_agent():
         # Test 3: Validation error - missing nationality
         print("\n3. Testing validation error (missing nationality)...")
         result = await VisaAgentClient.call_tool(
-            "get_traveldoc_requirement",
+            "get_traveldoc_requirement_tool",
             nationality="",
             leaving_from="Lebanon",
             going_to="Qatar"
@@ -125,7 +125,7 @@ async def test_visa_agent():
         # Test 4: Validation error - missing leaving_from
         print("\n4. Testing validation error (missing leaving_from)...")
         result = await VisaAgentClient.call_tool(
-            "get_traveldoc_requirement",
+            "get_traveldoc_requirement_tool",
             nationality="Lebanon",
             leaving_from="",
             going_to="Qatar"
@@ -139,7 +139,7 @@ async def test_visa_agent():
         # Test 5: Validation error - missing going_to
         print("\n5. Testing validation error (missing going_to)...")
         result = await VisaAgentClient.call_tool(
-            "get_traveldoc_requirement",
+            "get_traveldoc_requirement_tool",
             nationality="Lebanon",
             leaving_from="Lebanon",
             going_to=""

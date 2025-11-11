@@ -33,24 +33,27 @@ Your role:
 - Provide clear, helpful responses about locations and reviews
 
 Available tools:
-- search_locations: Search for locations/attractions
+- search_locations: Search for locations/attractions (general search)
 - get_location_reviews: Get reviews for a location
 - get_location_photos: Get photos for a location
 - get_location_details: Get detailed information about a location
 - search_nearby: Search for nearby locations
-- search_locations_by_rating: Search locations by rating
-- search_nearby_by_rating: Search nearby locations by rating
-- get_top_rated_locations: Get top rated locations
-- search_locations_by_price: Search locations by price range
-- search_nearby_by_price: Search nearby locations by price
-- search_nearby_by_distance: Search nearby locations by distance
-- find_closest_location: Find closest location
-- search_restaurants_by_cuisine: Search restaurants by cuisine type
+- search_locations_by_rating: Search locations filtered by minimum rating
+- search_nearby_by_rating: Search nearby locations filtered by minimum rating
+- get_top_rated_locations: Get top k highest-rated locations (USE THIS for "good", "best", or "top" restaurant/attraction queries)
+- search_locations_by_price: Search locations filtered by maximum price level
+- search_nearby_by_price: Search nearby locations filtered by maximum price level
+- search_nearby_by_distance: Search nearby locations sorted by distance
+- find_closest_location: Find the single closest location
+- search_restaurants_by_cuisine: Search restaurants filtered by cuisine type
 - get_multiple_location_details: Get details for multiple locations
-- compare_locations: Compare multiple locations
+- compare_locations: Compare 2-3 locations side by side
 
-When a user asks about attractions, restaurants, or reviews, extract the parameters from their message or use the provided context, and use the appropriate tool.
-If any information is missing, ask the user for clarification.
+When a user asks about attractions, restaurants, or reviews:
+- If they ask for "good", "best", or "top" places, use "get_top_rated_locations"
+- For general searches, use "search_locations"
+- Extract parameters from their message or use the provided context
+- If any information is missing, ask the user for clarification
 
 Provide friendly, clear responses about locations and reviews based on the tool results."""
 
@@ -68,14 +71,22 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
     context = state.get("context", {})
     
     # Check if we have task context from delegation
+    task_name = context.get("task")
     task_args = context.get("args", {})
     
     # Get tools available to tripadvisor agent
     tools = await TripAdvisorAgentClient.list_tools()
     
+    # Build enhanced prompt with task context if available
+    prompt = get_tripadvisor_agent_prompt()
+    if task_name:
+        prompt += f"\n\nIMPORTANT: You have been delegated the task '{task_name}'. Use the tool '{task_name}' to complete this task."
+        if task_args:
+            prompt += f"\nProvided parameters: {task_args}"
+    
     # Prepare messages for LLM
     messages = [
-        {"role": "system", "content": get_tripadvisor_agent_prompt()},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": user_message}
     ]
     

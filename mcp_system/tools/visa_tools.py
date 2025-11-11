@@ -2,74 +2,75 @@
 
 import re
 from typing import Dict, Optional, Tuple
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 from tools.doc_loader import get_doc
 
 
-def get_traveldoc_requirement(nationality: str, leaving_from: str, going_to: str):
+async def get_traveldoc_requirement(nationality: str, leaving_from: str, going_to: str):
     """
     Automates traveldoc.aero visa requirement lookup and returns
     a clean, readable structured summary of the results.
     """
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=False, slow_mo=300)
-        context = browser.new_context()
-        page = context.new_page()
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=False, slow_mo=300)
+        context = await browser.new_context()
+        page = await context.new_page()
 
         print("🌍 Opening TravelDoc...")
-        page.goto("https://www.traveldoc.aero/", timeout=120000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
+        await page.goto("https://www.traveldoc.aero/", timeout=120000, wait_until="domcontentloaded")
+        await page.wait_for_timeout(2000)
 
         # Accept cookies if visible
         try:
-            page.get_by_role("button", name="Allow all").click(timeout=3000)
+            await page.get_by_role("button", name="Allow all").click(timeout=3000)
             print("✅ Accepted cookies")
         except:
             print("ℹ️ No cookie banner found")
 
         # Select Passport
-        page.locator("#DocumentType").select_option("Passport")
+        await page.locator("#DocumentType").select_option("Passport")
         print("✅ Selected: Passport")
-        page.wait_for_timeout(1000)
+        await page.wait_for_timeout(1000)
 
         # NATIONALITY
         print("➡️ Selecting nationality:", nationality)
-        page.locator("#Nationality + span.select2.select2-container span.select2-selection").click()
-        page.wait_for_selector("input.select2-search__field", state="visible", timeout=5000)
-        page.fill("input.select2-search__field", nationality)
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(1000)
+        await page.locator("#Nationality + span.select2.select2-container span.select2-selection").click()
+        await page.wait_for_selector("input.select2-search__field", state="visible", timeout=5000)
+        await page.fill("input.select2-search__field", nationality)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(1000)
 
         # LEAVING FROM
         print("➡️ Selecting leaving from:", leaving_from)
-        page.locator("#leavingFrom + span.select2.select2-container span.select2-selection").click()
-        page.wait_for_selector("input.select2-search__field", state="visible", timeout=5000)
-        page.fill("input.select2-search__field", leaving_from)
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(1000)
+        await page.locator("#leavingFrom + span.select2.select2-container span.select2-selection").click()
+        await page.wait_for_selector("input.select2-search__field", state="visible", timeout=5000)
+        await page.fill("input.select2-search__field", leaving_from)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(1000)
 
         # GOING TO
         print("➡️ Selecting destination:", going_to)
-        page.locator("#goingTo + span.select2.select2-container span.select2-selection").click()
-        page.wait_for_selector("input.select2-search__field", state="visible", timeout=5000)
-        page.fill("input.select2-search__field", going_to)
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(1000)
+        await page.locator("#goingTo + span.select2.select2-container span.select2-selection").click()
+        await page.wait_for_selector("input.select2-search__field", state="visible", timeout=5000)
+        await page.fill("input.select2-search__field", going_to)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(1000)
 
         # Click "Check requirements"
         print("🔎 Checking requirements...")
-        page.get_by_role("button", name="Check requirements").click()
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(4000)
+        await page.get_by_role("button", name="Check requirements").click()
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(4000)
 
         # Extract visa info
         print("📄 Extracting visa result...")
         try:
-            raw_text = page.locator("#destinationMessage").inner_text().strip()
+            raw_text = await page.locator("#destinationMessage").inner_text()
+            raw_text = raw_text.strip()
         except:
-            raw_text = page.text_content("body") or "No visa info found."
+            raw_text = await page.text_content("body") or "No visa info found."
 
-        browser.close()
+        await browser.close()
 
         # Clean and structure the result
         return format_visa_info(raw_text)
@@ -152,7 +153,7 @@ def register_visa_tools(mcp):
     """Register all visa-related tools with the MCP server."""
     
     @mcp.tool(description=get_doc("get_traveldoc_requirement", "visa"))
-    def get_traveldoc_requirement_tool(
+    async def get_traveldoc_requirement_tool(
         nationality: str,
         leaving_from: str,
         going_to: str
@@ -193,7 +194,7 @@ def register_visa_tools(mcp):
         
         try:
             # Call the traveldoc function
-            result = get_traveldoc_requirement(
+            result = await get_traveldoc_requirement(
                 nationality.strip(),
                 leaving_from.strip(),
                 going_to.strip()

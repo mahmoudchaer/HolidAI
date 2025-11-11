@@ -4,10 +4,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, get_origin, get_args, Optional
 import uvicorn
-from inspect import signature, getdoc
+from inspect import signature, getdoc, iscoroutinefunction
 import json
 import sys
 import os
+import traceback
+from datetime import datetime
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -160,6 +162,11 @@ class FastMCP:
                 - inputSchema: JSON schema for input parameters
                 - returns: JSON schema for output
             """
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"\n{'='*80}")
+            print(f"[{timestamp}] MCP Server: Listing available tools")
+            print(f"{'='*80}")
+            
             tools_list = [
                 {
                     "name": tool["name"],
@@ -170,6 +177,10 @@ class FastMCP:
                 for tool in self.tools.values()
                 if "_func" in tool
             ]
+            
+            print(f"Found {len(tools_list)} tools: {', '.join([t['name'] for t in tools_list])}")
+            print(f"{'='*80}\n")
+            
             return {"tools": tools_list}
         
         @self.app.get("/tools/metadata")
@@ -187,28 +198,82 @@ class FastMCP:
                 "parameters": {...}
             }
             """
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             tool_name = request.get("tool")
             parameters = request.get("parameters", {})
             
+            print(f"\n{'='*80}")
+            print(f"[{timestamp}] MCP Server: Calling tool '{tool_name}'")
+            print(f"{'='*80}")
+            print(f"Input parameters:")
+            try:
+                # Pretty print parameters, truncate very long values
+                params_str = json.dumps(parameters, indent=2, ensure_ascii=False, default=str)
+                # Truncate if too long (more than 2000 chars)
+                if len(params_str) > 2000:
+                    params_str = params_str[:2000] + "\n... (truncated)"
+                print(params_str)
+            except Exception:
+                print(f"  {parameters}")
+            print(f"{'-'*80}")
+            
             if tool_name not in self.tools:
-                raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+                error_msg = f"Tool '{tool_name}' not found"
+                print(f"ERROR: {error_msg}")
+                print(f"Available tools: {', '.join(self.tools.keys())}")
+                print(f"{'='*80}\n")
+                raise HTTPException(status_code=404, detail=error_msg)
             
             tool_func = self.tools[tool_name].get("_func")
             if not tool_func:
-                raise HTTPException(status_code=500, detail=f"Tool '{tool_name}' not callable")
+                error_msg = f"Tool '{tool_name}' not callable"
+                print(f"ERROR: {error_msg}")
+                print(f"{'='*80}\n")
+                raise HTTPException(status_code=500, detail=error_msg)
             
             try:
-                result = tool_func(**parameters)
+                print(f"Executing tool function...")
+                # Check if the function is async and handle accordingly
+                if iscoroutinefunction(tool_func):
+                    result = await tool_func(**parameters)
+                else:
+                    result = tool_func(**parameters)
+                
+                print(f"Tool execution completed successfully!")
+                print(f"Output:")
+                try:
+                    # Pretty print result, truncate very long values
+                    result_str = json.dumps(result, indent=2, ensure_ascii=False, default=str)
+                    # Truncate if too long (more than 5000 chars)
+                    if len(result_str) > 5000:
+                        result_str = result_str[:5000] + "\n... (truncated - output too long)"
+                    print(result_str)
+                except Exception:
+                    print(f"  {result}")
+                
+                print(f"{'='*80}\n")
                 return {"result": result}
             except TypeError as e:
+                error_msg = f"Invalid parameters for tool '{tool_name}': {str(e)}"
+                print(f"ERROR: {error_msg}")
+                print(f"Exception type: TypeError")
+                print(f"Exception details: {str(e)}")
+                print(f"{'='*80}\n")
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Invalid parameters for tool '{tool_name}': {str(e)}"
+                    detail=error_msg
                 )
             except Exception as e:
+                error_msg = f"Error executing tool '{tool_name}': {str(e)}"
+                print(f"ERROR: {error_msg}")
+                print(f"Exception type: {type(e).__name__}")
+                print(f"Exception details: {str(e)}")
+                print(f"Traceback:")
+                traceback.print_exc()
+                print(f"{'='*80}\n")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Error executing tool '{tool_name}': {str(e)}"
+                    detail=error_msg
                 )
     
     def run(self, transport: str = "http", host: str = "0.0.0.0", port: int = 8090):
