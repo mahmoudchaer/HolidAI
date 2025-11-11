@@ -1,12 +1,13 @@
 """Coordinator tools for agent orchestration."""
 
 from typing import Dict, Any
+from tools.doc_loader import get_doc
 
 
 def register_coordinator_tools(mcp):
     """Register coordinator tools with the MCP server."""
     
-    @mcp.tool(description="Delegate a task to a specialized agent. This tool routes control to the specified agent node in the LangGraph workflow.")
+    @mcp.tool(description=get_doc("delegate", "coordinator"))
     def delegate(agent: str, task: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Delegate a task to a specialized agent.
         

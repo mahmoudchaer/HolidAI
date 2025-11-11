@@ -23,25 +23,29 @@ load_dotenv(dotenv_path=env_path)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def get_main_agent_prompt() -> str:
+def get_main_agent_prompt(agents_called: list, collected_info: dict) -> str:
     """Get the system prompt for the Main Agent."""
-    return """You are the Main Agent, an orchestrator that coordinates specialized agents to help users with travel tasks.
+    base_prompt = """You are the Main Agent, an orchestrator that coordinates specialized agents to help users with travel tasks.
 
 Your role:
-- Understand user requests and determine if a specialized agent is needed
+- Understand user requests and determine which specialized agents are needed
 - Delegate tasks to specialized agents when appropriate
+- After agents return, review the collected information and decide if more agents are needed
+- Once you have all necessary information, route to "conversational_agent" to generate the final response
 - Extract structured parameters from user messages for delegated tasks
-- Provide direct responses for general queries
 
 Available specialized agents:
 - hotel_agent: Handles hotel searches. Use task "get_hotel_rates" for hotel rate searches.
 - visa_agent: Handles visa requirement checks. Use task "get_traveldoc_requirement" for visa requirement lookups.
 - flight_agent: Handles flight searches. Use task "agent_get_flights" or "agent_get_flights_flexible" for flight searches.
+- tripadvisor_agent: Handles location searches, reviews, and attractions. Use various TripAdvisor tasks.
 
-When a user asks about hotels, use the delegate tool to route to the hotel_agent.
-When a user asks about visa requirements, use the delegate tool to route to the visa_agent.
-When a user asks about flights, use the delegate tool to route to the flight_agent.
-Extract the following parameters from the user's message:
+The delegate tool takes:
+- agent: "hotel_agent", "visa_agent", "flight_agent", or "tripadvisor_agent"
+- task: The specific task name for that agent
+- args: Dictionary with the extracted parameters
+
+For hotel searches, extract:
 - checkin: Check-in date in YYYY-MM-DD format (e.g., "2025-12-10")
 - checkout: Check-out date in YYYY-MM-DD format (e.g., "2025-12-17")
 - occupancies: Array of occupancy objects, each with "adults" (integer) and optionally "children" (array of integers)
@@ -49,11 +53,6 @@ Extract the following parameters from the user's message:
 - country_code: Country code in ISO 2-letter format (optional, must be paired with city_name)
 - hotel_ids: Array of hotel IDs (optional)
 - iata_code: IATA code (optional)
-
-The delegate tool takes:
-- agent: "hotel_agent", "visa_agent", or "flight_agent"
-- task: "get_hotel_rates" (for hotels), "get_traveldoc_requirement" (for visas), or "agent_get_flights"/"agent_get_flights_flexible" (for flights)
-- args: Dictionary with the extracted parameters
 
 For visa requirements, extract:
 - nationality: The traveler's nationality/passport country (e.g., "Lebanon", "United States")
@@ -69,7 +68,26 @@ For flight searches, extract:
 - Optional: airline, max_price, direct_only, travel_class, adults, children, infants, etc.
 - If user mentions flexible dates or wants cheapest options, use task "agent_get_flights_flexible"
 
-For general questions, respond directly without delegation."""
+For TripAdvisor searches, extract location, query, or other relevant parameters based on the task.
+
+IMPORTANT: After agents return with information, you must:
+1. Review what information you have collected
+2. Determine if the user's query is fully answered
+3. If more information is needed, delegate to another agent
+4. If you have all necessary information, route to "conversational_agent" (set route to "conversational_agent")
+"""
+    
+    if agents_called:
+        base_prompt += f"\n\nAgents already called: {', '.join(agents_called)}"
+        base_prompt += "\nYou have information from these agents. Review if you need more agents or if you're ready to generate the final response."
+    
+    if collected_info:
+        base_prompt += "\n\nCollected information summary:"
+        for key, value in collected_info.items():
+            if value:
+                base_prompt += f"\n- {key}: Information available"
+    
+    return base_prompt
 
 
 async def main_agent_node(state: AgentState) -> AgentState:
@@ -82,14 +100,47 @@ async def main_agent_node(state: AgentState) -> AgentState:
         Updated agent state with route and context
     """
     user_message = state.get("user_message", "")
+    context = state.get("context", {})
+    collected_info = state.get("collected_info", {})
+    agents_called = state.get("agents_called", [])
+    
+    # Ensure agents_called is a list
+    if not isinstance(agents_called, list):
+        agents_called = []
+    
+    # If we just received information from an agent, accumulate it
+    if context.get("delegation_result") or context.get("flight_result") or context.get("hotel_result") or context.get("visa_result") or context.get("tripadvisor_result"):
+        # Accumulate results from agents
+        if context.get("flight_result"):
+            collected_info["flight_result"] = context.get("flight_result")
+        if context.get("hotel_result"):
+            collected_info["hotel_result"] = context.get("hotel_result")
+        if context.get("visa_result"):
+            collected_info["visa_result"] = context.get("visa_result")
+        if context.get("tripadvisor_result"):
+            collected_info["tripadvisor_result"] = context.get("tripadvisor_result")
+    
+    # Ensure collected_info is initialized
+    if not collected_info:
+        collected_info = {}
     
     # Get tools available to main agent
     tools = await MainAgentClient.list_tools()
     
+    # Build context message about what we know
+    context_message = user_message
+    if collected_info or agents_called:
+        context_message += "\n\nContext: "
+        if agents_called:
+            context_message += f"Agents called: {', '.join(agents_called)}. "
+        if collected_info:
+            context_message += "Information has been collected from agents. "
+        context_message += "Review if you need to call more agents or if you're ready to generate the final response."
+    
     # Prepare messages for LLM
     messages = [
-        {"role": "system", "content": get_main_agent_prompt()},
-        {"role": "user", "content": user_message}
+        {"role": "system", "content": get_main_agent_prompt(agents_called, collected_info)},
+        {"role": "user", "content": context_message}
     ]
     
     # Build function calling schema for delegate tool
@@ -105,34 +156,68 @@ async def main_agent_node(state: AgentState) -> AgentState:
                 }
             })
     
+    # Add a special "route_to_conversational" function to help the LLM decide
+    functions.append({
+        "type": "function",
+        "function": {
+            "name": "route_to_conversational",
+            "description": "Route to conversational agent when you have all necessary information to generate the final response",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    })
+    
     # Call LLM with function calling
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        tools=functions if functions else None,
-        tool_choice="auto"
-    )
+    if functions:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            tools=functions,
+            tool_choice="auto"
+        )
+    else:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
     
     message = response.choices[0].message
     updated_state = state.copy()
+    updated_state["collected_info"] = collected_info
     
-    # Check if LLM wants to call a tool (delegate)
+    # Check if LLM wants to call a tool
     if message.tool_calls:
         tool_call = message.tool_calls[0]
-        if tool_call.function.name == "delegate":
+        
+        if tool_call.function.name == "route_to_conversational":
+            # Route to conversational agent
+            updated_state["route"] = "conversational_agent"
+            updated_state["ready_for_response"] = True
+            return updated_state
+        
+        elif tool_call.function.name == "delegate":
             import json
             args = json.loads(tool_call.function.arguments)
+            agent_name = args["agent"]
+            
+            # Track which agent we're calling
+            if agent_name not in agents_called:
+                agents_called = agents_called + [agent_name]
             
             # Call the delegate tool via MCP
             delegation_result = await MainAgentClient.invoke(
                 "delegate",
-                agent=args["agent"],
+                agent=agent_name,
                 task=args["task"],
                 args=args.get("args", {})
             )
             
             # Update state to route to the specified agent
-            updated_state["route"] = args["agent"]
+            updated_state["route"] = agent_name
+            updated_state["agents_called"] = agents_called
             updated_state["context"] = {
                 "task": args["task"],
                 "args": args.get("args", {}),
@@ -141,10 +226,18 @@ async def main_agent_node(state: AgentState) -> AgentState:
             
             return updated_state
     
-    # No delegation - respond directly
-    assistant_message = message.content or "I'm here to help you with your travel needs."
-    updated_state["route"] = "main_agent"
-    updated_state["last_response"] = assistant_message
+    # No tool call - check if LLM content suggests routing
+    assistant_message = message.content or ""
+    
+    # Simple heuristic: if LLM says we're done or ready, route to conversational
+    if any(phrase in assistant_message.lower() for phrase in ["ready", "complete", "all information", "have enough", "can now respond"]):
+        updated_state["route"] = "conversational_agent"
+        updated_state["ready_for_response"] = True
+    else:
+        # For general questions without delegation, route to conversational agent
+        updated_state["route"] = "conversational_agent"
+        updated_state["ready_for_response"] = True
+        updated_state["last_response"] = assistant_message
     
     return updated_state
 

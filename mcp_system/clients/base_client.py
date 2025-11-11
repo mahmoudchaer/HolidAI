@@ -1,139 +1,140 @@
-"""Base client for MCP agent clients."""
+"""Base client for MCP agent communication."""
 
-from typing import List, Dict, Any
 import httpx
+from typing import List, Dict, Any, Optional
 
 
 class BaseAgentClient:
-    """Base class for agent clients that interact with the MCP server."""
+    """Base client for communicating with MCP server."""
     
     def __init__(self, name: str, allowed_tools: List[str], server_url: str = "http://localhost:8090"):
         """Initialize the agent client.
         
         Args:
-            name: Name of the agent (e.g., "HotelAgent")
-            allowed_tools: List of tool names this agent is allowed to use
-            server_url: Base URL of the MCP server
+            name: Agent name
+            allowed_tools: List of tool names this agent can use
+            server_url: MCP server URL
         """
         self.name = name
-        self.allowed_tools = set(allowed_tools)
+        self.allowed_tools = allowed_tools
         self.server_url = server_url
-        self._http_client = None
+        self._client: Optional[httpx.AsyncClient] = None
     
     async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create an HTTP client."""
-        if self._http_client is None:
-            # Use a longer default timeout for the client
-            self._http_client = httpx.AsyncClient(base_url=self.server_url, timeout=60.0)
-        return self._http_client
+        """Get or create httpx client.
+        
+        Creates a new client if one doesn't exist. If the existing
+        client fails, it will be recreated on the next call.
+        """
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=30.0)
+        return self._client
+    
+    async def _reset_client(self):
+        """Reset the HTTP client (close and clear)."""
+        if self._client is not None:
+            try:
+                await self._client.aclose()
+            except:
+                pass
+            self._client = None
     
     async def list_tools(self) -> List[Dict[str, Any]]:
-        """List all tools available to this agent.
-        
-        Dynamically fetches tool metadata from the MCP server and filters
-        based on the agent's allowed_tools list. This ensures the agent
-        always has the latest tool descriptions, input schemas, and output schemas.
+        """List available tools for this agent.
         
         Returns:
-            List of tool metadata dictionaries (filtered to allowed tools only).
-            Each tool dict contains:
-            - name: Tool name
-            - description: Tool description
-            - inputSchema: JSON schema for input parameters
-            - returns: JSON schema for output
+            List of tool dictionaries with name, description, inputSchema, etc.
         """
         try:
             client = await self._get_client()
-            response = await client.get("/tools/list")
+            response = await client.get(f"{self.server_url}/tools/list")
             response.raise_for_status()
             data = response.json()
+            all_tools = data.get("tools", [])
             
-            # Handle both {"tools": [...]} and [...] formats
-            all_tools = data.get("tools", data) if isinstance(data, dict) else data
-            
-            # Filter to only allowed tools - this is the key MCP flow step
+            # Filter tools based on allowed_tools
             filtered_tools = [
-                tool for tool in all_tools 
-                if tool.get("name") in self.allowed_tools
+                tool for tool in all_tools
+                if tool["name"] in self.allowed_tools
             ]
+            
             return filtered_tools
-        except Exception as e:
-            # Fallback: return minimal tool info based on allowed_tools list
-            # This should only happen if the server is unavailable
-            print(f"Warning: Could not fetch tools from server ({e}). Using fallback.")
-            return [
-                {"name": tool_name, "description": f"Tool: {tool_name}", "inputSchema": {}, "returns": {"type": "object"}}
-                for tool_name in self.allowed_tools
-            ]
+        except (RuntimeError, AttributeError) as e:
+            # If event loop is closed or client is invalid, reset and retry once
+            if "closed" in str(e).lower() or "Event loop" in str(e):
+                await self._reset_client()
+                client = await self._get_client()
+                response = await client.get(f"{self.server_url}/tools/list")
+                response.raise_for_status()
+                data = response.json()
+                all_tools = data.get("tools", [])
+                filtered_tools = [
+                    tool for tool in all_tools
+                    if tool["name"] in self.allowed_tools
+                ]
+                return filtered_tools
+            raise
     
-    async def call_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
-        """Call a tool with the given parameters.
+    async def invoke(self, tool_name: str, **kwargs) -> Any:
+        """Invoke a tool.
         
         Args:
-            tool_name: Name of the tool to call
-            **kwargs: Tool-specific parameters
+            tool_name: Name of the tool to invoke
+            **kwargs: Tool parameters
             
         Returns:
-            Tool execution result
+            Tool result
             
         Raises:
-            PermissionError: If the agent is not allowed to use this tool
+            PermissionError: If tool is not in allowed_tools
         """
         if tool_name not in self.allowed_tools:
             raise PermissionError(
-                f"{self.name} is not allowed to use tool '{tool_name}'. "
-                f"Allowed tools: {', '.join(sorted(self.allowed_tools))}"
+                f"Agent '{self.name}' is not allowed to use tool '{tool_name}'. "
+                f"Allowed tools: {self.allowed_tools}"
             )
         
         try:
             client = await self._get_client()
-            # Use longer timeout for tools that might take longer (like details, reviews)
-            # These tools make multiple API calls or call slow endpoints
-            slow_tools = ["get_location_details", "get_location_reviews", "get_multiple_location_details", 
-                         "compare_locations", "search_restaurants_by_cuisine", "get_location_photos"]
-            timeout = 60.0 if tool_name in slow_tools else 40.0
-            response = await client.post(
-                "/tools/invoke",
-                json={"tool": tool_name, "parameters": kwargs},
-                timeout=timeout
-            )
-            response.raise_for_status()
-            result = response.json()
+            payload = {
+                "tool": tool_name,
+                "parameters": kwargs
+            }
             
-            # Handle both {"result": ...} and direct result formats
-            if isinstance(result, dict) and "result" in result:
-                return result["result"]
-            return result
-        except (httpx.TimeoutException, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
-            raise RuntimeError(f"Failed to call tool '{tool_name}': Request timeout. The operation took too long. Please try again.")
-        except httpx.HTTPStatusError as e:
-            error_detail = "Unknown error"
-            try:
-                error_detail = e.response.json().get("detail", str(e))
-            except:
-                error_detail = str(e)
-            raise RuntimeError(f"Failed to call tool '{tool_name}': {error_detail}")
-        except httpx.HTTPError as e:
-            raise RuntimeError(f"Failed to call tool '{tool_name}': {e}")
+            response = await client.post(f"{self.server_url}/tools/invoke", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("result")
+        except (RuntimeError, AttributeError) as e:
+            # If event loop is closed or client is invalid, reset and retry once
+            if "closed" in str(e).lower() or "Event loop" in str(e):
+                await self._reset_client()
+                client = await self._get_client()
+                payload = {
+                    "tool": tool_name,
+                    "parameters": kwargs
+                }
+                response = await client.post(f"{self.server_url}/tools/invoke", json=payload)
+                response.raise_for_status()
+                data = response.json()
+                return data.get("result")
+            raise
     
-    async def invoke(self, tool_name: str, **kwargs) -> Dict[str, Any]:
-        """Invoke a tool (alias for call_tool for MCP naming consistency).
+    async def call_tool(self, tool_name: str, **kwargs) -> Any:
+        """Alias for invoke method (for backward compatibility).
         
         Args:
-            tool_name: Name of the tool to call
-            **kwargs: Tool-specific parameters
+            tool_name: Name of the tool to invoke
+            **kwargs: Tool parameters
             
         Returns:
-            Tool execution result
-            
-        Raises:
-            PermissionError: If the agent is not allowed to use this tool
+            Tool result
         """
-        return await self.call_tool(tool_name, **kwargs)
+        return await self.invoke(tool_name, **kwargs)
     
     async def close(self):
-        """Close the client connection."""
-        if self._http_client is not None:
-            await self._http_client.aclose()
-            self._http_client = None
+        """Close the HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
 

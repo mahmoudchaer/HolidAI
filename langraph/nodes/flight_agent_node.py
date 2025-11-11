@@ -40,18 +40,18 @@ Your role:
 - Provide clear, helpful responses about flight options
 
 Available tools:
-- agent_get_flights: Search for flights with specific dates
+- agent_get_flights_tool: Search for flights with specific dates
   - Use for exact date searches
   - Supports one-way and round-trip
   - Extensive filtering options available
   
-- agent_get_flights_flexible: Search for flights with flexible dates (±days_flex)
+- agent_get_flights_flexible_tool: Search for flights with flexible dates (±days_flex)
   - Use when user wants to find cheaper flights by adjusting dates
   - Searches multiple dates around the specified date
   - Perfect for "flexible dates" or "cheapest around this date" queries
 
 When a user asks about flights, extract the parameters from their message and use the appropriate tool.
-If the user mentions flexible dates or wants to find the cheapest option, use agent_get_flights_flexible.
+If the user mentions flexible dates or wants to find the cheapest option, use agent_get_flights_flexible_tool.
 If any information is missing, ask the user for clarification.
 
 Provide friendly, clear responses about flight options based on the tool results."""
@@ -83,24 +83,49 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     
     # Build function calling schema for flight tools
     functions = []
+    def _sanitize_schema(schema: dict) -> dict:
+        """Ensure arrays have 'items' and sanitize nested schemas."""
+        if not isinstance(schema, dict):
+            return schema
+        sanitized = dict(schema)
+        schema_type = sanitized.get("type")
+        if schema_type == "array" and "items" not in sanitized:
+            sanitized["items"] = {"type": "object"}
+        if schema_type == "object":
+            props = sanitized.get("properties", {})
+            for key, val in list(props.items()):
+                props[key] = _sanitize_schema(val)
+            sanitized["properties"] = props
+        if "items" in sanitized and isinstance(sanitized["items"], dict):
+            sanitized["items"] = _sanitize_schema(sanitized["items"])
+        return sanitized
+
     for tool in tools:
-        if tool["name"] in ["agent_get_flights", "agent_get_flights_flexible"]:
+        if tool["name"] in ["agent_get_flights_tool", "agent_get_flights_flexible_tool"]:
+            input_schema = tool.get("inputSchema", {})
+            input_schema = _sanitize_schema(input_schema)
             functions.append({
                 "type": "function",
                 "function": {
                     "name": tool["name"],
                     "description": tool.get("description", f"Search for flights"),
-                    "parameters": tool.get("inputSchema", {})
+                    "parameters": input_schema
                 }
             })
     
     # Call LLM with function calling
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        tools=functions if functions else None,
-        tool_choice="auto"
-    )
+    if functions:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            tools=functions,
+            tool_choice="auto"
+        )
+    else:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
     
     message = response.choices[0].message
     updated_state = state.copy()
@@ -110,7 +135,7 @@ async def flight_agent_node(state: AgentState) -> AgentState:
         tool_call = message.tool_calls[0]
         tool_name = tool_call.function.name
         
-        if tool_name in ["agent_get_flights", "agent_get_flights_flexible"]:
+        if tool_name in ["agent_get_flights_tool", "agent_get_flights_flexible_tool"]:
             import json
             args = json.loads(tool_call.function.arguments)
             
@@ -126,7 +151,7 @@ async def flight_agent_node(state: AgentState) -> AgentState:
                         response_text += f"\n\nSuggestion: {flight_result.get('suggestion')}"
                 else:
                     # Format flight results nicely
-                    if tool_name == "agent_get_flights_flexible":
+                    if tool_name == "agent_get_flights_flexible_tool":
                         flights = flight_result.get("flights", [])
                         if flights:
                             response_text = f"Found {len(flights)} flight options across multiple dates:\n\n"
@@ -162,6 +187,10 @@ async def flight_agent_node(state: AgentState) -> AgentState:
                         else:
                             response_text = "No flights found for the specified criteria. Try adjusting your search parameters or dates."
                 
+                # Store result in context for orchestrator
+                if "context" not in updated_state:
+                    updated_state["context"] = {}
+                updated_state["context"]["flight_result"] = flight_result
                 updated_state["last_response"] = response_text
                 updated_state["route"] = "main_agent"  # Return to main agent
                 

@@ -1,4 +1,4 @@
-"""Visa Agent node for LangGraph orchestration."""
+"""Hotel Agent node for LangGraph orchestration."""
 
 import sys
 import os
@@ -11,10 +11,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
-from clients.visa_agent_client import VisaAgentClient
+from clients.hotel_agent_client import HotelAgentClient
 
 # Load environment variables from .env file in main directory
-# Get the project root directory (2 levels up from langraph/nodes/)
 project_root = Path(__file__).parent.parent.parent
 env_path = project_root / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -23,31 +22,29 @@ load_dotenv(dotenv_path=env_path)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def get_visa_agent_prompt() -> str:
-    """Get the system prompt for the Visa Agent."""
-    return """You are the Visa Agent, a specialized agent that helps users check visa requirements for international travel.
+def get_hotel_agent_prompt() -> str:
+    """Get the system prompt for the Hotel Agent."""
+    return """You are the Hotel Agent, a specialized agent that helps users search for hotels.
 
 Your role:
-- Understand user queries about visa requirements
-- Extract nationality, origin country, and destination country from user messages
-- Use the get_traveldoc_requirement_tool tool to check visa requirements
-- Provide clear, helpful responses about visa requirements
+- Understand user queries about hotel searches
+- Extract hotel search parameters from user messages or context
+- Use the appropriate hotel search tool
+- Provide clear, helpful responses about hotel options
 
-Available tool:
-- get_traveldoc_requirement_tool: Checks visa requirements using TravelDoc.aero
-  - Parameters:
-    - nationality: The traveler's nationality/passport country (e.g., "Lebanon", "United States")
-    - leaving_from: The origin country (e.g., "Lebanon", "United States")
-    - going_to: The destination country (e.g., "Qatar", "France")
+Available tools:
+- get_hotel_rates: Search for hotel rates
+- get_hotel_rates_by_price: Search for hotels by price range
+- get_hotel_details: Get detailed information about specific hotels
 
-When a user asks about visa requirements, extract the nationality, origin, and destination from their message and use the tool.
+When a user asks about hotels, extract the parameters from their message or use the provided context, and use the appropriate tool.
 If any information is missing, ask the user for clarification.
 
-Provide friendly, clear responses about visa requirements based on the tool results."""
+Provide friendly, clear responses about hotel options based on the tool results."""
 
 
-async def visa_agent_node(state: AgentState) -> AgentState:
-    """Visa Agent node that handles visa requirement queries.
+async def hotel_agent_node(state: AgentState) -> AgentState:
+    """Hotel Agent node that handles hotel search queries.
     
     Args:
         state: Current agent state
@@ -61,16 +58,16 @@ async def visa_agent_node(state: AgentState) -> AgentState:
     # Check if we have task context from delegation
     task_args = context.get("args", {})
     
-    # Get tools available to visa agent
-    tools = await VisaAgentClient.list_tools()
+    # Get tools available to hotel agent
+    tools = await HotelAgentClient.list_tools()
     
     # Prepare messages for LLM
     messages = [
-        {"role": "system", "content": get_visa_agent_prompt()},
+        {"role": "system", "content": get_hotel_agent_prompt()},
         {"role": "user", "content": user_message}
     ]
     
-    # Build function calling schema for visa tool
+    # Build function calling schema for hotel tools
     functions = []
     def _sanitize_schema(schema: dict) -> dict:
         """Ensure arrays have 'items' and sanitize nested schemas."""
@@ -79,25 +76,27 @@ async def visa_agent_node(state: AgentState) -> AgentState:
         sanitized = dict(schema)
         schema_type = sanitized.get("type")
         if schema_type == "array" and "items" not in sanitized:
-            sanitized["items"] = {"type": "object"}
+            sanitized["items"] = {"type": "object"}  # safe default
+        # Recurse into object properties
         if schema_type == "object":
             props = sanitized.get("properties", {})
             for key, val in list(props.items()):
                 props[key] = _sanitize_schema(val)
             sanitized["properties"] = props
+        # Recurse into array items
         if "items" in sanitized and isinstance(sanitized["items"], dict):
             sanitized["items"] = _sanitize_schema(sanitized["items"])
         return sanitized
 
     for tool in tools:
-        if tool["name"] == "get_traveldoc_requirement_tool":
+        if tool["name"] in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details"]:
             input_schema = tool.get("inputSchema", {})
             input_schema = _sanitize_schema(input_schema)
             functions.append({
                 "type": "function",
                 "function": {
-                    "name": "get_traveldoc_requirement_tool",
-                    "description": tool.get("description", "Get visa requirements for travel"),
+                    "name": tool["name"],
+                    "description": tool.get("description", f"Search for hotels"),
                     "parameters": input_schema
                 }
             })
@@ -122,43 +121,43 @@ async def visa_agent_node(state: AgentState) -> AgentState:
     # Check if LLM wants to call a tool
     if message.tool_calls:
         tool_call = message.tool_calls[0]
-        if tool_call.function.name == "get_traveldoc_requirement_tool":
+        tool_name = tool_call.function.name
+        
+        if tool_name in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details"]:
             import json
             args = json.loads(tool_call.function.arguments)
             
-            # Call the visa tool via MCP
+            # Merge task_args if available
+            if task_args:
+                args = {**args, **task_args}
+            
+            # Call the hotel tool via MCP
             try:
-                visa_result = await VisaAgentClient.invoke(
-                    "get_traveldoc_requirement_tool",
-                    nationality=args.get("nationality", ""),
-                    leaving_from=args.get("leaving_from", ""),
-                    going_to=args.get("going_to", "")
-                )
+                hotel_result = await HotelAgentClient.invoke(tool_name, **args)
                 
                 # Format the response
-                if visa_result.get("error"):
-                    response_text = f"I encountered an error while checking visa requirements: {visa_result.get('error_message', 'Unknown error')}"
-                    if visa_result.get("suggestion"):
-                        response_text += f"\n\nSuggestion: {visa_result.get('suggestion')}"
+                if hotel_result.get("error"):
+                    response_text = f"I encountered an error while searching for hotels: {hotel_result.get('error_message', 'Unknown error')}"
+                    if hotel_result.get("suggestion"):
+                        response_text += f"\n\nSuggestion: {hotel_result.get('suggestion')}"
                 else:
-                    visa_info = visa_result.get("result", "No visa information available.")
-                    response_text = f"Here are the visa requirements:\n\n{visa_info}"
+                    # Store the raw result in context for orchestrator
+                    response_text = f"Hotel search completed. Found hotel information."
+                    if "context" not in updated_state:
+                        updated_state["context"] = {}
+                    updated_state["context"]["hotel_result"] = hotel_result
                 
-                # Store result in context for orchestrator
-                if "context" not in updated_state:
-                    updated_state["context"] = {}
-                updated_state["context"]["visa_result"] = visa_result
                 updated_state["last_response"] = response_text
                 updated_state["route"] = "main_agent"  # Return to main agent
                 
             except Exception as e:
-                updated_state["last_response"] = f"I encountered an error while checking visa requirements: {str(e)}"
+                updated_state["last_response"] = f"I encountered an error while searching for hotels: {str(e)}"
                 updated_state["route"] = "main_agent"
             
             return updated_state
     
     # No tool call - respond directly
-    assistant_message = message.content or "I can help you check visa requirements. Please provide your nationality, origin country, and destination country."
+    assistant_message = message.content or "I can help you search for hotels. Please provide check-in/check-out dates, location, and occupancy details."
     updated_state["route"] = "main_agent"
     updated_state["last_response"] = assistant_message
     

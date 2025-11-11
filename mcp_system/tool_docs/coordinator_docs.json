@@ -1,0 +1,70 @@
+{
+  "delegate": {
+    "description": "Delegate a task to a specialized agent. This tool routes control to the specified agent node in the LangGraph workflow. The orchestrator uses this tool to coordinate between specialized agents (flight_agent, hotel_agent, visa_agent, tripadvisor_agent) based on the user's query. After delegation, the specified agent will execute the task and return results to the orchestrator.",
+    "inputs": {
+      "agent": "string – required – The target agent name. Must be one of: 'flight_agent', 'hotel_agent', 'visa_agent', 'tripadvisor_agent'",
+      "task": "string – required – The task to perform. Examples: 'agent_get_flights', 'agent_get_flights_flexible' (for flight_agent), 'get_hotel_rates', 'get_hotel_rates_by_price', 'get_hotel_details' (for hotel_agent), 'get_traveldoc_requirement' (for visa_agent), or any TripAdvisor tool name (for tripadvisor_agent)",
+      "args": "object – required – Dictionary containing arguments to pass to the agent task. The structure depends on the specific task being delegated"
+    },
+    "outputs": {
+      "status": "string – indicates delegation status (typically 'delegated')",
+      "agent": "string – the agent that was delegated to",
+      "task": "string – the task that was delegated",
+      "args": "object – the arguments that were passed to the task"
+    },
+    "examples": [
+      {
+        "title": "Delegate flight search to flight_agent",
+        "body": {
+          "agent": "flight_agent",
+          "task": "agent_get_flights",
+          "args": {
+            "trip_type": "one-way",
+            "departure": "JFK",
+            "arrival": "LAX",
+            "departure_date": "2025-12-10",
+            "adults": 1
+          }
+        }
+      },
+      {
+        "title": "Delegate hotel search to hotel_agent",
+        "body": {
+          "agent": "hotel_agent",
+          "task": "get_hotel_rates",
+          "args": {
+            "checkin": "2025-12-10",
+            "checkout": "2025-12-17",
+            "occupancies": [{"adults": 2}],
+            "cityName": "Paris",
+            "countryCode": "FR"
+          }
+        }
+      },
+      {
+        "title": "Delegate visa check to visa_agent",
+        "body": {
+          "agent": "visa_agent",
+          "task": "get_traveldoc_requirement",
+          "args": {
+            "nationality": "United States",
+            "leaving_from": "United States",
+            "going_to": "France"
+          }
+        }
+      },
+      {
+        "title": "Delegate location search to tripadvisor_agent",
+        "body": {
+          "agent": "tripadvisor_agent",
+          "task": "search_locations",
+          "args": {
+            "searchQuery": "Eiffel Tower",
+            "category": "attractions"
+          }
+        }
+      }
+    ]
+  }
+}
+

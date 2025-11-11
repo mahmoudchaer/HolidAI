@@ -5,8 +5,14 @@ import io
 import sys
 import os
 
-# Fix encoding for Windows console
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+# Fix encoding for Windows console (only if buffer is available and when run directly)
+if __name__ == "__main__":
+    try:
+        if hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError, OSError):
+        # If buffer is not available or closed, skip encoding fix
+        pass
 
 # Add the parent directory to the path so we can import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
