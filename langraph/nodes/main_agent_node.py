@@ -138,6 +138,17 @@ async def main_agent_node(state: AgentState) -> AgentState:
     if not collected_info:
         collected_info = {}
     
+    # If we have visa_result and user asked about visas, automatically route to conversational agent
+    if collected_info.get("visa_result") and not collected_info.get("visa_result", {}).get("error"):
+        # Check if user message is about visas
+        visa_keywords = ["visa", "travel document", "entry requirement", "passport requirement"]
+        if any(keyword in user_message.lower() for keyword in visa_keywords):
+            updated_state = state.copy()
+            updated_state["collected_info"] = collected_info
+            updated_state["route"] = "conversational_agent"
+            updated_state["ready_for_response"] = True
+            return updated_state
+    
     # Get tools available to main agent
     tools = await MainAgentClient.list_tools()
     
@@ -156,8 +167,8 @@ async def main_agent_node(state: AgentState) -> AgentState:
             if collected_info.get("flight_result"):
                 context_message += "Flight results available. "
             if collected_info.get("visa_result"):
-                context_message += "Visa results available. "
-        context_message += "If you have the necessary information, route to conversational_agent. DO NOT delegate the same task again if results already exist."
+                context_message += "Visa results available with actual visa requirement data. "
+        context_message += "\n\nIMPORTANT: If you have results from agents (visa_result, flight_result, hotel_result, or tripadvisor_result), you MUST route to conversational_agent immediately using the route_to_conversational tool. DO NOT delegate the same task again if results already exist."
     
     # Prepare messages for LLM
     messages = [

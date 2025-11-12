@@ -29,11 +29,13 @@ Your role:
 - Synthesize this information into a natural, conversational response
 - Present the information in a clear, organized, and helpful manner
 - Be friendly, professional, and concise
-- If information is missing or incomplete, acknowledge it gracefully
+- CRITICAL: You MUST use the actual data provided in the "collected_info" section below. If visa_result, flight_result, hotel_result, or tripadvisor_result are present, they contain the actual information you need to share with the user.
 
 You have access to:
 - The user's original message
 - Information collected from flight, hotel, visa, and TripAdvisor agents (if any were called)
+
+IMPORTANT: When visa_result is provided, it contains the actual visa requirements information. You MUST include this information in your response. Do NOT say you don't have the information if it's provided in the collected_info section.
 
 Create a comprehensive, well-structured response that addresses the user's query using all available information."""
 
@@ -86,19 +88,37 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
 Collected information from agents:
 {chr(10).join(info_summary) if info_summary else "No specialized agent information was collected."}
 
-Please provide a comprehensive, friendly response to the user's query using all available information. 
-If you have specific data from agents (like flight prices, hotel rates, visa requirements, or location details), 
-include that information in a clear and organized way."""
+CRITICAL INSTRUCTIONS:
+- You MUST use the actual data provided in the "Detailed collected information" section below
+- If visa_result is present, it contains the visa requirements - you MUST include this information in your response
+- If flight_result, hotel_result, or tripadvisor_result are present, include that information as well
+- Do NOT say you don't have information if it's provided below
+- Present the information in a clear, organized, and helpful way"""
         }
     ]
     
     # Add collected info details if available
     if collected_info:
         import json
-        messages.append({
-            "role": "user",
-            "content": f"Detailed collected information:\n{json.dumps(collected_info, indent=2)}"
-        })
+        # Extract and format visa result more prominently if present
+        visa_result = collected_info.get("visa_result")
+        if visa_result and not visa_result.get("error"):
+            visa_info = visa_result.get("result", "")
+            messages.append({
+                "role": "user",
+                "content": f"""Detailed collected information:
+
+VISA REQUIREMENTS (from visa_result):
+{visa_info}
+
+Full collected information:
+{json.dumps(collected_info, indent=2)}"""
+            })
+        else:
+            messages.append({
+                "role": "user",
+                "content": f"Detailed collected information:\n{json.dumps(collected_info, indent=2)}"
+            })
     
     # Call LLM to generate response
     response = client.chat.completions.create(
