@@ -58,6 +58,10 @@ For hotel searches, extract:
 - country_code: Country code in ISO 2-letter format (optional, must be paired with city_name)
 - hotel_ids: Array of hotel IDs (optional)
 - iata_code: IATA code (optional)
+- max_price: Maximum price/budget as a number (e.g., 500 for $500 budget)
+- min_stars: Minimum star rating as a number (e.g., 4 for 4-star hotels)
+- budget: Alternative to max_price (same meaning)
+- star_rating: Alternative to min_stars (same meaning)
 
 For visa requirements, extract:
 - nationality: The traveler's nationality/passport country (e.g., "Lebanon", "United States")

@@ -59,8 +59,45 @@ async def visa_agent_node(state: AgentState) -> AgentState:
     context = state.get("context", {})
     
     # Check if we have task context from delegation
+    task_name = context.get("task", "")
     task_args = context.get("args", {})
     
+    updated_state = state.copy()
+    
+    # If we have delegated task args, use them directly
+    if task_args and task_name:
+        if task_name == "get_traveldoc_requirement":
+            try:
+                visa_result = await VisaAgentClient.invoke(
+                    "get_traveldoc_requirement_tool",
+                    nationality=task_args.get("nationality", ""),
+                    leaving_from=task_args.get("leaving_from", ""),
+                    going_to=task_args.get("going_to", "")
+                )
+                
+                # Format the response
+                if visa_result.get("error"):
+                    response_text = f"I encountered an error while checking visa requirements: {visa_result.get('error_message', 'Unknown error')}"
+                    if visa_result.get("suggestion"):
+                        response_text += f"\n\nSuggestion: {visa_result.get('suggestion')}"
+                else:
+                    visa_info = visa_result.get("result", "No visa information available.")
+                    response_text = f"Here are the visa requirements:\n\n{visa_info}"
+                
+                # Store result in context for orchestrator
+                if "context" not in updated_state:
+                    updated_state["context"] = {}
+                updated_state["context"]["visa_result"] = visa_result
+                updated_state["last_response"] = response_text
+                updated_state["route"] = "main_agent"  # Return to main agent
+                
+                return updated_state
+            except Exception as e:
+                updated_state["last_response"] = f"I encountered an error while checking visa requirements: {str(e)}"
+                updated_state["route"] = "main_agent"
+                return updated_state
+    
+    # Fall back to LLM-based extraction if no delegated args
     # Get tools available to visa agent
     tools = await VisaAgentClient.list_tools()
     
@@ -117,7 +154,6 @@ async def visa_agent_node(state: AgentState) -> AgentState:
         )
     
     message = response.choices[0].message
-    updated_state = state.copy()
     
     # Check if LLM wants to call a tool
     if message.tool_calls:

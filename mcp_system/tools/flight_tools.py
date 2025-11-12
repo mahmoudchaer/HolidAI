@@ -19,6 +19,79 @@ CURRENT_CURRENCY = "USD"
 # Utility helpers
 # -------------------------
 
+def _normalize_location(location: str) -> str:
+    """Convert country/city names to airport codes when possible.
+    
+    Args:
+        location: Airport code, city name, or country name
+        
+    Returns:
+        Normalized location (airport code if mapping found, otherwise uppercase)
+    """
+    location = location.strip().upper()
+    
+    # Mapping of common country/city names to main airport codes
+    location_map = {
+        # Countries
+        "LEBANON": "BEY",  # Beirut
+        "QATAR": "DOH",  # Doha
+        "UNITED STATES": "NYC",  # New York (default)
+        "USA": "NYC",
+        "UNITED KINGDOM": "LHR",  # London
+        "UK": "LHR",
+        "FRANCE": "CDG",  # Paris
+        "GERMANY": "FRA",  # Frankfurt
+        "ITALY": "FCO",  # Rome
+        "SPAIN": "MAD",  # Madrid
+        "UAE": "DXB",  # Dubai
+        "UNITED ARAB EMIRATES": "DXB",
+        "SAUDI ARABIA": "RUH",  # Riyadh
+        "EGYPT": "CAI",  # Cairo
+        "TURKEY": "IST",  # Istanbul
+        "JAPAN": "NRT",  # Tokyo
+        "CHINA": "PEK",  # Beijing
+        "INDIA": "DEL",  # Delhi
+        "AUSTRALIA": "SYD",  # Sydney
+        "CANADA": "YYZ",  # Toronto
+        "MEXICO": "MEX",  # Mexico City
+        "BRAZIL": "GRU",  # São Paulo
+        "ARGENTINA": "EZE",  # Buenos Aires
+        "SOUTH AFRICA": "JNB",  # Johannesburg
+        # Major cities
+        "BEIRUT": "BEY",
+        "DOHA": "DOH",
+        "NEW YORK": "NYC",
+        "LONDON": "LHR",
+        "PARIS": "CDG",
+        "FRANKFURT": "FRA",
+        "ROME": "FCO",
+        "MADRID": "MAD",
+        "DUBAI": "DXB",
+        "RIYADH": "RUH",
+        "CAIRO": "CAI",
+        "ISTANBUL": "IST",
+        "TOKYO": "NRT",
+        "BEIJING": "PEK",
+        "DELHI": "DEL",
+        "SYDNEY": "SYD",
+        "TORONTO": "YYZ",
+        "MEXICO CITY": "MEX",
+        "SAO PAULO": "GRU",
+        "BUENOS AIRES": "EZE",
+        "JOHANNESBURG": "JNB",
+    }
+    
+    # Check if we have a mapping
+    if location in location_map:
+        return location_map[location]
+    
+    # If it's already a 3-letter code, return as-is
+    if len(location) == 3 and location.isalpha():
+        return location
+    
+    # Otherwise return uppercase (might be a city code like "NYC" for New York area)
+    return location
+
 def fetch_booking_details(
     booking_token,
     departure_id=None,
@@ -616,11 +689,15 @@ def register_flight_tools(mcp):
             }
         
         try:
+            # Normalize locations (convert country/city names to airport codes)
+            normalized_departure = _normalize_location(departure)
+            normalized_arrival = _normalize_location(arrival)
+            
             # Call the flight search function
             result = agent_get_flights(
                 trip_type=trip_type_normalized,
-                dep=departure.strip().upper(),
-                arr=arrival.strip().upper(),
+                dep=normalized_departure,
+                arr=normalized_arrival,
                 dep_date=departure_date.strip(),
                 arr_date=arrival_date.strip() if arrival_date else None,
                 currency=currency.upper() if currency else "USD",
@@ -647,10 +724,12 @@ def register_flight_tools(mcp):
                 "return": result.get("return", []),
                 "passengers": result.get("_passengers", {"adults": adults, "children": children, "infants": infants}),
                 "trip_type": trip_type_normalized,
-                "departure": departure.strip().upper(),
-                "arrival": arrival.strip().upper(),
+                "departure": normalized_departure,
+                "arrival": normalized_arrival,
                 "departure_date": departure_date.strip(),
-                "arrival_date": arrival_date.strip() if arrival_date else None
+                "arrival_date": arrival_date.strip() if arrival_date else None,
+                "currency": currency.upper() if currency else "USD",
+                "travel_class": travel_class.lower() if travel_class else "economy"
             }
             
         except ValueError as e:
@@ -803,11 +882,15 @@ def register_flight_tools(mcp):
             }
         
         try:
+            # Normalize locations (convert country/city names to airport codes)
+            normalized_departure = _normalize_location(departure)
+            normalized_arrival = _normalize_location(arrival)
+            
             # Call the flexible flight search function
             result = agent_get_flights_flexible(
                 trip_type=trip_type_normalized,
-                dep=departure.strip().upper(),
-                arr=arrival.strip().upper(),
+                dep=normalized_departure,
+                arr=normalized_arrival,
                 dep_date=departure_date.strip(),
                 arr_date=arrival_date.strip() if arrival_date else None,
                 currency=currency.upper() if currency else "USD",
@@ -834,11 +917,13 @@ def register_flight_tools(mcp):
                 "flights": result.get("flights", []),
                 "passengers": result.get("_passengers", {"adults": adults, "children": children, "infants": infants}),
                 "trip_type": trip_type_normalized,
-                "departure": departure.strip().upper(),
-                "arrival": arrival.strip().upper(),
+                "departure": normalized_departure,
+                "arrival": normalized_arrival,
                 "departure_date": departure_date.strip(),
                 "arrival_date": arrival_date.strip() if arrival_date else None,
-                "days_flex": days_flex
+                "days_flex": days_flex,
+                "currency": currency.upper() if currency else "USD",
+                "travel_class": travel_class.lower() if travel_class else "economy"
             }
             
         except ValueError as e:

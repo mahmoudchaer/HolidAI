@@ -56,8 +56,149 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     context = state.get("context", {})
     
     # Check if we have task context from delegation
+    task_name = context.get("task", "")
     task_args = context.get("args", {})
     
+    updated_state = state.copy()
+    
+    # If we have delegated task args, use them directly
+    if task_args and task_name:
+        # Map task names to tool names
+        task_to_tool = {
+            "get_hotel_rates": "get_hotel_rates",
+            "get_hotel_rates_by_price": "get_hotel_rates_by_price",
+            "get_hotel_details": "get_hotel_details"
+        }
+        
+        tool_name = task_to_tool.get(task_name)
+        
+        if tool_name and tool_name != "get_hotel_details":
+            try:
+                # Make a copy of task_args to avoid modifying the original
+                tool_args = task_args.copy()
+                
+                # Extract filter parameters (don't pass them to the tool)
+                max_price = tool_args.pop("max_price", None) or tool_args.pop("budget", None)
+                min_stars = tool_args.pop("min_stars", None) or tool_args.pop("star_rating", None) or tool_args.pop("stars", None)
+                
+                # Call the hotel tool without filter parameters
+                hotel_result = await HotelAgentClient.invoke(
+                    tool_name,
+                    **tool_args
+                )
+                
+                # Format the response
+                if hotel_result.get("error"):
+                    response_text = f"I encountered an error while searching for hotels: {hotel_result.get('error_message', 'Unknown error')}"
+                    if hotel_result.get("suggestion"):
+                        response_text += f"\n\nSuggestion: {hotel_result.get('suggestion')}"
+                else:
+                    # Fetch hotel details for top hotels and apply filters
+                    hotels = hotel_result.get("hotels", [])
+                    if hotels:
+                        # Convert max_price to float if it's a string
+                        if max_price and isinstance(max_price, str):
+                            try:
+                                max_price = float(max_price.replace("$", "").replace(",", "").strip())
+                            except (ValueError, AttributeError):
+                                max_price = None
+                        
+                        # Convert min_stars to int/float if it's a string
+                        if min_stars and isinstance(min_stars, str):
+                            try:
+                                min_stars = float(min_stars.replace("star", "").replace("s", "").strip())
+                            except (ValueError, AttributeError):
+                                min_stars = None
+                        
+                        # Fetch details for top hotels (limit to avoid too many API calls)
+                        MAX_DETAILS_TO_FETCH = 10
+                        enriched_hotels = []
+                        
+                        for hotel in hotels[:MAX_DETAILS_TO_FETCH]:
+                            hotel_id = hotel.get("hotelId")
+                            if not hotel_id:
+                                continue
+                            
+                            try:
+                                # Fetch hotel details
+                                details_result = await HotelAgentClient.invoke(
+                                    "get_hotel_details",
+                                    hotel_id=hotel_id
+                                )
+                                
+                                if not details_result.get("error") and details_result.get("hotel"):
+                                    hotel_details = details_result.get("hotel")
+                                    # Merge details with rate info
+                                    hotel["name"] = hotel_details.get("name") or hotel_details.get("hotelName")
+                                    hotel["address"] = hotel_details.get("address") or hotel_details.get("location")
+                                    hotel["rating"] = hotel_details.get("rating") or hotel_details.get("starRating") or hotel_details.get("stars")
+                                    hotel["description"] = hotel_details.get("description")
+                                
+                            except Exception as e:
+                                # If details fetch fails, continue with rate info only
+                                pass
+                            
+                            # Extract price for filtering (find minimum price)
+                            price = None
+                            min_price_found = float('inf')
+                            if "roomTypes" in hotel and isinstance(hotel["roomTypes"], list):
+                                for room_type in hotel["roomTypes"]:
+                                    if "offerRetailRate" in room_type and "amount" in room_type["offerRetailRate"]:
+                                        try:
+                                            p = float(room_type["offerRetailRate"]["amount"])
+                                            if p < min_price_found:
+                                                min_price_found = p
+                                                price = p
+                                        except (ValueError, TypeError):
+                                            pass
+                                    if "rates" in room_type and isinstance(room_type["rates"], list):
+                                        for rate in room_type["rates"]:
+                                            if "retailRate" in rate and "total" in rate["retailRate"]:
+                                                if isinstance(rate["retailRate"]["total"], list) and len(rate["retailRate"]["total"]) > 0:
+                                                    try:
+                                                        p = float(rate["retailRate"]["total"][0].get("amount", 0))
+                                                        if p > 0 and p < min_price_found:
+                                                            min_price_found = p
+                                                            price = p
+                                                    except (ValueError, TypeError):
+                                                        pass
+                            
+                            # Apply filters
+                            if max_price and price and price > max_price:
+                                continue
+                            
+                            if min_stars:
+                                hotel_stars = hotel.get("rating") or hotel.get("starRating") or hotel.get("stars")
+                                if hotel_stars:
+                                    try:
+                                        hotel_stars_float = float(hotel_stars)
+                                        if hotel_stars_float < min_stars:
+                                            continue
+                                    except (ValueError, TypeError):
+                                        pass
+                            
+                            enriched_hotels.append(hotel)
+                        
+                        # Update hotel_result with enriched hotels
+                        hotel_result["hotels"] = enriched_hotels
+                        hotel_result["_filtered"] = len(hotels) - len(enriched_hotels)
+                    
+                    # Store the raw result in context for orchestrator
+                    response_text = f"Hotel search completed. Found hotel information."
+                    if "context" not in updated_state:
+                        updated_state["context"] = {}
+                    updated_state["context"]["hotel_result"] = hotel_result
+                
+                updated_state["last_response"] = response_text
+                updated_state["route"] = "main_agent"  # Return to main agent
+                
+                return updated_state
+            except Exception as e:
+                updated_state["last_response"] = f"I encountered an error while searching for hotels: {str(e)}"
+                updated_state["route"] = "main_agent"
+                return updated_state
+    
+    # Fall back to LLM-based extraction if no delegated args
     # Get tools available to hotel agent
     tools = await HotelAgentClient.list_tools()
     
@@ -116,7 +257,6 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
         )
     
     message = response.choices[0].message
-    updated_state = state.copy()
     
     # Check if LLM wants to call a tool
     if message.tool_calls:
@@ -133,7 +273,15 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
             
             # Call the hotel tool via MCP
             try:
-                hotel_result = await HotelAgentClient.invoke(tool_name, **args)
+                # Make a copy of args to avoid modifying the original
+                tool_args = args.copy()
+                
+                # Extract filter parameters (don't pass them to the tool)
+                max_price = tool_args.pop("max_price", None) or tool_args.pop("budget", None)
+                min_stars = tool_args.pop("min_stars", None) or tool_args.pop("star_rating", None) or tool_args.pop("stars", None)
+                
+                # Call the hotel tool without filter parameters
+                hotel_result = await HotelAgentClient.invoke(tool_name, **tool_args)
                 
                 # Format the response
                 if hotel_result.get("error"):
@@ -141,6 +289,96 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                     if hotel_result.get("suggestion"):
                         response_text += f"\n\nSuggestion: {hotel_result.get('suggestion')}"
                 else:
+                    # Fetch hotel details for top hotels and apply filters (same logic as delegated path)
+                    hotels = hotel_result.get("hotels", [])
+                    if hotels and tool_name != "get_hotel_details":
+                        # Convert max_price to float if it's a string
+                        if max_price and isinstance(max_price, str):
+                            try:
+                                max_price = float(max_price.replace("$", "").replace(",", "").strip())
+                            except (ValueError, AttributeError):
+                                max_price = None
+                        
+                        # Convert min_stars to int/float if it's a string
+                        if min_stars and isinstance(min_stars, str):
+                            try:
+                                min_stars = float(min_stars.replace("star", "").replace("s", "").strip())
+                            except (ValueError, AttributeError):
+                                min_stars = None
+                        
+                        # Fetch details for top hotels (limit to avoid too many API calls)
+                        MAX_DETAILS_TO_FETCH = 10
+                        enriched_hotels = []
+                        
+                        for hotel in hotels[:MAX_DETAILS_TO_FETCH]:
+                            hotel_id = hotel.get("hotelId")
+                            if not hotel_id:
+                                continue
+                            
+                            try:
+                                # Fetch hotel details
+                                details_result = await HotelAgentClient.invoke(
+                                    "get_hotel_details",
+                                    hotel_id=hotel_id
+                                )
+                                
+                                if not details_result.get("error") and details_result.get("hotel"):
+                                    hotel_details = details_result.get("hotel")
+                                    # Merge details with rate info
+                                    hotel["name"] = hotel_details.get("name") or hotel_details.get("hotelName")
+                                    hotel["address"] = hotel_details.get("address") or hotel_details.get("location")
+                                    hotel["rating"] = hotel_details.get("rating") or hotel_details.get("starRating") or hotel_details.get("stars")
+                                    hotel["description"] = hotel_details.get("description")
+                                
+                            except Exception as e:
+                                # If details fetch fails, continue with rate info only
+                                pass
+                            
+                            # Extract price for filtering (find minimum price)
+                            price = None
+                            min_price_found = float('inf')
+                            if "roomTypes" in hotel and isinstance(hotel["roomTypes"], list):
+                                for room_type in hotel["roomTypes"]:
+                                    if "offerRetailRate" in room_type and "amount" in room_type["offerRetailRate"]:
+                                        try:
+                                            p = float(room_type["offerRetailRate"]["amount"])
+                                            if p < min_price_found:
+                                                min_price_found = p
+                                                price = p
+                                        except (ValueError, TypeError):
+                                            pass
+                                    if "rates" in room_type and isinstance(room_type["rates"], list):
+                                        for rate in room_type["rates"]:
+                                            if "retailRate" in rate and "total" in rate["retailRate"]:
+                                                if isinstance(rate["retailRate"]["total"], list) and len(rate["retailRate"]["total"]) > 0:
+                                                    try:
+                                                        p = float(rate["retailRate"]["total"][0].get("amount", 0))
+                                                        if p > 0 and p < min_price_found:
+                                                            min_price_found = p
+                                                            price = p
+                                                    except (ValueError, TypeError):
+                                                        pass
+                            
+                            # Apply filters
+                            if max_price and price and price > max_price:
+                                continue
+                            
+                            if min_stars:
+                                hotel_stars = hotel.get("rating") or hotel.get("starRating") or hotel.get("stars")
+                                if hotel_stars:
+                                    try:
+                                        hotel_stars_float = float(hotel_stars)
+                                        if hotel_stars_float < min_stars:
+                                            continue
+                                    except (ValueError, TypeError):
+                                        pass
+                            
+                            enriched_hotels.append(hotel)
+                        
+                        # Update hotel_result with enriched hotels
+                        hotel_result["hotels"] = enriched_hotels
+                        hotel_result["_filtered"] = len(hotels) - len(enriched_hotels)
+                    
                     # Store the raw result in context for orchestrator
                     response_text = f"Hotel search completed. Found hotel information."
                     if "context" not in updated_state:
