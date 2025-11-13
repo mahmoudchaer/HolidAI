@@ -2,13 +2,13 @@
   "search_locations": {
     "description": "Search for locations on TripAdvisor. Returns up to 10 locations based on a text query. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, address, latitude/longitude, and radius. The function accepts minimal input and auto-fills defaults for language (en).",
     "inputs": {
-      "searchQuery": "string – required – text to search for (e.g., 'Eiffel Tower', 'Paris hotels')",
+      "search_query": "string – required – text to search for (e.g., 'Eiffel Tower', 'Paris hotels')",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "phone": "string – optional – phone number (no '+' prefix)",
       "address": "string – optional – address text to filter results",
-      "latLong": "string – optional – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "lat_long": "string – optional – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "radius": "number – optional – search radius (must be positive)",
-      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "radius_unit": "string – optional – unit for radius: km | mi | m",
       "language": "string – optional – response language code (default: 'en'). Supported: en, ar, zh, zh_TW, da, nl, en_AU, en_CA, en_HK, en_IN, en_IE, en_MY, en_NZ, en_PH, en_SG, en_ZA, en_UK, fr, fr_BE, fr_CA, fr_CH, de_AT, de, el, iw, in, it, it_CH, ja, ko, no, pt_PT, pt, ru, es_AR, es_CO, es_MX, es_PE, es, es_VE, es_CL, sv, th, tr, vi"
     },
     "outputs": {
@@ -22,24 +22,24 @@
       {
         "title": "Search for hotels in Paris",
         "body": {
-          "searchQuery": "Paris hotels",
+          "search_query": "Paris hotels",
           "category": "hotels"
         }
       },
       {
         "title": "Search for restaurants near coordinates",
         "body": {
-          "searchQuery": "Italian restaurants",
-          "latLong": "40.7128,-74.0060",
+          "search_query": "Italian restaurants",
+          "lat_long": "40.7128,-74.0060",
           "radius": 5,
-          "radiusUnit": "km",
+          "radius_unit": "km",
           "category": "restaurants"
         }
       },
       {
         "title": "Search attractions with language",
         "body": {
-          "searchQuery": "Eiffel Tower",
+          "search_query": "Eiffel Tower",
           "category": "attractions",
           "language": "fr"
         }
@@ -49,7 +49,7 @@
   "get_location_reviews": {
     "description": "Get reviews for a specific TripAdvisor location. Returns up to 5 recent reviews ordered by recency. Higher limits may be available for beta access. The function accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
     "inputs": {
-      "locationId": "integer – required – TripAdvisor location ID (positive integer)",
+      "location_id": "integer – required – TripAdvisor location ID (positive integer)",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
       "limit": "integer – optional – number of reviews to return (max 5, default: 5)",
       "offset": "integer – optional – index of first review to return (default: 0, non-negative)"
@@ -65,13 +65,13 @@
       {
         "title": "Get reviews for a location",
         "body": {
-          "locationId": 60763
+          "location_id": 60763
         }
       },
       {
         "title": "Get reviews with language and limit",
         "body": {
-          "locationId": 60763,
+          "location_id": 60763,
           "language": "fr",
           "limit": 3
         }
@@ -79,7 +79,7 @@
       {
         "title": "Get reviews with offset",
         "body": {
-          "locationId": 60763,
+          "location_id": 60763,
           "limit": 5,
           "offset": 5
         }
@@ -89,7 +89,7 @@
   "get_location_photos": {
     "description": "Get photos for a specific TripAdvisor location. Returns up to 5 high-quality photos ordered by recency. Photos are available in multiple sizes: Thumbnail (50x50), Small (150x150), Medium (max 250px), Large (max 550px), and Original (full resolution). The function accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
     "inputs": {
-      "locationId": "integer – required – TripAdvisor location ID (positive integer)",
+      "location_id": "integer – required – TripAdvisor location ID (positive integer)",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
       "limit": "integer – optional – number of photos to return (max 5, default: 5)",
       "offset": "integer – optional – index of first photo to return (default: 0, non-negative)",
@@ -106,13 +106,13 @@
       {
         "title": "Get photos for a location",
         "body": {
-          "locationId": 60763
+          "location_id": 60763
         }
       },
       {
         "title": "Get photos with limit and source filter",
         "body": {
-          "locationId": 60763,
+          "location_id": 60763,
           "limit": 3,
           "source": "Traveler"
         }
@@ -120,7 +120,7 @@
       {
         "title": "Get photos with language",
         "body": {
-          "locationId": 60763,
+          "location_id": 60763,
           "language": "fr",
           "limit": 5
         }
@@ -130,7 +130,7 @@
   "get_location_details": {
     "description": "Get full details about a TripAdvisor location. Returns comprehensive information including name, address, category, rating, ranking, coordinates, contact information, TripAdvisor URLs, amenities (for hotels), cuisine (for restaurants), features (for attractions), and pricing information. The function accepts minimal input and auto-fills defaults for language (en) and currency (USD).",
     "inputs": {
-      "locationId": "integer – required – TripAdvisor location ID (positive integer)",
+      "location_id": "integer – required – TripAdvisor location ID (positive integer)",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
       "currency": "string – optional – ISO 4217 currency code for pricing (default: 'USD', e.g., 'EUR', 'GBP', 'JPY')"
     },
@@ -145,13 +145,13 @@
       {
         "title": "Get location details",
         "body": {
-          "locationId": 60763
+          "location_id": 60763
         }
       },
       {
         "title": "Get location details with language and currency",
         "body": {
-          "locationId": 60763,
+          "location_id": 60763,
           "language": "fr",
           "currency": "EUR"
         }
@@ -159,7 +159,7 @@
       {
         "title": "Get location details in Japanese",
         "body": {
-          "locationId": 60763,
+          "location_id": 60763,
           "language": "ja",
           "currency": "JPY"
         }
@@ -169,12 +169,12 @@
   "search_nearby": {
     "description": "Search for locations near a given latitude/longitude on TripAdvisor. Returns up to 10 locations within a specified radius. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, and address. The function accepts minimal input and auto-fills defaults for language (en).",
     "inputs": {
-      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "phone": "string – optional – phone number (no '+' prefix)",
       "address": "string – optional – address text to filter results",
       "radius": "number – optional – search radius (must be positive)",
-      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "radius_unit": "string – optional – unit for radius: km | mi | m",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
     },
     "outputs": {
@@ -188,29 +188,29 @@
       {
         "title": "Search nearby hotels",
         "body": {
-          "latLong": "40.7128,-74.0060",
+          "lat_long": "40.7128,-74.0060",
           "category": "hotels",
           "radius": 5,
-          "radiusUnit": "km"
+          "radius_unit": "km"
         }
       },
       {
         "title": "Search nearby restaurants",
         "body": {
-          "latLong": "48.8566,2.3522",
+          "lat_long": "48.8566,2.3522",
           "category": "restaurants",
           "radius": 2,
-          "radiusUnit": "mi",
+          "radius_unit": "mi",
           "language": "fr"
         }
       },
       {
         "title": "Search nearby attractions",
         "body": {
-          "latLong": "51.5074,-0.1278",
+          "lat_long": "51.5074,-0.1278",
           "category": "attractions",
           "radius": 10,
-          "radiusUnit": "km"
+          "radius_unit": "km"
         }
       }
     ]
@@ -218,7 +218,7 @@
   "search_locations_by_rating": {
     "description": "Search for locations on TripAdvisor and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. This is perfect for users who want to find the best-rated places. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
     "inputs": {
-      "searchQuery": "string – required – text to search for (e.g., 'pizzeria Napoli', 'hotels Paris')",
+      "search_query": "string – required – text to search for (e.g., 'pizzeria Napoli', 'hotels Paris')",
       "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be returned (e.g., 4.0 for 4+ stars only)",
       "sort_by_rating": "boolean – optional – if true, sort by rating descending (highest first). Default: true",
       "top_k": "integer – optional – number of top-rated locations to return (1-10). Default: all results",
@@ -237,7 +237,7 @@
       {
         "title": "Find top-rated pizzerias in Napoli",
         "body": {
-          "searchQuery": "pizzeria Napoli",
+          "search_query": "pizzeria Napoli",
           "category": "restaurants",
           "min_rating": 4.0,
           "top_k": 5
@@ -246,7 +246,7 @@
       {
         "title": "Find best hotels in Paris",
         "body": {
-          "searchQuery": "hotels Paris",
+          "search_query": "hotels Paris",
           "category": "hotels",
           "min_rating": 4.5,
           "top_k": 10
@@ -255,7 +255,7 @@
       {
         "title": "Find highly rated attractions",
         "body": {
-          "searchQuery": "museums London",
+          "search_query": "museums London",
           "category": "attractions",
           "min_rating": 4.0
         }
@@ -265,13 +265,13 @@
   "search_nearby_by_rating": {
     "description": "Search for locations near given coordinates and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. Perfect for finding the best-rated places near a specific location. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
     "inputs": {
-      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be returned (e.g., 4.0 for 4+ stars only)",
       "sort_by_rating": "boolean – optional – if true, sort by rating descending (highest first). Default: true",
       "top_k": "integer – optional – number of top-rated locations to return (1-10). Default: all results",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "radius": "number – optional – search radius (must be positive)",
-      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "radius_unit": "string – optional – unit for radius: km | mi | m",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
     },
     "outputs": {
@@ -286,22 +286,22 @@
       {
         "title": "Find top-rated restaurants near coordinates",
         "body": {
-          "latLong": "40.7128,-74.0060",
+          "lat_long": "40.7128,-74.0060",
           "category": "restaurants",
           "min_rating": 4.0,
           "radius": 2,
-          "radiusUnit": "km",
+          "radius_unit": "km",
           "top_k": 5
         }
       },
       {
         "title": "Find best hotels near location",
         "body": {
-          "latLong": "48.8566,2.3522",
+          "lat_long": "48.8566,2.3522",
           "category": "hotels",
           "min_rating": 4.5,
           "radius": 5,
-          "radiusUnit": "km"
+          "radius_unit": "km"
         }
       }
     ]
@@ -309,7 +309,7 @@
   "get_top_rated_locations": {
     "description": "Get the top k highest-rated locations matching a search query. This is the easiest way to find the best-rated places - just provide a search query and how many results you want. Perfect for queries like 'show me the top 5 restaurants in Paris' or 'find the 3 best hotels in Rome'. The function automatically sorts by rating (highest first) and optionally filters by minimum rating. The function accepts minimal input and auto-fills defaults for language (en).",
     "inputs": {
-      "searchQuery": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
+      "search_query": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
       "k": "integer – required – number of top-rated locations to return (1-10, e.g., 5 for top 5)",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be considered (e.g., 4.0 for 4+ stars only)",
@@ -327,7 +327,7 @@
       {
         "title": "Get top 5 restaurants in Paris",
         "body": {
-          "searchQuery": "restaurants Paris",
+          "search_query": "restaurants Paris",
           "k": 5,
           "category": "restaurants"
         }
@@ -335,7 +335,7 @@
       {
         "title": "Get top 3 hotels in Rome with 4+ stars",
         "body": {
-          "searchQuery": "hotels Rome",
+          "search_query": "hotels Rome",
           "k": 3,
           "category": "hotels",
           "min_rating": 4.0
@@ -344,7 +344,7 @@
       {
         "title": "Get top 10 attractions in New York",
         "body": {
-          "searchQuery": "attractions New York",
+          "search_query": "attractions New York",
           "k": 10,
           "category": "attractions"
         }
@@ -354,7 +354,7 @@
   "search_locations_by_price": {
     "description": "Search for locations on TripAdvisor and filter by maximum price level. Perfect for budget-conscious users who want to find affordable options. The function accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
     "inputs": {
-      "searchQuery": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
+      "search_query": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
       "max_price_level": "integer – required – maximum price level (1-4, where 1=cheapest, 4=most expensive)",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
@@ -371,7 +371,7 @@
       {
         "title": "Find budget restaurants in Paris",
         "body": {
-          "searchQuery": "restaurants Paris",
+          "search_query": "restaurants Paris",
           "max_price_level": 2,
           "category": "restaurants"
         }
@@ -379,7 +379,7 @@
       {
         "title": "Find affordable hotels",
         "body": {
-          "searchQuery": "hotels Barcelona",
+          "search_query": "hotels Barcelona",
           "max_price_level": 2,
           "category": "hotels"
         }
@@ -389,11 +389,11 @@
   "search_nearby_by_price": {
     "description": "Search for locations near given coordinates and filter by maximum price level. Perfect for finding budget-friendly places nearby. The function accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
     "inputs": {
-      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "max_price_level": "integer – required – maximum price level (1-4, where 1=cheapest, 4=most expensive)",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "radius": "number – optional – search radius (must be positive)",
-      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "radius_unit": "string – optional – unit for radius: km | mi | m",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
     },
     "outputs": {
@@ -408,11 +408,11 @@
       {
         "title": "Find budget restaurants nearby",
         "body": {
-          "latLong": "40.7128,-74.0060",
+          "lat_long": "40.7128,-74.0060",
           "max_price_level": 2,
           "category": "restaurants",
           "radius": 2,
-          "radiusUnit": "km"
+          "radius_unit": "km"
         }
       }
     ]
@@ -420,11 +420,11 @@
   "search_nearby_by_distance": {
     "description": "Search for locations near given coordinates and return them sorted by distance (closest first). Perfect for finding the nearest places. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by distance in ascending order.",
     "inputs": {
-      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "sort_by_distance": "boolean – optional – if true, sort by distance ascending (closest first). Default: true",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "radius": "number – optional – search radius (must be positive)",
-      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "radius_unit": "string – optional – unit for radius: km | mi | m",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
     },
     "outputs": {
@@ -439,10 +439,10 @@
       {
         "title": "Find closest restaurants",
         "body": {
-          "latLong": "40.7128,-74.0060",
+          "lat_long": "40.7128,-74.0060",
           "category": "restaurants",
           "radius": 5,
-          "radiusUnit": "km"
+          "radius_unit": "km"
         }
       }
     ]
@@ -450,10 +450,10 @@
   "find_closest_location": {
     "description": "Find the single closest location to given coordinates. Perfect for 'find nearest' queries. The function accepts minimal input and auto-fills defaults for language (en). Returns only the closest location.",
     "inputs": {
-      "latLong": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
+      "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
       "radius": "number – optional – search radius (must be positive)",
-      "radiusUnit": "string – optional – unit for radius: km | mi | m",
+      "radius_unit": "string – optional – unit for radius: km | mi | m",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
     },
     "outputs": {
@@ -468,7 +468,7 @@
       {
         "title": "Find nearest restaurant",
         "body": {
-          "latLong": "40.7128,-74.0060",
+          "lat_long": "40.7128,-74.0060",
           "category": "restaurants"
         }
       }
@@ -477,7 +477,7 @@
   "search_restaurants_by_cuisine": {
     "description": "Search for restaurants and filter by cuisine type(s). Perfect for finding specific types of food. The function accepts minimal input and auto-fills defaults for language (en). This function automatically gets location details for restaurants that don't have cuisine information in search results, ensuring accurate filtering. It intelligently limits API calls to maintain performance.",
     "inputs": {
-      "searchQuery": "string – required – text to search for (e.g., 'restaurants Paris')",
+      "search_query": "string – required – text to search for (e.g., 'restaurants Paris')",
       "cuisine_types": "array – required – list of cuisine types to filter by (e.g., ['Italian', 'French'])",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations"
     },
@@ -493,14 +493,14 @@
       {
         "title": "Find Italian restaurants",
         "body": {
-          "searchQuery": "restaurants Rome",
+          "search_query": "restaurants Rome",
           "cuisine_types": ["Italian"]
         }
       },
       {
         "title": "Find multiple cuisine types",
         "body": {
-          "searchQuery": "restaurants New York",
+          "search_query": "restaurants New York",
           "cuisine_types": ["Italian", "French", "Japanese"]
         }
       }

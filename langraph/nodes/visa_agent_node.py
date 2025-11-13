@@ -2,6 +2,7 @@
 
 import sys
 import os
+import json
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -23,27 +24,85 @@ load_dotenv(dotenv_path=env_path)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+def _load_tool_docs() -> dict:
+    """Load tool documentation from JSON file."""
+    docs_path = project_root / "mcp_system" / "tool_docs" / "visa_docs.json"
+    try:
+        with open(docs_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load visa tool docs: {e}")
+        return {}
+
+
+def _format_tool_docs(docs: dict) -> str:
+    """Format tool documentation for inclusion in prompt."""
+    if not docs:
+        return ""
+    
+    formatted = "\n\n=== TOOL DOCUMENTATION ===\n\n"
+    
+    for tool_name, tool_info in docs.items():
+        # Map tool name to actual tool name used in the system
+        actual_tool_name = tool_name.replace("get_traveldoc_requirement", "get_traveldoc_requirement_tool")
+        
+        formatted += f"Tool: {actual_tool_name}\n"
+        formatted += f"Description: {tool_info.get('description', 'N/A')}\n\n"
+        
+        if 'inputs' in tool_info:
+            formatted += "Input Parameters:\n"
+            for param, desc in tool_info['inputs'].items():
+                formatted += f"  - {param}: {desc}\n"
+            formatted += "\n"
+        
+        if 'outputs' in tool_info:
+            formatted += "Output Fields:\n"
+            for field, desc in tool_info['outputs'].items():
+                formatted += f"  - {field}: {desc}\n"
+            formatted += "\n"
+        
+        if 'examples' in tool_info and tool_info['examples']:
+            formatted += "Examples:\n"
+            for i, example in enumerate(tool_info['examples'][:2], 1):  # Show first 2 examples
+                formatted += f"  Example {i}: {example.get('title', 'N/A')}\n"
+                formatted += f"    {json.dumps(example.get('body', {}), indent=4)}\n"
+            formatted += "\n"
+        
+        formatted += "---\n\n"
+    
+    return formatted
+
+
 def get_visa_agent_prompt() -> str:
     """Get the system prompt for the Visa Agent."""
-    return """You are the Visa Agent, a specialized agent that helps users check visa requirements for international travel.
+    docs = _load_tool_docs()
+    docs_text = _format_tool_docs(docs)
+    
+    base_prompt = """You are the Visa Agent, a specialized agent that helps users check visa requirements for international travel.
+
+CRITICAL: You MUST use the available tools to check visa requirements. Do NOT respond without calling a tool.
 
 Your role:
-- Understand user queries about visa requirements
-- Extract nationality, origin country, and destination country from user messages
+- Understand the user's message using your LLM reasoning capabilities
+- Use your understanding to determine what visa requirement parameters are needed
 - Use the get_traveldoc_requirement_tool tool to check visa requirements
-- Provide clear, helpful responses about visa requirements
+- The tool schemas will show you exactly what parameters are needed
 
-Available tool:
+Available tool (you will see its full schema with function calling):
 - get_traveldoc_requirement_tool: Checks visa requirements using TravelDoc.aero
-  - Parameters:
-    - nationality: The traveler's nationality/passport country (e.g., "Lebanon", "United States")
-    - leaving_from: The origin country (e.g., "Lebanon", "United States")
-    - going_to: The destination country (e.g., "Qatar", "France")
 
-When a user asks about visa requirements, extract the nationality, origin, and destination from their message and use the tool.
-If any information is missing, ask the user for clarification.
+IMPORTANT:
+- Use your LLM understanding to determine parameters from the user's message - NO code-based parsing is used:
+  - nationality: The traveler's nationality/passport country (determine from user's message)
+  - leaving_from: The origin country (determine from user's message)
+  - going_to: The destination country (determine from user's message)
+- Use the tool schemas to understand required vs optional parameters
+- ALWAYS call a tool - do not ask for clarification unless absolutely critical information is missing
+- You have access to the full tool documentation through function calling - use it to understand parameter requirements
 
-Provide friendly, clear responses about visa requirements based on the tool results."""
+You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
+    
+    return base_prompt + docs_text
 
 
 async def visa_agent_node(state: AgentState) -> AgentState:
@@ -56,48 +115,10 @@ async def visa_agent_node(state: AgentState) -> AgentState:
         Updated agent state with response
     """
     user_message = state.get("user_message", "")
-    context = state.get("context", {})
-    
-    # Check if we have task context from delegation
-    task_name = context.get("task", "")
-    task_args = context.get("args", {})
-    
     updated_state = state.copy()
     
-    # If we have delegated task args, use them directly
-    if task_args and task_name:
-        if task_name == "get_traveldoc_requirement":
-            try:
-                visa_result = await VisaAgentClient.invoke(
-                    "get_traveldoc_requirement_tool",
-                    nationality=task_args.get("nationality", ""),
-                    leaving_from=task_args.get("leaving_from", ""),
-                    going_to=task_args.get("going_to", "")
-                )
-                
-                # Format the response
-                if visa_result.get("error"):
-                    response_text = f"I encountered an error while checking visa requirements: {visa_result.get('error_message', 'Unknown error')}"
-                    if visa_result.get("suggestion"):
-                        response_text += f"\n\nSuggestion: {visa_result.get('suggestion')}"
-                else:
-                    visa_info = visa_result.get("result", "No visa information available.")
-                    response_text = f"Here are the visa requirements:\n\n{visa_info}"
-                
-                # Store result in context for orchestrator
-                if "context" not in updated_state:
-                    updated_state["context"] = {}
-                updated_state["context"]["visa_result"] = visa_result
-                updated_state["last_response"] = response_text
-                updated_state["route"] = "main_agent"  # Return to main agent
-                
-                return updated_state
-            except Exception as e:
-                updated_state["last_response"] = f"I encountered an error while checking visa requirements: {str(e)}"
-                updated_state["route"] = "main_agent"
-                return updated_state
-    
-    # Fall back to LLM-based extraction if no delegated args
+    # Always use LLM to extract parameters from user message
+    # LLM has access to tool documentation and can intelligently extract parameters
     # Get tools available to visa agent
     tools = await VisaAgentClient.list_tools()
     
@@ -139,13 +160,13 @@ async def visa_agent_node(state: AgentState) -> AgentState:
                 }
             })
     
-    # Call LLM with function calling
+    # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             tools=functions,
-            tool_choice="auto"
+            tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
@@ -180,23 +201,20 @@ async def visa_agent_node(state: AgentState) -> AgentState:
                     visa_info = visa_result.get("result", "No visa information available.")
                     response_text = f"Here are the visa requirements:\n\n{visa_info}"
                 
-                # Store result in context for orchestrator
-                if "context" not in updated_state:
-                    updated_state["context"] = {}
-                updated_state["context"]["visa_result"] = visa_result
-                updated_state["last_response"] = response_text
-                updated_state["route"] = "main_agent"  # Return to main agent
+                # Store result directly in state for parallel execution
+                updated_state["visa_result"] = visa_result
+                # No need to set route - using add_edge means we automatically route to join_node
                 
             except Exception as e:
-                updated_state["last_response"] = f"I encountered an error while checking visa requirements: {str(e)}"
-                updated_state["route"] = "main_agent"
+                # Store error in result
+                updated_state["visa_result"] = {"error": True, "error_message": str(e)}
+                # No need to set route - using add_edge means we automatically route to join_node
             
             return updated_state
     
-    # No tool call - respond directly
-    assistant_message = message.content or "I can help you check visa requirements. Please provide your nationality, origin country, and destination country."
-    updated_state["route"] = "main_agent"
-    updated_state["last_response"] = assistant_message
+    # No tool call - store empty result
+    updated_state["visa_result"] = {"error": True, "error_message": "No visa requirement parameters provided"}
+    # No need to set route - using add_edge means we automatically route to join_node
     
     return updated_state
 

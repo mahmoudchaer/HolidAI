@@ -11,7 +11,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
-from clients.main_agent_client import MainAgentClient
 
 # Load environment variables from .env file in main directory
 # Get the project root directory (2 levels up from langraph/nodes/)
@@ -29,70 +28,22 @@ def get_main_agent_prompt(agents_called: list, collected_info: dict) -> str:
 
 Your role:
 - Understand user requests and determine which specialized agents are needed
-- Delegate tasks to specialized agents when appropriate
+- Each specialized agent will intelligently understand the user's message and extract all necessary parameters using LLM reasoning
+- You do NOT need to extract parameters - just determine which agents are needed
 - After agents return, review the collected information and decide if more agents are needed
 - Once you have all necessary information, route to "conversational_agent" to generate the final response
-- Extract structured parameters from user messages for delegated tasks
 
 Available specialized agents:
-- hotel_agent: Handles hotel searches. Use task "get_hotel_rates" for hotel rate searches.
-- visa_agent: Handles visa requirement checks. Use task "get_traveldoc_requirement" for visa requirement lookups.
-- flight_agent: Handles flight searches. Use task "agent_get_flights" or "agent_get_flights_flexible" for flight searches.
-- tripadvisor_agent: Handles location searches, reviews, and attractions. Use these specific tasks:
-  * "get_top_rated_locations" - For finding top-rated/good restaurants or attractions (use when user asks for "good", "best", "top" places)
-  * "search_locations_by_rating" - For searching locations filtered by minimum rating
-  * "search_locations" - For general location/restaurant searches
-  * "get_location_details" - For getting detailed information about a specific location
-  * "get_location_reviews" - For getting reviews of a location
+- flight_agent: For flight searches (one-way, round-trip, flexible dates, etc.)
+- hotel_agent: For hotel searches (by location, price, dates, etc.)
+- visa_agent: For visa requirement checks
+- tripadvisor_agent: For location searches, restaurants, attractions, reviews, etc.
 
-The delegate tool takes:
-- agent: "hotel_agent", "visa_agent", "flight_agent", or "tripadvisor_agent"
-- task: The specific task name for that agent
-- args: Dictionary with the extracted parameters
-
-For hotel searches, extract:
-- checkin: Check-in date in YYYY-MM-DD format (e.g., "2025-12-10")
-- checkout: Check-out date in YYYY-MM-DD format (e.g., "2025-12-17")
-- occupancies: Array of occupancy objects, each with "adults" (integer) and optionally "children" (array of integers)
-- city_name: City name (optional, must be paired with country_code)
-- country_code: Country code in ISO 2-letter format (optional, must be paired with city_name)
-- hotel_ids: Array of hotel IDs (optional)
-- iata_code: IATA code (optional)
-- max_price: Maximum price/budget as a number (e.g., 500 for $500 budget)
-- min_stars: Minimum star rating as a number (e.g., 4 for 4-star hotels)
-- budget: Alternative to max_price (same meaning)
-- star_rating: Alternative to min_stars (same meaning)
-
-For visa requirements, extract:
-- nationality: The traveler's nationality/passport country (e.g., "Lebanon", "United States")
-- leaving_from: The origin country (e.g., "Lebanon", "United States")
-- going_to: The destination country (e.g., "Qatar", "France")
-
-For flight searches, extract:
-- trip_type: "one-way" or "round-trip"
-- departure: Departure airport/city code (e.g., "JFK", "NYC", "LAX")
-- arrival: Arrival airport/city code (e.g., "LAX", "LHR", "CDG")
-- departure_date: Departure date in YYYY-MM-DD format
-- arrival_date: Return date for round-trip (if applicable)
-- Optional: airline, max_price, direct_only, travel_class, adults, children, infants, etc.
-- If user mentions flexible dates or wants cheapest options, use task "agent_get_flights_flexible"
-
-For TripAdvisor searches:
-- For "good", "best", or "top" restaurants/attractions: Use task "get_top_rated_locations"
-  * Extract: search_query (e.g., "restaurants in Beirut"), k (number of top results, default 5), category (optional: "restaurants", "attractions", "hotels", "geos"), min_rating (optional, e.g., 4.0 for 4+ stars), location (optional, city name)
-- For general restaurant/attraction searches: Use task "search_locations"
-  * Extract: search_query (required), category (optional: "restaurants", "attractions", "hotels", "geos"), location (optional, city name)
-- For location details: Use task "get_location_details"
-  * Extract: location_id (required)
-- For reviews: Use task "get_location_reviews"
-  * Extract: location_id (required)
-
-IMPORTANT: After agents return with information, you must:
-1. Review what information you have collected
-2. Determine if the user's query is fully answered
-3. If you already have results from an agent (e.g., tripadvisor_result, hotel_result), DO NOT delegate to that same agent again - route to conversational_agent instead
-4. If more information is needed from a different agent, delegate to that agent
-5. If you have all necessary information, route to "conversational_agent" (use route_to_conversational tool)
+IMPORTANT: 
+- You ONLY need to determine which agents are needed based on the user's request
+- Each agent will intelligently understand the user's message and extract all parameters using LLM reasoning - you don't need to do any parameter extraction
+- Simply respond with a JSON object indicating which agents are needed
+- The agents have access to full tool documentation and will extract all necessary parameters from the user's message
 """
     
     if agents_called:
@@ -109,196 +60,132 @@ IMPORTANT: After agents return with information, you must:
 
 
 async def main_agent_node(state: AgentState) -> AgentState:
-    """Main Agent node that reasons and delegates tasks.
+    """Main Agent node that determines which agents are needed and returns list for parallel execution.
     
     Args:
         state: Current agent state
         
     Returns:
-        Updated agent state with route and context
+        Updated agent state with list of nodes to execute in parallel
     """
     user_message = state.get("user_message", "")
-    context = state.get("context", {})
-    collected_info = state.get("collected_info", {})
-    agents_called = state.get("agents_called", [])
     
-    # Ensure agents_called is a list
-    if not isinstance(agents_called, list):
-        agents_called = []
-    
-    # If we just received information from an agent, accumulate it
-    if context.get("delegation_result") or context.get("flight_result") or context.get("hotel_result") or context.get("visa_result") or context.get("tripadvisor_result"):
-        # Accumulate results from agents
-        if context.get("flight_result"):
-            collected_info["flight_result"] = context.get("flight_result")
-        if context.get("hotel_result"):
-            collected_info["hotel_result"] = context.get("hotel_result")
-        if context.get("visa_result"):
-            collected_info["visa_result"] = context.get("visa_result")
-        if context.get("tripadvisor_result"):
-            collected_info["tripadvisor_result"] = context.get("tripadvisor_result")
-    
-    # Ensure collected_info is initialized
-    if not collected_info:
-        collected_info = {}
-    
-    # If we have visa_result and user asked about visas, automatically route to conversational agent
-    if collected_info.get("visa_result") and not collected_info.get("visa_result", {}).get("error"):
-        # Check if user message is about visas
-        visa_keywords = ["visa", "travel document", "entry requirement", "passport requirement"]
-        if any(keyword in user_message.lower() for keyword in visa_keywords):
-            updated_state = state.copy()
-            updated_state["collected_info"] = collected_info
-            updated_state["route"] = "conversational_agent"
-            updated_state["ready_for_response"] = True
-            return updated_state
-    
-    # Get tools available to main agent
-    tools = await MainAgentClient.list_tools()
-    
-    # Build context message about what we know
-    context_message = user_message
-    if collected_info or agents_called:
-        context_message += "\n\nContext: "
-        if agents_called:
-            context_message += f"Agents called: {', '.join(agents_called)}. "
-        if collected_info:
-            context_message += "Information has been collected from agents: "
-            if collected_info.get("tripadvisor_result"):
-                context_message += "TripAdvisor results available. "
-            if collected_info.get("hotel_result"):
-                context_message += "Hotel results available. "
-            if collected_info.get("flight_result"):
-                context_message += "Flight results available. "
-            if collected_info.get("visa_result"):
-                context_message += "Visa results available with actual visa requirement data. "
-        context_message += "\n\nIMPORTANT: If you have results from agents (visa_result, flight_result, hotel_result, or tripadvisor_result), you MUST route to conversational_agent immediately using the route_to_conversational tool. DO NOT delegate the same task again if results already exist."
-    
-    # Prepare messages for LLM
+    # Prepare messages for LLM to determine which agents are needed
     messages = [
-        {"role": "system", "content": get_main_agent_prompt(agents_called, collected_info)},
-        {"role": "user", "content": context_message}
+        {"role": "system", "content": get_main_agent_prompt([], {})},
+        {"role": "user", "content": f"""Analyze the user's request and determine which specialized agents are needed.
+
+User's message: {user_message}
+
+Available agents:
+- flight_agent: For flight searches
+- hotel_agent: For hotel searches
+- visa_agent: For visa requirement checks
+- tripadvisor_agent: For location/restaurant/attraction searches
+
+Respond with a JSON object indicating which agents are needed. Example:
+{{"needs_flights": true, "needs_hotels": true, "needs_visa": false, "needs_tripadvisor": false}}
+
+If no specialized agents are needed, respond with all false values."""}
     ]
     
-    # Build function calling schema for delegate tool
-    functions = []
-    for tool in tools:
-        if tool["name"] == "delegate":
-            functions.append({
-                "type": "function",
-                "function": {
-                    "name": "delegate",
-                    "description": tool.get("description", "Delegate a task to a specialized agent"),
-                    "parameters": tool.get("inputSchema", {})
-                }
-            })
-    
-    # Add a special "route_to_conversational" function to help the LLM decide
-    functions.append({
-        "type": "function",
-        "function": {
-            "name": "route_to_conversational",
-            "description": "Route to conversational agent when you have all necessary information to generate the final response",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    })
-    
-    # Call LLM with function calling
-    if functions:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            tools=functions,
-            tool_choice="auto"
-        )
-    else:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages
-        )
+    # Call LLM to determine needed agents
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=messages
+    )
     
     message = response.choices[0].message
+    import json
+    
+    # Extract JSON from the LLM response
+    content = message.content or ""
+    needs_analysis = {}
+    
+    # LLM should return JSON - extract it from the response
+    try:
+        # Try to find JSON in the response (might be wrapped in text)
+        # Find the first { and try to match balanced braces
+        start_idx = content.find('{')
+        if start_idx != -1:
+            brace_count = 0
+            end_idx = start_idx
+            for i in range(start_idx, len(content)):
+                if content[i] == '{':
+                    brace_count += 1
+                elif content[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_idx = i + 1
+                        break
+            if brace_count == 0:
+                json_str = content[start_idx:end_idx]
+                needs_analysis = json.loads(json_str)
+            else:
+                # Try parsing the whole content as JSON
+                needs_analysis = json.loads(content)
+        else:
+            # Try parsing the whole content as JSON
+            needs_analysis = json.loads(content)
+    except Exception as e:
+        # If LLM didn't return valid JSON, default to no agents needed
+        # The LLM should always return valid JSON based on the prompt
+        print(f"Warning: Could not parse LLM response as JSON: {e}")
+        print(f"LLM response content: {content[:500]}")  # Print first 500 chars for debugging
+        needs_analysis = {
+            "needs_flights": False,
+            "needs_hotels": False,
+            "needs_visa": False,
+            "needs_tripadvisor": False
+        }
+    
+    # Debug: Log what agents are needed
+    print(f"Main agent: Determined needs - flights: {needs_analysis.get('needs_flights')}, hotels: {needs_analysis.get('needs_hotels')}, visa: {needs_analysis.get('needs_visa')}, tripadvisor: {needs_analysis.get('needs_tripadvisor')}")
+    
+    # Build list of nodes to execute in parallel
+    nodes_to_execute = []
     updated_state = state.copy()
-    updated_state["collected_info"] = collected_info
     
-    # Check if LLM wants to call a tool
-    if message.tool_calls:
-        tool_call = message.tool_calls[0]
-        
-        if tool_call.function.name == "route_to_conversational":
-            # Route to conversational agent
-            updated_state["route"] = "conversational_agent"
-            updated_state["ready_for_response"] = True
-            return updated_state
-        
-        elif tool_call.function.name == "delegate":
-            import json
-            args = json.loads(tool_call.function.arguments)
-            agent_name = args["agent"]
-            task_name = args["task"]
-            
-            # Check if we already have results for this agent/task combination
-            # This prevents infinite loops where we keep delegating the same task
-            if agent_name == "tripadvisor_agent" and collected_info.get("tripadvisor_result"):
-                # We already have tripadvisor results, route to conversational agent instead
-                updated_state["route"] = "conversational_agent"
-                updated_state["ready_for_response"] = True
-                return updated_state
-            elif agent_name == "hotel_agent" and collected_info.get("hotel_result"):
-                # We already have hotel results, route to conversational agent instead
-                updated_state["route"] = "conversational_agent"
-                updated_state["ready_for_response"] = True
-                return updated_state
-            elif agent_name == "flight_agent" and collected_info.get("flight_result"):
-                # We already have flight results, route to conversational agent instead
-                updated_state["route"] = "conversational_agent"
-                updated_state["ready_for_response"] = True
-                return updated_state
-            elif agent_name == "visa_agent" and collected_info.get("visa_result"):
-                # We already have visa results, route to conversational agent instead
-                updated_state["route"] = "conversational_agent"
-                updated_state["ready_for_response"] = True
-                return updated_state
-            
-            # Track which agent we're calling
-            if agent_name not in agents_called:
-                agents_called = agents_called + [agent_name]
-            
-            # Call the delegate tool via MCP
-            delegation_result = await MainAgentClient.invoke(
-                "delegate",
-                agent=agent_name,
-                task=task_name,
-                args=args.get("args", {})
-            )
-            
-            # Update state to route to the specified agent
-            updated_state["route"] = agent_name
-            updated_state["agents_called"] = agents_called
-            updated_state["context"] = {
-                "task": task_name,
-                "args": args.get("args", {}),
-                "delegation_result": delegation_result
-            }
-            
-            return updated_state
+    # Agents will extract all parameters from user_message using LLM
+    # No need to pass task contexts - LLM has access to tool documentation
     
-    # No tool call - check if LLM content suggests routing
-    assistant_message = message.content or ""
-    
-    # Simple heuristic: if LLM says we're done or ready, route to conversational
-    if any(phrase in assistant_message.lower() for phrase in ["ready", "complete", "all information", "have enough", "can now respond"]):
-        updated_state["route"] = "conversational_agent"
-        updated_state["ready_for_response"] = True
+    if needs_analysis.get("needs_flights", False):
+        nodes_to_execute.append("flight_agent")
+        updated_state["needs_flights"] = True
     else:
-        # For general questions without delegation, route to conversational agent
+        updated_state["needs_flights"] = False
+        updated_state["flight_result"] = None
+    
+    if needs_analysis.get("needs_hotels", False):
+        nodes_to_execute.append("hotel_agent")
+        updated_state["needs_hotels"] = True
+    else:
+        updated_state["needs_hotels"] = False
+        updated_state["hotel_result"] = None
+    
+    if needs_analysis.get("needs_visa", False):
+        nodes_to_execute.append("visa_agent")
+        updated_state["needs_visa"] = True
+    else:
+        updated_state["needs_visa"] = False
+        updated_state["visa_result"] = None
+    
+    if needs_analysis.get("needs_tripadvisor", False):
+        nodes_to_execute.append("tripadvisor_agent")
+        updated_state["needs_tripadvisor"] = True
+    else:
+        updated_state["needs_tripadvisor"] = False
+        updated_state["tripadvisor_result"] = None
+    
+    # If no agents needed, route directly to conversational
+    if not nodes_to_execute:
         updated_state["route"] = "conversational_agent"
         updated_state["ready_for_response"] = True
-        updated_state["last_response"] = assistant_message
+        print("Main agent: No agents needed, routing to conversational_agent")
+    else:
+        # Return list of nodes for parallel execution
+        updated_state["route"] = nodes_to_execute
+        print(f"Main agent: Routing to parallel nodes: {nodes_to_execute}")
     
     return updated_state
 

@@ -5,15 +5,15 @@
       "checkin": "string – required – check-in date in YYYY-MM-DD format (ISO 8601)",
       "checkout": "string – required – check-out date in YYYY-MM-DD format (ISO 8601)",
       "occupancies": "array – required – array of objects specifying number of guests per room. Each object must have 'adults' (integer, required) and optionally 'children' (array of integers, ages)",
-      "hotelIds": "array of strings – optional – array of hotel IDs to search for availability and pricing. At least one location identifier must be provided: hotelIds, (cityName and countryCode), or iataCode",
-      "cityName": "string – optional – name of the city to search for hotels in. Must be paired with countryCode",
-      "countryCode": "string – optional – country code in ISO 2-letter format (e.g., 'US', 'FR', 'SG'). Must be paired with cityName",
-      "iataCode": "string – optional – IATA code of the search location, typically an airport code. At least one location identifier must be provided",
+      "hotel_ids": "array of strings – optional – array of hotel IDs to search for availability and pricing. At least one location identifier must be provided: hotel_ids, (city_name and country_code), or iata_code",
+      "city_name": "string – optional – name of the city to search for hotels in. Must be paired with country_code",
+      "country_code": "string – optional – country code in ISO 2-letter format (e.g., 'US', 'FR', 'SG'). Must be paired with city_name",
+      "iata_code": "string – optional – IATA code of the search location, typically an airport code. At least one location identifier must be provided",
       "currency": "string – optional – currency in which prices will be displayed. Default: USD",
-      "guestNationality": "string – optional – guest's nationality in ISO 2-letter country code format. Default: US",
-      "maxRatesPerHotel": "integer – optional – number of room rates to return per hotel, sorted by price (cheapest first). Default: 1",
-      "refundableRatesOnly": "boolean – optional – if true, only refundable rates will be included. Default: false",
-      "roomMapping": "boolean – optional – enable room mapping to retrieve mappedRoomId for each room. Default: true",
+      "guest_nationality": "string – optional – guest's nationality in ISO 2-letter country code format. Default: US",
+      "max_rates_per_hotel": "integer – optional – number of room rates to return per hotel, sorted by price (cheapest first). Default: 1",
+      "refundable_rates_only": "boolean – optional – if true, only refundable rates will be included. Default: false",
+      "room_mapping": "boolean – optional – enable room mapping to retrieve mappedRoomId for each room. Default: true",
       "k": "integer – optional – number of hotels to return (limited to top k results). Must be between 1 and 200. Default: 10"
     },
     "outputs": {
@@ -32,8 +32,8 @@
           "checkin": "2025-12-10",
           "checkout": "2025-12-17",
           "occupancies": [{"adults": 2}],
-          "cityName": "Paris",
-          "countryCode": "FR"
+          "city_name": "Paris",
+          "country_code": "FR"
         }
       },
       {
@@ -42,7 +42,7 @@
           "checkin": "2025-11-10",
           "checkout": "2025-11-17",
           "occupancies": [{"adults": 2, "children": [5, 8]}],
-          "hotelIds": ["HTL001", "HTL002", "HTL003"]
+          "hotel_ids": ["HTL001", "HTL002", "HTL003"]
         }
       },
       {
@@ -51,9 +51,9 @@
           "checkin": "2025-12-01",
           "checkout": "2025-12-03",
           "occupancies": [{"adults": 1}],
-          "iataCode": "JFK",
+          "iata_code": "JFK",
           "currency": "EUR",
-          "guestNationality": "FR"
+          "guest_nationality": "FR"
         }
       },
       {
@@ -65,9 +65,9 @@
             {"adults": 2},
             {"adults": 1, "children": [10]}
           ],
-          "cityName": "London",
-          "countryCode": "GB",
-          "maxRatesPerHotel": 3
+          "city_name": "London",
+          "country_code": "GB",
+          "max_rates_per_hotel": 3
         }
       },
       {
@@ -76,8 +76,8 @@
           "checkin": "2025-12-10",
           "checkout": "2025-12-17",
           "occupancies": [{"adults": 2}],
-          "cityName": "Paris",
-          "countryCode": "FR",
+          "city_name": "Paris",
+          "country_code": "FR",
           "k": 5
         }
       }
@@ -91,15 +91,15 @@
       "checkout": "string – required – check-out date in YYYY-MM-DD format (ISO 8601)",
       "occupancies": "array – required – array of objects specifying number of guests per room. Each object must have 'adults' (integer, required) and optionally 'children' (array of integers, ages)",
       "k": "integer – required – number of top cheapest hotels to return (e.g., 5 returns top 5 cheapest hotels). Must be between 1 and 200",
-      "hotelIds": "array of strings – optional – array of hotel IDs to search for availability and pricing. At least one location identifier must be provided: hotelIds, (cityName and countryCode), or iataCode",
-      "cityName": "string – optional – name of the city to search for hotels in. Must be paired with countryCode",
-      "countryCode": "string – optional – country code in ISO 2-letter format (e.g., 'US', 'FR', 'SG'). Must be paired with cityName",
-      "iataCode": "string – optional – IATA code of the search location, typically an airport code. At least one location identifier must be provided",
+      "hotel_ids": "array of strings – optional – array of hotel IDs to search for availability and pricing. At least one location identifier must be provided: hotel_ids, (city_name and country_code), or iata_code",
+      "city_name": "string – optional – name of the city to search for hotels in. Must be paired with country_code",
+      "country_code": "string – optional – country code in ISO 2-letter format (e.g., 'US', 'FR', 'SG'). Must be paired with city_name",
+      "iata_code": "string – optional – IATA code of the search location, typically an airport code. At least one location identifier must be provided",
       "currency": "string – optional – currency in which prices will be displayed. Default: USD",
-      "guestNationality": "string – optional – guest's nationality in ISO 2-letter country code format. Default: US",
-      "maxRatesPerHotel": "integer – optional – number of room rates to return per hotel, sorted by price (cheapest first). Default: 1",
-      "refundableRatesOnly": "boolean – optional – if true, only refundable rates will be included. Default: false",
-      "roomMapping": "boolean – optional – enable room mapping to retrieve mappedRoomId for each room. Default: true"
+      "guest_nationality": "string – optional – guest's nationality in ISO 2-letter country code format. Default: US",
+      "max_rates_per_hotel": "integer – optional – number of room rates to return per hotel, sorted by price (cheapest first). Default: 1",
+      "refundable_rates_only": "boolean – optional – if true, only refundable rates will be included. Default: false",
+      "room_mapping": "boolean – optional – enable room mapping to retrieve mappedRoomId for each room. Default: true"
     },
     "outputs": {
       "error": "boolean – indicates if an error occurred",
@@ -117,8 +117,8 @@
           "checkin": "2025-12-10",
           "checkout": "2025-12-17",
           "occupancies": [{"adults": 2}],
-          "cityName": "Paris",
-          "countryCode": "FR",
+          "city_name": "Paris",
+          "country_code": "FR",
           "k": 5
         }
       },
@@ -128,7 +128,7 @@
           "checkin": "2025-12-01",
           "checkout": "2025-12-03",
           "occupancies": [{"adults": 1}],
-          "iataCode": "JFK",
+          "iata_code": "JFK",
           "k": 10
         }
       },
@@ -138,7 +138,7 @@
           "checkin": "2025-11-10",
           "checkout": "2025-11-17",
           "occupancies": [{"adults": 2}],
-          "hotelIds": ["HTL001", "HTL002", "HTL003"],
+          "hotel_ids": ["HTL001", "HTL002", "HTL003"],
           "k": 1
         }
       }
@@ -150,7 +150,7 @@
     "method": "GET",
     "url": "https://api.liteapi.travel/v3.0/data/hotel",
     "inputs": {
-      "hotelId": "string – required – unique ID of the hotel",
+      "hotel_id": "string – required – unique ID of the hotel",
       "language": "string – optional – language code for results (e.g., 'en', 'fr'). Default: None (uses API default)",
       "timeout": "float – optional – request timeout in seconds. Default: 4.0"
     },
@@ -165,20 +165,20 @@
       {
         "title": "Get hotel details by ID",
         "body": {
-          "hotelId": "lp1897"
+          "hotel_id": "lp1897"
         }
       },
       {
         "title": "Get hotel details with language",
         "body": {
-          "hotelId": "lp1897",
+          "hotel_id": "lp1897",
           "language": "fr"
         }
       },
       {
         "title": "Get hotel details with custom timeout",
         "body": {
-          "hotelId": "lp1897",
+          "hotel_id": "lp1897",
           "timeout": 6.0
         }
       }
