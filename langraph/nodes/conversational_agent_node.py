@@ -32,6 +32,13 @@ Your role:
 - Be friendly, professional, and concise
 - Use the actual data provided in the collected_info section - do not make up information
 
+CRITICAL RULES - READ CAREFULLY:
+1. NEVER include "Collected_info:" or any JSON structure in your response
+2. NEVER show the raw JSON data to the user
+3. ONLY provide the actual information extracted from the JSON, formatted naturally
+4. Start your response directly with the information - do not mention "Collected_info" or "Based on the information gathered"
+5. The JSON data below is for YOUR reference only - the user should NEVER see it
+
 IMPORTANT:
 - You MUST use the actual data provided in the collected_info section
 - If visa_result, flight_result, hotel_result, or tripadvisor_result are present, they contain real information you need to share
@@ -51,7 +58,13 @@ IMPORTANT:
 - Extract and present hotel names, prices, addresses, and other relevant details from the hotel_result data
 - Extract and present restaurant/location names, addresses, and other relevant details from the tripadvisor_result data
 
-Generate a natural, helpful response that directly addresses the user's query using all available information."""
+Your response should start directly with the information, like:
+"I've found some great options for your trip to Beirut! As a citizen of the United Arab Emirates, you do not require a visa..."
+
+NOT like:
+"Collected_info: { ... } Based on the information gathered..."
+
+Remember: The JSON is invisible to the user - only show the extracted information in a natural, conversational format."""
 
 
 async def conversational_agent_node(state: AgentState) -> AgentState:
@@ -112,23 +125,116 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
             "role": "user", 
             "content": f"""User's original message: {user_message}
 
-Collected information from specialized agents (as JSON):
+Below is the data collected from specialized agents (THIS IS FOR YOUR REFERENCE ONLY - DO NOT INCLUDE IT IN YOUR RESPONSE):
 {json.dumps(collected_info, indent=2, ensure_ascii=False) if collected_info else "No information was collected from specialized agents."}
 
-Please generate a natural, conversational response that addresses the user's query using the information provided above. Be helpful, clear, and friendly."""
+IMPORTANT INSTRUCTIONS:
+- Extract the relevant information from the JSON above
+- Present it in a natural, conversational way
+- DO NOT include "Collected_info:", "Based on the information gathered", or any JSON structure in your response
+- Start your response directly with the information (e.g., "I've found some great options..." or "Here's what I found...")
+- The user should never see the JSON data - only the formatted information"""
         }
     ]
+    
+    # Helper function to clean response and remove any JSON/Collected_info references
+    def clean_response(text: str) -> str:
+        """Remove any 'Collected_info:' or JSON structures from the response."""
+        if not text:
+            return text
+        
+        # First, try to find and remove everything from "Collected_info:" to the first actual content
+        text_lower = text.lower()
+        collected_info_index = text_lower.find('collected_info')
+        
+        if collected_info_index != -1:
+            # Find where the JSON block ends (look for closing brace followed by actual content)
+            # Try to find the end of the JSON structure
+            remaining_text = text[collected_info_index:]
+            
+            # Look for patterns like "}\n\n" or "}\nBased on" or "}\nI've" etc.
+            # Find the last closing brace before actual content
+            brace_count = 0
+            json_end = -1
+            in_string = False
+            escape_next = False
+            
+            for i, char in enumerate(remaining_text):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            # Found the end of the JSON object
+                            # Look ahead for actual content (not just whitespace/braces)
+                            ahead = remaining_text[i+1:].strip()
+                            if ahead and not ahead.startswith('{') and not ahead.startswith('}'):
+                                json_end = collected_info_index + i + 1
+                                break
+            
+            if json_end != -1:
+                # Extract everything after the JSON
+                cleaned = text[json_end:].strip()
+                # Remove leading empty lines
+                while cleaned.startswith('\n'):
+                    cleaned = cleaned[1:]
+                text = cleaned
+        
+        # Additional cleanup: remove any lines that are pure JSON structure
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # Skip lines that are clearly JSON structure
+            if (stripped.startswith('{') or 
+                stripped.startswith('}') or 
+                (stripped.startswith('"') and ':' in stripped and (stripped.endswith(',') or stripped.endswith('"')))):
+                continue
+            # Skip lines that are just "Collected_info:"
+            if 'collected_info' in stripped.lower() and len(stripped) < 50:
+                continue
+            cleaned_lines.append(line)
+        
+        result = '\n'.join(cleaned_lines).strip()
+        
+        # Final check: if the response still starts with JSON-like content, try to find where actual content begins
+        if result.startswith('{') or result.startswith('"'):
+            # Try to find the first line that doesn't look like JSON
+            lines = result.split('\n')
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if (not stripped.startswith('{') and 
+                    not stripped.startswith('}') and 
+                    not stripped.startswith('"') and
+                    'collected_info' not in stripped.lower() and
+                    len(stripped) > 10):  # Actual content is usually longer
+                    result = '\n'.join(lines[i:]).strip()
+                    break
+        
+        return result
     
     # Call LLM to generate response
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=messages,
             temperature=0.7
         )
         
         message = response.choices[0].message
-        final_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+        raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+        
+        # Clean the response to remove any JSON/Collected_info references
+        final_response = clean_response(raw_response)
     
     except Exception as e:
         import traceback
@@ -153,12 +259,13 @@ The system has collected information from specialized agents. Please provide a h
             
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4",
+                    model="gpt-4o-mini",
                     messages=simplified_messages,
                     temperature=0.7
                 )
                 message = response.choices[0].message
-                final_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+                raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+                final_response = clean_response(raw_response)
             except Exception:
                 final_response = "I have the information you requested, but there was a technical issue formatting the response. Please try rephrasing your query or ask for specific details."
         else:

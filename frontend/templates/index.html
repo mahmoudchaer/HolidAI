@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HolidAI - Travel Assistant</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -96,6 +97,131 @@
             color: #333;
             border-bottom-left-radius: 4px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            line-height: 1.6;
+        }
+
+        /* Markdown styling */
+        .message-content strong,
+        .message-content b {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .message-content h1,
+        .message-content h2,
+        .message-content h3,
+        .message-content h4 {
+            margin: 16px 0 8px 0;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .message-content h1 { font-size: 1.5em; }
+        .message-content h2 { font-size: 1.3em; }
+        .message-content h3 { font-size: 1.1em; }
+
+        .message-content p {
+            margin: 8px 0;
+        }
+
+        .message-content ul,
+        .message-content ol {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+
+        .message-content li {
+            margin: 4px 0;
+        }
+
+        .message-content code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .message-content pre {
+            background: #f4f4f4;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .message-content pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .message-content blockquote {
+            border-left: 3px solid #667eea;
+            padding-left: 12px;
+            margin: 8px 0;
+            color: #666;
+            font-style: italic;
+        }
+
+        .message-content a {
+            color: #667eea;
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .message-content a:hover {
+            border-bottom-color: #667eea;
+        }
+
+        /* Rating stars */
+        .message-content .rating {
+            color: #f59e0b;
+            font-weight: 500;
+        }
+
+        /* Price styling */
+        .message-content .price {
+            color: #059669;
+            font-weight: 600;
+        }
+
+        /* Better spacing for structured content */
+        .message-content > *:first-child {
+            margin-top: 0;
+        }
+
+        .message-content > *:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Flight/restaurant/hotel item styling */
+        .message-content .item {
+            margin: 12px 0;
+            padding: 8px 0;
+        }
+
+        /* Better list styling */
+        .message-content ol,
+        .message-content ul {
+            margin: 12px 0;
+            padding-left: 28px;
+        }
+
+        .message-content li {
+            margin: 6px 0;
+            line-height: 1.6;
+        }
+
+        /* Improve paragraph spacing */
+        .message-content p {
+            margin: 10px 0;
+            line-height: 1.7;
+        }
+
+        /* Better formatting for flight/hotel details */
+        .message-content strong {
+            font-weight: 600;
         }
 
         .agents-info {
@@ -229,7 +355,13 @@
             
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
-            contentDiv.textContent = content;
+            
+            // Render markdown for assistant messages, plain text for user
+            if (isUser) {
+                contentDiv.textContent = content;
+            } else {
+                contentDiv.innerHTML = marked.parse(content);
+            }
             
             if (!isUser && agentsCalled.length > 0) {
                 const agentsInfo = document.createElement('div');

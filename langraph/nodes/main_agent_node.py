@@ -91,7 +91,7 @@ If no specialized agents are needed, respond with all false values."""}
     
     # Call LLM to determine needed agents
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         messages=messages
     )
     
