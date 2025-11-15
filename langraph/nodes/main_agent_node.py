@@ -38,6 +38,11 @@ Available specialized agents:
 - hotel_agent: For hotel searches (by location, price, dates, etc.)
 - visa_agent: For visa requirement checks
 - tripadvisor_agent: For location searches, restaurants, attractions, reviews, etc.
+- utilities_agent: For utility functions including:
+  * Weather information for cities/countries
+  * Currency conversion between different currencies
+  * Current date and time for cities/countries
+  * eSIM bundles and mobile data plans for countries (e.g., "eSIM for Qatar", "eSIM bundles for Japan")
 
 IMPORTANT: 
 - You ONLY need to determine which agents are needed based on the user's request
@@ -82,9 +87,12 @@ Available agents:
 - hotel_agent: For hotel searches
 - visa_agent: For visa requirement checks
 - tripadvisor_agent: For location/restaurant/attraction searches
+- utilities_agent: For utility functions including weather, currency conversion, date/time, and eSIM bundles/mobile data plans for countries
+
+IMPORTANT: If the user asks about eSIM, eSIM bundles, mobile data plans, SIM cards, or data plans for a country, you MUST set needs_utilities to true.
 
 Respond with a JSON object indicating which agents are needed. Example:
-{{"needs_flights": true, "needs_hotels": true, "needs_visa": false, "needs_tripadvisor": false}}
+{{"needs_flights": true, "needs_hotels": true, "needs_visa": false, "needs_tripadvisor": false, "needs_utilities": true}}
 
 If no specialized agents are needed, respond with all false values."""}
     ]
@@ -136,11 +144,12 @@ If no specialized agents are needed, respond with all false values."""}
             "needs_flights": False,
             "needs_hotels": False,
             "needs_visa": False,
-            "needs_tripadvisor": False
+            "needs_tripadvisor": False,
+            "needs_utilities": False
         }
     
     # Debug: Log what agents are needed
-    print(f"Main agent: Determined needs - flights: {needs_analysis.get('needs_flights')}, hotels: {needs_analysis.get('needs_hotels')}, visa: {needs_analysis.get('needs_visa')}, tripadvisor: {needs_analysis.get('needs_tripadvisor')}")
+    print(f"Main agent: Determined needs - flights: {needs_analysis.get('needs_flights')}, hotels: {needs_analysis.get('needs_hotels')}, visa: {needs_analysis.get('needs_visa')}, tripadvisor: {needs_analysis.get('needs_tripadvisor')}, utilities: {needs_analysis.get('needs_utilities')}")
     
     # Build list of nodes to execute in parallel
     nodes_to_execute = []
@@ -176,6 +185,13 @@ If no specialized agents are needed, respond with all false values."""}
     else:
         updated_state["needs_tripadvisor"] = False
         updated_state["tripadvisor_result"] = None
+    
+    if needs_analysis.get("needs_utilities", False):
+        nodes_to_execute.append("utilities_agent")
+        updated_state["needs_utilities"] = True
+    else:
+        updated_state["needs_utilities"] = False
+        updated_state["utilities_result"] = None
     
     # If no agents needed, route directly to conversational
     if not nodes_to_execute:

@@ -25,16 +25,18 @@ async def join_node(state: AgentState) -> AgentState:
     needs_hotels = state.get("needs_hotels", False)
     needs_visa = state.get("needs_visa", False)
     needs_tripadvisor = state.get("needs_tripadvisor", False)
+    needs_utilities = state.get("needs_utilities", False)
     
     # Get actual result values
     flight_result = state.get("flight_result")
     hotel_result = state.get("hotel_result")
     visa_result = state.get("visa_result")
     tripadvisor_result = state.get("tripadvisor_result")
+    utilities_result = state.get("utilities_result")
     
     # Debug: Print actual state values
-    print(f"Join node: Checking state - needs_flights={needs_flights}, needs_hotels={needs_hotels}, needs_visa={needs_visa}, needs_tripadvisor={needs_tripadvisor}")
-    print(f"Join node: Results present - flight_result={'present' if flight_result is not None else 'None'}, hotel_result={'present' if hotel_result is not None else 'None'}, visa_result={'present' if visa_result is not None else 'None'}, tripadvisor_result={'present' if tripadvisor_result is not None else 'None'}")
+    print(f"Join node: Checking state - needs_flights={needs_flights}, needs_hotels={needs_hotels}, needs_visa={needs_visa}, needs_tripadvisor={needs_tripadvisor}, needs_utilities={needs_utilities}")
+    print(f"Join node: Results present - flight_result={'present' if flight_result is not None else 'None'}, hotel_result={'present' if hotel_result is not None else 'None'}, visa_result={'present' if visa_result is not None else 'None'}, tripadvisor_result={'present' if tripadvisor_result is not None else 'None'}, utilities_result={'present' if utilities_result is not None else 'None'}")
     if hotel_result is not None:
         hotels_count = len(hotel_result.get("hotels", [])) if isinstance(hotel_result, dict) else 0
         print(f"Join node: hotel_result details - hotels count: {hotels_count}, error: {hotel_result.get('error', 'N/A') if isinstance(hotel_result, dict) else 'N/A'}")
@@ -53,6 +55,9 @@ async def join_node(state: AgentState) -> AgentState:
     
     if needs_tripadvisor and tripadvisor_result is None:
         missing_results.append("tripadvisor")
+    
+    if needs_utilities and utilities_result is None:
+        missing_results.append("utilities")
     
     # Even with add_edge, join_node might be called before all parallel nodes complete
     # We need to wait and retry if results are missing
@@ -91,6 +96,8 @@ async def join_node(state: AgentState) -> AgentState:
         collected_info["visa_result"] = state.get("visa_result")
     if state.get("tripadvisor_result") is not None:
         collected_info["tripadvisor_result"] = state.get("tripadvisor_result")
+    if state.get("utilities_result") is not None:
+        collected_info["utilities_result"] = state.get("utilities_result")
     
     # If some results are missing (None), add error indicators
     # Only add error if the result is actually None (not present), not if it exists but has an error flag
@@ -104,6 +111,8 @@ async def join_node(state: AgentState) -> AgentState:
                 collected_info["visa_result"] = {"error": True, "error_message": "Visa check did not complete"}
             elif missing == "tripadvisor" and "tripadvisor_result" not in collected_info:
                 collected_info["tripadvisor_result"] = {"error": True, "error_message": "TripAdvisor search did not complete"}
+            elif missing == "utilities" and "utilities_result" not in collected_info:
+                collected_info["utilities_result"] = {"error": True, "error_message": "Utilities query did not complete"}
     
     updated_state["collected_info"] = collected_info
     updated_state["route"] = "conversational_agent"

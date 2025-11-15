@@ -32,10 +32,12 @@ class AgentState(TypedDict):
         needs_hotels: Whether hotel information is needed
         needs_visa: Whether visa information is needed
         needs_tripadvisor: Whether TripAdvisor information is needed
+        needs_utilities: Whether utilities information is needed (weather, currency, date/time)
         flight_result: Flight search results (set by flight_agent_node) - can be updated in parallel
         hotel_result: Hotel search results (set by hotel_agent_node) - can be updated in parallel
         visa_result: Visa requirement results (set by visa_agent_node) - can be updated in parallel
         tripadvisor_result: TripAdvisor results (set by tripadvisor_agent_node) - can be updated in parallel
+        utilities_result: Utilities results (set by utilities_agent_node) - can be updated in parallel
         join_retry_count: Counter for join_node retries to prevent infinite loops
     """
     user_message: Annotated[str, reducer]  # Read-only, but needs reducer for parallel execution
@@ -49,9 +51,11 @@ class AgentState(TypedDict):
     needs_hotels: Annotated[bool, reducer]
     needs_visa: Annotated[bool, reducer]
     needs_tripadvisor: Annotated[bool, reducer]
+    needs_utilities: Annotated[bool, reducer]
     flight_result: Annotated[Optional[Dict[str, Any]], reducer]
     hotel_result: Annotated[Optional[Dict[str, Any]], reducer]
     visa_result: Annotated[Optional[Dict[str, Any]], reducer]
     tripadvisor_result: Annotated[Optional[Dict[str, Any]], reducer]
+    utilities_result: Annotated[Optional[Dict[str, Any]], reducer]
     join_retry_count: Annotated[int, reducer]
 

@@ -52,6 +52,13 @@ IMPORTANT:
 
 - For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants you found - present them to the user. Only report an error if the result has "error": true AND no data.
 
+- For utilities_result: This contains utility information (weather, currency conversion, date/time, eSIM bundles, or holidays). Present the information naturally based on what tool was used:
+  * For weather: Show temperature, conditions, etc.
+  * For currency: Show the conversion result.
+  * For date/time: Show the current date and time.
+  * For eSIM bundles: If utilities_result has a "bundles" array, present each bundle with provider name, plan details, validity, price, and MOST IMPORTANTLY - include the purchase link as a clickable markdown link. Format like: "[Provider Name - Plan]($link)" or "Provider: [Purchase here]($link)". ALWAYS include the links from the "link" field in each bundle.
+  * For holidays: If utilities_result has a "holidays" array, present each holiday with its name, date, type (e.g., "National holiday", "Observance"), and description. Format dates in a readable way (e.g., "January 1, 2024" instead of "2024-01-01"). Group holidays by month if there are many. Only report an error if the result has "error": true AND no actual data.
+
 - Format dates in a natural, readable way (e.g., "December 12, 2025" instead of "2025-12-12")
 - Extract and present flight details (airline, times, prices) from the flight_result data
 - Extract and present visa requirements from the visa_result data
@@ -89,6 +96,8 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
         collected_info["visa_result"] = context.get("visa_result")
     if context.get("tripadvisor_result"):
         collected_info["tripadvisor_result"] = context.get("tripadvisor_result")
+    if context.get("utilities_result"):
+        collected_info["utilities_result"] = context.get("utilities_result")
     
     # Debug: Log what we're passing to the LLM
     if collected_info.get("hotel_result"):
@@ -116,6 +125,11 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
             has_error = visa_result.get("error", False)
             has_result = "result" in visa_result or "data" in visa_result
             print(f"Conversational agent: Received visa_result, has data: {has_result}, error: {has_error}")
+    if collected_info.get("utilities_result"):
+        utilities_result = collected_info["utilities_result"]
+        if isinstance(utilities_result, dict):
+            has_error = utilities_result.get("error", False)
+            print(f"Conversational agent: Received utilities_result, error: {has_error}")
     
     # Prepare messages for LLM
     import json
@@ -133,7 +147,9 @@ IMPORTANT INSTRUCTIONS:
 - Present it in a natural, conversational way
 - DO NOT include "Collected_info:", "Based on the information gathered", or any JSON structure in your response
 - Start your response directly with the information (e.g., "I've found some great options..." or "Here's what I found...")
-- The user should never see the JSON data - only the formatted information"""
+- The user should never see the JSON data - only the formatted information
+- For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
+- Make sure all links are properly formatted as markdown links so they appear as clickable in the UI"""
         }
     ]
     

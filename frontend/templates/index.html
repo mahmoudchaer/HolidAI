@@ -361,6 +361,13 @@
                 contentDiv.textContent = content;
             } else {
                 contentDiv.innerHTML = marked.parse(content);
+                
+                // Make all links open in a new tab
+                const links = contentDiv.querySelectorAll('a');
+                links.forEach(link => {
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer'; // Security best practice
+                });
             }
             
             if (!isUser && agentsCalled.length > 0) {

@@ -8,6 +8,7 @@ from nodes.visa_agent_node import visa_agent_node
 from nodes.flight_agent_node import flight_agent_node
 from nodes.hotel_agent_node import hotel_agent_node
 from nodes.tripadvisor_agent_node import tripadvisor_agent_node
+from nodes.utilities_agent_node import utilities_agent_node
 from nodes.conversational_agent_node import conversational_agent_node
 from nodes.join_node import join_node
 
@@ -36,6 +37,8 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return "flight_agent"
     elif route == "tripadvisor_agent":
         return "tripadvisor_agent"
+    elif route == "utilities_agent":
+        return "utilities_agent"
     elif route == "conversational_agent":
         return "conversational_agent"
     elif route == "join_node":
@@ -61,6 +64,7 @@ def create_graph() -> StateGraph:
     graph.add_node("flight_agent", flight_agent_node)
     graph.add_node("hotel_agent", hotel_agent_node)
     graph.add_node("tripadvisor_agent", tripadvisor_agent_node)
+    graph.add_node("utilities_agent", utilities_agent_node)
     graph.add_node("join_node", join_node)
     graph.add_node("conversational_agent", conversational_agent_node)
     
@@ -78,6 +82,7 @@ def create_graph() -> StateGraph:
             "visa_agent": "visa_agent",
             "flight_agent": "flight_agent",
             "tripadvisor_agent": "tripadvisor_agent",
+            "utilities_agent": "utilities_agent",
             "conversational_agent": "conversational_agent",
             "join_node": "join_node",
             "end": END
@@ -91,6 +96,7 @@ def create_graph() -> StateGraph:
     graph.add_edge("flight_agent", "join_node")
     graph.add_edge("hotel_agent", "join_node")
     graph.add_edge("tripadvisor_agent", "join_node")
+    graph.add_edge("utilities_agent", "join_node")
     
     # Join node routes to conversational agent when ready, or back to itself if waiting
     graph.add_conditional_edges(
@@ -141,10 +147,12 @@ async def run(user_message: str, config: dict = None) -> dict:
         "needs_hotels": False,
         "needs_visa": False,
         "needs_tripadvisor": False,
+        "needs_utilities": False,
         "flight_result": None,
         "hotel_result": None,
         "visa_result": None,
         "tripadvisor_result": None,
+        "utilities_result": None,
         "join_retry_count": 0
     }
     

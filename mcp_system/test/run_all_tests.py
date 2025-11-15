@@ -14,6 +14,7 @@ from test.test_permissions import test_permissions
 from test.test_tripadvisor_agent import test_tripadvisor_agent
 from test.test_visa_agent import test_visa_agent
 from test.test_flight_agent import test_flight_agent
+from test.test_utilities_agent import test_utilities_agent
 
 
 async def run_test_with_capture(test_func, test_name):
@@ -58,6 +59,7 @@ async def run_all_tests():
         (test_tripadvisor_agent, "TripAdvisor Agent"),
         (test_visa_agent, "Visa Agent"),
         (test_flight_agent, "Flight Agent"),
+        (test_utilities_agent, "Utilities Agent"),
     ]
     
     results = []

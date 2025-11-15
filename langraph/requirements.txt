@@ -1,7 +1,12 @@
+# LangGraph orchestration
 langgraph>=0.2.0
 langchain>=0.3.0
 langchain-openai>=0.2.0
+
+# OpenAI API
 openai>=1.0.0
+
+# Environment and HTTP
 python-dotenv>=1.0.0
 httpx>=0.25.0
 

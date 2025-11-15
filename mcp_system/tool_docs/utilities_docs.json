@@ -1,0 +1,221 @@
+{
+  "get_real_time_weather": {
+    "description": "Get real-time weather information for a specific city or country. Returns current temperature, weather conditions, humidity, wind speed, pressure, visibility, and cloud coverage. Uses OpenWeatherMap API (if API key available) or wttr.in as fallback.",
+    "inputs": {
+      "location": "string – required – City name or country name (e.g., 'New York', 'London', 'Lebanon', 'Tokyo'). Can be in any format, the tool will attempt to find the location."
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_message": "string – description of the error, if any",
+      "error_code": "string – code of the error (API_ERROR, UNEXPECTED_ERROR)",
+      "location": "string – the location name (formatted)",
+      "temperature": "number – current temperature in Celsius",
+      "feels_like": "number – feels-like temperature in Celsius",
+      "description": "string – weather description (e.g., 'Clear Sky', 'Partly Cloudy')",
+      "humidity": "number – humidity percentage (0-100)",
+      "wind_speed": "number – wind speed in km/h",
+      "pressure": "number – atmospheric pressure in hPa or mbar",
+      "visibility": "number – visibility in kilometers (optional)",
+      "clouds": "number – cloud coverage percentage (0-100)",
+      "units": "object – units for all measurements"
+    },
+    "examples": [
+      {
+        "title": "Get weather for a city",
+        "body": {
+          "location": "New York"
+        }
+      },
+      {
+        "title": "Get weather for a country",
+        "body": {
+          "location": "Lebanon"
+        }
+      },
+      {
+        "title": "Get weather for London",
+        "body": {
+          "location": "London"
+        }
+      }
+    ]
+  },
+  "convert_currencies": {
+    "description": "Convert currency from one currency code to another. Supports all major currencies (USD, EUR, GBP, JPY, CAD, AUD, etc.). Uses real-time exchange rates from exchangerate-api.com. Free API, no key required.",
+    "inputs": {
+      "from_currency": "string – required – Source currency code in ISO 4217 format (e.g., 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'AED', 'SAR', 'QAR', 'LBP')",
+      "to_currency": "string – required – Target currency code in ISO 4217 format (e.g., 'USD', 'EUR', 'GBP', 'JPY')",
+      "amount": "number – optional – Amount to convert (default: 1.0). Can be any positive number."
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_message": "string – description of the error, if any",
+      "error_code": "string – code of the error (INVALID_CURRENCY, API_ERROR, UNEXPECTED_ERROR)",
+      "from_currency": "string – source currency code",
+      "to_currency": "string – target currency code",
+      "amount": "number – original amount",
+      "converted_amount": "number – converted amount (rounded to 2 decimal places)",
+      "exchange_rate": "number – exchange rate used (rounded to 6 decimal places)",
+      "rate_date": "string – date of the exchange rate",
+      "base_currency": "string – base currency used for rates"
+    },
+    "examples": [
+      {
+        "title": "Convert USD to EUR",
+        "body": {
+          "from_currency": "USD",
+          "to_currency": "EUR",
+          "amount": 100
+        }
+      },
+      {
+        "title": "Convert EUR to GBP",
+        "body": {
+          "from_currency": "EUR",
+          "to_currency": "GBP",
+          "amount": 50
+        }
+      },
+      {
+        "title": "Get exchange rate for USD to JPY",
+        "body": {
+          "from_currency": "USD",
+          "to_currency": "JPY",
+          "amount": 1
+        }
+      }
+    ]
+  },
+  "get_real_time_date_time": {
+    "description": "Get real-time date and time for a specific country or city. Returns current date, time, timezone information, day of week, and UTC offset. Uses WorldTimeAPI (free, no key required). Supports major cities and countries worldwide.",
+    "inputs": {
+      "location": "string – required – Country name or city name (e.g., 'New York', 'London', 'Japan', 'Lebanon', 'Tokyo', 'Dubai'). Can be major city names or country names. The tool will attempt to determine the appropriate timezone."
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_message": "string – description of the error, if any",
+      "error_code": "string – code of the error (INVALID_LOCATION, API_ERROR, UNEXPECTED_ERROR)",
+      "location": "string – the location name provided",
+      "timezone": "string – timezone identifier (e.g., 'America/New_York', 'Europe/London')",
+      "date": "string – current date in YYYY-MM-DD format",
+      "time": "string – current time in HH:MM:SS format (24-hour)",
+      "datetime": "string – combined date and time in YYYY-MM-DD HH:MM:SS format",
+      "day_of_week": "string – day of the week (e.g., 'Monday', 'Tuesday')",
+      "utc_offset": "string – UTC offset (e.g., '+05:00', '-08:00')",
+      "abbreviation": "string – timezone abbreviation (e.g., 'EST', 'PST', 'GMT')",
+      "timezone_name": "string – full timezone name",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get current time in New York",
+        "body": {
+          "location": "New York"
+        }
+      },
+      {
+        "title": "Get current time in a country",
+        "body": {
+          "location": "Japan"
+        }
+      },
+      {
+        "title": "Get current time in London",
+        "body": {
+          "location": "London"
+        }
+      }
+    ]
+  },
+  "get_esim_bundles": {
+    "description": "Get available eSIM bundles for a specific country from esimradar.com. Returns a list of eSIM plans with provider names, data plans, validity periods, prices, and purchase links. Useful for travelers who need mobile data when visiting a country.",
+    "inputs": {
+      "country": "string – required – Country name (e.g., 'Qatar', 'USA', 'UAE', 'Lebanon', 'Japan', 'UK', 'France', 'Germany'). Can be full country name or common abbreviation."
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_message": "string – description of the error, if any",
+      "error_code": "string – code of the error (INVALID_COUNTRY, HTTP_ERROR, PARSING_ERROR, NO_BUNDLES, UNEXPECTED_ERROR)",
+      "country": "string – the country name provided",
+      "bundles": "array – list of eSIM bundles, each containing: provider (string), plan (string), validity (string), price (string), link (string)",
+      "count": "number – number of bundles found",
+      "source": "string – data source (esimradar.com)",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get eSIM bundles for Qatar",
+        "body": {
+          "country": "Qatar"
+        }
+      },
+      {
+        "title": "Get eSIM bundles for USA",
+        "body": {
+          "country": "USA"
+        }
+      },
+      {
+        "title": "Get eSIM bundles for Japan",
+        "body": {
+          "country": "Japan"
+        }
+      }
+    ]
+  },
+  "get_holidays": {
+    "description": "Get holidays for a specific country, optionally filtered by year, month, or day. Returns a list of holidays with their names, dates, types (e.g., National holiday, Observance), descriptions, and locations. Uses Calendarific API which supports 230+ countries. Requires CALENDARIFIC_API_KEY in .env file (free tier: 1,000 requests/month).",
+    "inputs": {
+      "country": "string – required – Country name or ISO 3166-1 alpha-2 country code (e.g., 'USA', 'United States', 'US', 'Qatar', 'QA', 'Lebanon', 'LB', 'Japan', 'JP'). Supports common country names and abbreviations.",
+      "year": "number – optional – Year to get holidays for (default: current year). Must be between 2000 and 2100.",
+      "month": "number – optional – Month (1-12) to filter holidays. If provided, only holidays in that month are returned.",
+      "day": "number – optional – Day (1-31) to filter holidays. If provided with month, only holidays on that specific date are returned."
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_message": "string – description of the error, if any",
+      "error_code": "string – code of the error (API_KEY_MISSING, API_KEY_INVALID, INVALID_COUNTRY, INVALID_YEAR, API_ERROR, RATE_LIMIT_EXCEEDED, UNEXPECTED_ERROR)",
+      "country": "string – the country name provided",
+      "country_code": "string – ISO 3166-1 alpha-2 country code used",
+      "year": "number – year for which holidays were retrieved",
+      "month": "number – optional month filter applied",
+      "day": "number – optional day filter applied",
+      "holidays": "array – list of holidays, each containing: name (string), date (string YYYY-MM-DD), datetime (string ISO format), type (array of strings like ['National holiday', 'Observance']), description (string), country (string), locations (string)",
+      "count": "number – number of holidays found",
+      "source": "string – data source (calendarific.com)",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Get all holidays for Qatar in current year",
+        "body": {
+          "country": "Qatar"
+        }
+      },
+      {
+        "title": "Get holidays for USA in 2024",
+        "body": {
+          "country": "USA",
+          "year": 2024
+        }
+      },
+      {
+        "title": "Get holidays in Lebanon for December",
+        "body": {
+          "country": "Lebanon",
+          "month": 12
+        }
+      },
+      {
+        "title": "Get holidays on a specific date",
+        "body": {
+          "country": "Japan",
+          "year": 2024,
+          "month": 1,
+          "day": 1
+        }
+      }
+    ]
+  }
+}
+

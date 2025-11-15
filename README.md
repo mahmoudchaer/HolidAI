@@ -5,13 +5,14 @@ Multi-agent travel assistant using LangGraph orchestration.
 ## Architecture
 
 - **Orchestrator (Main Agent)**: Routes queries to specialized agents and accumulates information
-- **Specialized Agents**: Flight, Hotel, Visa, TripAdvisor
+- **Specialized Agents**: Flight, Hotel, Visa, TripAdvisor, Utilities (weather, currency, date/time)
 - **Conversational Agent**: Generates final user response from collected information
 
 ## Setup
 
 1. Install dependencies:
 ```bash
+pip install -r mcp_system/requirements.txt
 pip install -r langraph/requirements.txt
 pip install -r frontend/requirements.txt
 ```
