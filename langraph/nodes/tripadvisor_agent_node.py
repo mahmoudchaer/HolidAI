@@ -204,20 +204,40 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
                 response_text = f"I encountered an error while searching TripAdvisor: {tripadvisor_result.get('error_message', 'Unknown error')}"
                 if tripadvisor_result.get("suggestion"):
                     response_text += f"\n\nSuggestion: {tripadvisor_result.get('suggestion')}"
-            else:
-                # Store the raw result directly in state for parallel execution
-                updated_state["tripadvisor_result"] = tripadvisor_result
-                # No need to set route - using add_edge means we automatically route to join_node
+            
+            # Store the raw result directly in state for parallel execution (both legacy and new structure)
+            updated_state["tripadvisor_result"] = tripadvisor_result
+            if "results" not in updated_state:
+                updated_state["results"] = {}
+            updated_state["results"]["tripadvisor_agent"] = tripadvisor_result
+            updated_state["results"]["tripadvisor"] = tripadvisor_result
+            updated_state["results"]["tripadvisor_result"] = tripadvisor_result
+            updated_state["results"]["activities"] = tripadvisor_result
+            # No need to set route - using add_edge means we automatically route to join_node
             
         except Exception as e:
             # Store error in result
-            updated_state["tripadvisor_result"] = {"error": True, "error_message": str(e)}
+            error_result = {"error": True, "error_message": str(e)}
+            updated_state["tripadvisor_result"] = error_result
+            if "results" not in updated_state:
+                updated_state["results"] = {}
+            updated_state["results"]["tripadvisor_agent"] = error_result
+            updated_state["results"]["tripadvisor"] = error_result
+            updated_state["results"]["tripadvisor_result"] = error_result
+            updated_state["results"]["activities"] = error_result
             # No need to set route - using add_edge means we automatically route to join_node
         
         return updated_state
     
     # No tool call - store empty result
-    updated_state["tripadvisor_result"] = {"error": True, "error_message": "No TripAdvisor search parameters provided"}
+    error_result = {"error": True, "error_message": "No TripAdvisor search parameters provided"}
+    updated_state["tripadvisor_result"] = error_result
+    if "results" not in updated_state:
+        updated_state["results"] = {}
+    updated_state["results"]["tripadvisor_agent"] = error_result
+    updated_state["results"]["tripadvisor"] = error_result
+    updated_state["results"]["tripadvisor_result"] = error_result
+    updated_state["results"]["activities"] = error_result
     # No need to set route - using add_edge means we automatically route to join_node
     
     return updated_state

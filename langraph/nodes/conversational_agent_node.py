@@ -27,16 +27,24 @@ def get_conversational_agent_prompt() -> str:
 
 Your role:
 - Take the user's original message and synthesize it with the information gathered from specialized agents
+- EXPLAIN YOUR REASONING PROCESS - show the user what you did and why
 - Generate a natural, conversational response that feels human and helpful
 - Present information in a clear, organized manner
 - Be friendly, professional, and concise
 - Use the actual data provided in the collected_info section - do not make up information
 
+CRITICAL: EXPLAIN YOUR LOGIC AND REASONING
+- Start by explaining what you checked and why (e.g., "I checked the weather for your vacation dates to find days with no rain")
+- Show your decision-making process (e.g., "I found that December 12-16 have clear weather, so I searched for flights and hotels for those dates")
+- If you found multiple good options, explain them and ask for preferences (e.g., "All 10 days have good weather. Do you prefer the cheapest prices or specific dates?")
+- Explain any recommendations you make based on the data
+- Be transparent about what information you used to make decisions
+
 CRITICAL RULES - READ CAREFULLY:
 1. NEVER include "Collected_info:" or any JSON structure in your response
 2. NEVER show the raw JSON data to the user
 3. ONLY provide the actual information extracted from the JSON, formatted naturally
-4. Start your response directly with the information - do not mention "Collected_info" or "Based on the information gathered"
+4. ALWAYS explain your reasoning and what steps you took
 5. The JSON data below is for YOUR reference only - the user should NEVER see it
 
 IMPORTANT:
@@ -44,7 +52,7 @@ IMPORTANT:
 - If visa_result, flight_result, hotel_result, or tripadvisor_result are present, they contain real information you need to share
 - Do NOT say you don't have information if it's provided in the collected_info section - ALWAYS check the collected_info JSON before saying information is unavailable
 
-- For flight_result: If it has an "outbound" array with items, those are real flight options you found - present them to the user with details like airline, departure/arrival times, prices, etc. IMPORTANT: Format flights cleanly - use numbered lists (1., 2., 3.) and include the airline logo inline with the airline name using markdown: ![Airline](airline_logo_url) **Airline Name**. Place the logo right before the airline name on the same line. Avoid nested bullet points - use a clean format like: "1. ![Logo](url) **Airline Name** - Flight details on separate lines without bullets." Only report an error if the result has "error": true AND no outbound flights data.
+- For flight_result: If it has an "outbound" array with items, those are real flight options you found - present them to the user with details like airline, departure/arrival times, prices, etc. CRITICAL: ALWAYS include airline logos and names. Each flight object in the outbound array may have: airline_logo, airline_name, airline, or flights array with legs containing airline info. Look for these fields in the flight object: "airline_logo", "airline_name", "airline", or check the "flights" array (if present) for airline information in each leg. Format flights cleanly - use numbered lists (1., 2., 3.) and ALWAYS include the airline logo inline with the airline name using markdown: ![Airline Logo](airline_logo_url) **Airline Name**. Place the logo right before the airline name on the first line. Each flight should look like: "1. ![airline_logo_url](airline_logo_url) **airline_name**\nDeparture: [time] from [airport]\nArrival: [time] at [airport]\nPrice: [price]". If airline_logo is not available, still show the airline name in bold: **Airline Name**. Only report an error if the result has "error": true AND no outbound flights data.
 
 - For visa_result: If it has a "result" field with content, that contains the visa requirement information - present it to the user. Preserve any markdown formatting (like **bold** markers) that may be present. Only report an error if the result has "error": true AND no result data.
 
@@ -53,7 +61,7 @@ IMPORTANT:
 - For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants you found - present them to the user. Only report an error if the result has "error": true AND no data.
 
 - For utilities_result: This contains utility information (weather, currency conversion, date/time, eSIM bundles, or holidays). Present the information naturally based on what tool was used:
-  * For weather: Show temperature, conditions, etc.
+  * For weather: CRITICAL - Analyze the weather data to determine which dates have no rain. If the user mentioned they prefer no rain, identify which dates in their vacation window have clear/cloudy weather (no rain). Explain: "I checked the weather and found that [specific dates] have no rain, so I searched for flights and hotels for those dates." If all dates have good weather, say: "I checked the weather for all your vacation dates (December 10-20) and found that all days have clear weather with no rain. You can choose any 5 days from this window." Then ask about preferences (cheapest prices, specific dates, etc.). Show temperature, conditions, etc.
   * For currency: Show the conversion result.
   * For date/time: Show the current date and time.
   * For eSIM bundles: If utilities_result has a "bundles" array, present each bundle with provider name, plan details, validity, price, and MOST IMPORTANTLY - include the purchase link as a clickable markdown link. Format like: "[Provider Name - Plan]($link)" or "Provider: [Purchase here]($link)". ALWAYS include the links from the "link" field in each bundle.
@@ -61,7 +69,7 @@ IMPORTANT:
 
 - Format dates in a natural, readable way (e.g., "December 12, 2025" instead of "2025-12-12")
 - Extract and present flight details (airline, times, prices) from the flight_result data
-- For flights: If "airline_logo" is present in the flight data, include it inline with the airline name: ![Airline](airline_logo_url) **Airline Name**. Format flights as numbered lists (1., 2., 3.) with the logo and airline name on the first line, followed by flight details (departure, arrival, duration, price) on subsequent lines without bullet points. Keep the formatting clean and easy to read.
+- For flights: CRITICAL - ALWAYS extract and include airline logo and name from each flight object. Look for these fields in each flight: "airline_logo", "airline_name", "airline", or check the "flights" array (if present) for airline info in legs. Format each flight as: "1. ![airline_logo_url](airline_logo_url) **airline_name**\nDeparture: [departure_time] from [departure_airport]\nArrival: [arrival_time] at [arrival_airport]\nDuration: [duration]\nPrice: [price] [currency]". If airline_logo exists, include it. If not, still show airline name in bold: **airline_name**. Use numbered lists (1., 2., 3.) with the logo (if available) and airline name on the first line, followed by flight details on subsequent lines. NEVER skip the airline name - it's essential for user identification.
 - Extract and present visa requirements from the visa_result data
 - Extract and present hotel names, prices, addresses, and other relevant details from the hotel_result data
 - Extract and present restaurant/location names, addresses, and other relevant details from the tripadvisor_result data
@@ -87,8 +95,31 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     user_message = state.get("user_message", "")
     context = state.get("context", {})
     collected_info = state.get("collected_info", {})
+    results = state.get("results", {})
+    plan = state.get("plan", [])
+    finished_steps = state.get("finished_steps", [])
+    user_questions = state.get("user_questions", [])
     
-    # Also check context for results
+    # If there are questions to ask the user, ask them directly
+    # This happens when the main agent needs clarification before proceeding
+    if user_questions:
+        # Extract the question from the list
+        if isinstance(user_questions, list):
+            question = user_questions[-1] if len(user_questions) > 0 else "I need more information to proceed."
+        else:
+            question = str(user_questions)
+        
+        # If question is still a list, get the first element
+        if isinstance(question, list) and len(question) > 0:
+            question = question[0]
+        
+        updated_state = state.copy()
+        updated_state["last_response"] = str(question)
+        updated_state["route"] = "end"
+        print(f"Conversational agent: Asking user question from main agent: {question}")
+        return updated_state
+    
+    # Also check context for results (legacy)
     if context.get("flight_result"):
         collected_info["flight_result"] = context.get("flight_result")
     if context.get("hotel_result"):
@@ -99,6 +130,21 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
         collected_info["tripadvisor_result"] = context.get("tripadvisor_result")
     if context.get("utilities_result"):
         collected_info["utilities_result"] = context.get("utilities_result")
+    
+    # Also check new results structure and merge into collected_info
+    # This ensures backward compatibility while supporting the new architecture
+    if results:
+        # Map results to collected_info format
+        if "flight_agent" in results or "flight" in results or "flight_result" in results:
+            collected_info["flight_result"] = results.get("flight_agent") or results.get("flight") or results.get("flight_result")
+        if "hotel_agent" in results or "hotel" in results or "hotel_result" in results or "hotel_options" in results:
+            collected_info["hotel_result"] = results.get("hotel_agent") or results.get("hotel") or results.get("hotel_result") or results.get("hotel_options")
+        if "visa_agent" in results or "visa" in results or "visa_result" in results or "visa_info" in results:
+            collected_info["visa_result"] = results.get("visa_agent") or results.get("visa") or results.get("visa_result") or results.get("visa_info")
+        if "tripadvisor_agent" in results or "tripadvisor" in results or "tripadvisor_result" in results or "activities" in results:
+            collected_info["tripadvisor_result"] = results.get("tripadvisor_agent") or results.get("tripadvisor") or results.get("tripadvisor_result") or results.get("activities")
+        if "utilities_agent" in results or "utilities" in results or "utilities_result" in results or "weather_data" in results or "esim_data" in results:
+            collected_info["utilities_result"] = results.get("utilities_agent") or results.get("utilities") or results.get("utilities_result") or results.get("weather_data") or results.get("esim_data")
     
     # Debug: Log what we're passing to the LLM
     if collected_info.get("hotel_result"):
@@ -134,24 +180,83 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     
     # Prepare messages for LLM
     import json
+    
+    # Build execution context to explain reasoning
+    execution_context = ""
+    if plan:
+        execution_context = "\n\nEXECUTION PLAN AND REASONING:\n"
+        execution_context += "Here's what I did to help you:\n\n"
+        for i, step in enumerate(plan, 1):
+            step_id = step.get("id", i)
+            step_nodes = step.get("nodes", [])
+            step_requires = step.get("requires", [])
+            step_produces = step.get("produces", [])
+            is_finished = step_id in finished_steps
+            
+            execution_context += f"Step {i}: "
+            if "utilities_agent" in step_nodes:
+                execution_context += "Checked weather for your dates to find the best days with no rain"
+            elif "flight_agent" in step_nodes:
+                execution_context += "Searched for flights"
+            elif "hotel_agent" in step_nodes:
+                execution_context += "Searched for hotels"
+            elif "visa_agent" in step_nodes:
+                execution_context += "Checked visa requirements"
+            elif "tripadvisor_agent" in step_nodes:
+                execution_context += "Found activities and attractions"
+            else:
+                execution_context += f"Executed {', '.join(step_nodes)}"
+            
+            if step_requires:
+                execution_context += f" (using: {', '.join(step_requires)})"
+            if step_produces:
+                execution_context += f" → produced: {', '.join(step_produces)}"
+            execution_context += f" {'✓ Completed' if is_finished else '⏳ Pending'}\n"
+    
     messages = [
         {"role": "system", "content": get_conversational_agent_prompt()},
         {
             "role": "user", 
             "content": f"""User's original message: {user_message}
+{execution_context}
 
 Below is the data collected from specialized agents (THIS IS FOR YOUR REFERENCE ONLY - DO NOT INCLUDE IT IN YOUR RESPONSE):
 {json.dumps(collected_info, indent=2, ensure_ascii=False) if collected_info else "No information was collected from specialized agents."}
 
 IMPORTANT INSTRUCTIONS:
+- EXPLAIN YOUR REASONING: Start by explaining what you checked and why (e.g., "I checked the weather for your vacation dates to find days with no rain")
+- SHOW YOUR LOGIC: Explain your decision-making (e.g., "I found that December 12-16 have clear weather, so I searched for flights and hotels for those dates")
+- ASK FOR PREFERENCES: If multiple good options exist, ask the user (e.g., "All 10 days have good weather. Do you prefer the cheapest prices or specific dates?")
 - Extract the relevant information from the JSON above
 - Present it in a natural, conversational way
 - DO NOT include "Collected_info:", "Based on the information gathered", or any JSON structure in your response
-- Start your response directly with the information (e.g., "I've found some great options..." or "Here's what I found...")
+- Start your response by explaining what you did, then present the results
 - The user should never see the JSON data - only the formatted information
 - For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
 - Make sure all links are properly formatted as markdown links so they appear as clickable in the UI
-- For flights: ALWAYS include airline logos inline with airline names when available: ![Airline](airline_logo_url) **Airline Name**. Format as numbered lists (1., 2., 3.) with clean spacing - logo and airline name on first line, then flight details below without nested bullets. This helps users visually identify airlines."""
+- For flights: CRITICAL - ALWAYS include airline logos and names. Look at the actual flight_result JSON structure to find airline information. Each flight object may have: "airline_logo", "airline_name", "airline", or a "flights" array with legs containing airline info. Extract the airline logo URL and airline name from each flight object in the outbound array. Format as: "1. ![airline_logo_url](airline_logo_url) **airline_name**\nDeparture: [time] from [airport]\nArrival: [time] at [airport]\nPrice: [price]". If airline_logo is available, include it. If not, still show the airline name in bold: **airline_name**. Use numbered lists (1., 2., 3.) with the logo (if available) and airline name on the first line, then flight details below. NEVER omit the airline name - it's required for every flight listing.
+
+EXAMPLE GOOD RESPONSE STRUCTURE:
+"I checked the weather for Paris during your vacation window (December 10-20) to find the best days with no rain. I found that [dates] have clear weather, so I searched for flights and hotels for those dates.
+
+Here's what I found:
+
+Flights from Beirut to Paris:
+
+1. ![https://logo.clearbit.com/airfrance.com](https://logo.clearbit.com/airfrance.com) **Air France**
+Departure: December 13, 2025, 04:15 from Beirut (BEY)
+Arrival: December 13, 2025, 19:35 at Paris (CDG)
+Price: $451
+
+2. ![https://logo.clearbit.com/turkishairlines.com](https://logo.clearbit.com/turkishairlines.com) **Turkish Airlines**
+Departure: December 13, 2025, 06:00 from Beirut (BEY)
+Arrival: December 13, 2025, 14:10 at Paris (CDG)
+Price: $482
+
+[If multiple options exist, ask:] Since all 10 days have good weather, do you prefer the cheapest prices or specific dates? I can search for the best deals based on your preference."
+
+CRITICAL: When presenting flights, ALWAYS extract and include the airline logo (if available) and airline name from each flight object. Look for fields like "airline_logo", "airline_name", "airline", or check the "flights" array for airline info. The format MUST be: ![logo_url](logo_url) **Airline Name** on the first line of each flight listing. If logo is not available, still show: **Airline Name**. NEVER skip the airline name.
+"""
         }
     ]
     

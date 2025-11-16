@@ -192,19 +192,42 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
             try:
                 utilities_result = await UtilitiesAgentClient.invoke(tool_name, **args)
                 
-                # Store result directly in state for parallel execution
+                # Store result in both legacy field and new results structure
                 updated_state["utilities_result"] = utilities_result
+                # Initialize results dict if not present
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["utilities_agent"] = utilities_result
+                updated_state["results"]["utilities"] = utilities_result
+                updated_state["results"]["utilities_result"] = utilities_result
+                # Also store with semantic keys based on tool used
+                if tool_name == "get_real_time_weather":
+                    updated_state["results"]["weather_data"] = utilities_result
+                elif tool_name == "get_esim_bundles":
+                    updated_state["results"]["esim_data"] = utilities_result
                 # No need to set route - using add_edge means we automatically route to join_node
                 
             except Exception as e:
                 # Store error in result
-                updated_state["utilities_result"] = {"error": True, "error_message": str(e)}
+                error_result = {"error": True, "error_message": str(e)}
+                updated_state["utilities_result"] = error_result
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["utilities_agent"] = error_result
+                updated_state["results"]["utilities"] = error_result
+                updated_state["results"]["utilities_result"] = error_result
                 # No need to set route - using add_edge means we automatically route to join_node
             
             return updated_state
     
     # No tool call - store empty result
-    updated_state["utilities_result"] = {"error": True, "error_message": "No utility parameters provided"}
+    error_result = {"error": True, "error_message": "No utility parameters provided"}
+    updated_state["utilities_result"] = error_result
+    if "results" not in updated_state:
+        updated_state["results"] = {}
+    updated_state["results"]["utilities_agent"] = error_result
+    updated_state["results"]["utilities"] = error_result
+    updated_state["results"]["utilities_result"] = error_result
     # No need to set route - using add_edge means we automatically route to join_node
     
     return updated_state

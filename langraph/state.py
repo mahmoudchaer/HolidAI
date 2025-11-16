@@ -9,36 +9,65 @@ def reducer(left: Any, right: Any) -> Any:
     For parallel nodes updating different fields, we want to preserve non-None values.
     If left is None, use right. If right is None, use left. Otherwise, use right (latest).
     This ensures that when parallel nodes update different result fields, both are preserved.
+    
+    Special handling for:
+    - results: Merge dictionaries (both left and right results are preserved)
+    - pending_nodes: Merge lists and remove duplicates
+    - finished_steps: Merge lists and remove duplicates
+    - user_questions: Merge lists and remove duplicates
     """
     # If right is None, keep left (preserve existing value)
     if right is None:
         return left
+    
+    # Special handling for dictionary results - merge them
+    if isinstance(left, dict) and isinstance(right, dict):
+        merged = left.copy()
+        merged.update(right)
+        return merged
+    
+    # Special handling for list fields - merge and deduplicate
+    if isinstance(left, list) and isinstance(right, list):
+        merged = list(left)
+        for item in right:
+            if item not in merged:
+                merged.append(item)
+        return merged
+    
     # Otherwise, use right (latest value)
     return right
 
 
 class AgentState(TypedDict):
-    """Shared state for LangGraph agents.
+    """Shared state for LangGraph agents with dynamic multi-step planning.
     
     Attributes:
         user_message: The original user message/query (read-only, never updated in parallel)
         context: Additional context passed between agents
         route: Current routing decision (can be a list for parallel execution)
         last_response: Last response from an agent
-        collected_info: Information collected from specialized agents
-        agents_called: List of agents that have been called
+        collected_info: Information collected from specialized agents (legacy, kept for compatibility)
+        agents_called: List of agents that have been called (legacy, kept for compatibility)
         ready_for_response: Whether we have enough info to generate final response
-        needs_flights: Whether flight information is needed
-        needs_hotels: Whether hotel information is needed
-        needs_visa: Whether visa information is needed
-        needs_tripadvisor: Whether TripAdvisor information is needed
-        needs_utilities: Whether utilities information is needed (weather, currency, date/time)
-        flight_result: Flight search results (set by flight_agent_node) - can be updated in parallel
-        hotel_result: Hotel search results (set by hotel_agent_node) - can be updated in parallel
-        visa_result: Visa requirement results (set by visa_agent_node) - can be updated in parallel
-        tripadvisor_result: TripAdvisor results (set by tripadvisor_agent_node) - can be updated in parallel
-        utilities_result: Utilities results (set by utilities_agent_node) - can be updated in parallel
+        needs_flights: Whether flight information is needed (legacy, kept for compatibility)
+        needs_hotels: Whether hotel information is needed (legacy, kept for compatibility)
+        needs_visa: Whether visa information is needed (legacy, kept for compatibility)
+        needs_tripadvisor: Whether TripAdvisor information is needed (legacy, kept for compatibility)
+        needs_utilities: Whether utilities information is needed (legacy, kept for compatibility)
+        flight_result: Flight search results (legacy, kept for compatibility)
+        hotel_result: Hotel search results (legacy, kept for compatibility)
+        visa_result: Visa requirement results (legacy, kept for compatibility)
+        tripadvisor_result: TripAdvisor results (legacy, kept for compatibility)
+        utilities_result: Utilities results (legacy, kept for compatibility)
         join_retry_count: Counter for join_node retries to prevent infinite loops
+        
+        # New execution state fields for dynamic multi-step planning
+        plan: List of execution plan steps, each with id, nodes, requires, produces
+        current_step: Current step index in the plan
+        results: Dictionary storing results from all executed nodes (keyed by node name or result key)
+        pending_nodes: List of node names that are currently executing for the current step
+        finished_steps: List of step IDs that have been completed
+        user_questions: List of questions to ask the user (if any)
     """
     user_message: Annotated[str, reducer]  # Read-only, but needs reducer for parallel execution
     context: Annotated[Dict[str, Any], reducer]
@@ -58,4 +87,12 @@ class AgentState(TypedDict):
     tripadvisor_result: Annotated[Optional[Dict[str, Any]], reducer]
     utilities_result: Annotated[Optional[Dict[str, Any]], reducer]
     join_retry_count: Annotated[int, reducer]
+    
+    # New execution state fields
+    plan: Annotated[List[Dict[str, Any]], reducer]  # List of plan steps
+    current_step: Annotated[int, reducer]  # Current step index
+    results: Annotated[Dict[str, Any], reducer]  # Results dictionary
+    pending_nodes: Annotated[List[str], reducer]  # Nodes currently executing
+    finished_steps: Annotated[List[int], reducer]  # Completed step IDs
+    user_questions: Annotated[List[str], reducer]  # Questions to ask user
 

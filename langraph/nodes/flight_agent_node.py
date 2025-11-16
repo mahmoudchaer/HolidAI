@@ -234,19 +234,37 @@ async def flight_agent_node(state: AgentState) -> AgentState:
                         else:
                             response_text = "No flights found for the specified criteria. Try adjusting your search parameters or dates."
                 
-                # Store result directly in state for parallel execution
+                # Store result in both legacy field and new results structure
                 updated_state["flight_result"] = flight_result
+                # Initialize results dict if not present
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["flight_agent"] = flight_result
+                updated_state["results"]["flight"] = flight_result
+                updated_state["results"]["flight_result"] = flight_result
                 # No need to set route - using add_edge means we automatically route to join_node
                 
             except Exception as e:
                 # Store error in result
-                updated_state["flight_result"] = {"error": True, "error_message": str(e)}
+                error_result = {"error": True, "error_message": str(e)}
+                updated_state["flight_result"] = error_result
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["flight_agent"] = error_result
+                updated_state["results"]["flight"] = error_result
+                updated_state["results"]["flight_result"] = error_result
                 # No need to set route - using add_edge means we automatically route to join_node
             
             return updated_state
     
     # No tool call - store empty result
-    updated_state["flight_result"] = {"error": True, "error_message": "No flight search parameters provided"}
+    error_result = {"error": True, "error_message": "No flight search parameters provided"}
+    updated_state["flight_result"] = error_result
+    if "results" not in updated_state:
+        updated_state["results"] = {}
+    updated_state["results"]["flight_agent"] = error_result
+    updated_state["results"]["flight"] = error_result
+    updated_state["results"]["flight_result"] = error_result
     # No need to set route - using add_edge means we automatically route to join_node
     
     return updated_state

@@ -45,6 +45,10 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return "join_node"
     elif route == "main_agent":
         return "main_agent"
+    elif route == "ask_user":
+        # Safeguard: if somehow route is "ask_user", route to conversational_agent instead
+        print(f"Warning: Route was 'ask_user', routing to conversational_agent instead")
+        return "conversational_agent"
     else:
         return "end"
 
@@ -98,16 +102,20 @@ def create_graph() -> StateGraph:
     graph.add_edge("tripadvisor_agent", "join_node")
     graph.add_edge("utilities_agent", "join_node")
     
-    # Join node routes to conversational agent when ready, or back to itself if waiting
+    # Join node routes back to main_agent when step completes, or to conversational agent when plan is done
     graph.add_conditional_edges(
         "join_node",
         route_decision,
         {
             "join_node": "join_node",  # Allow routing back to itself to wait for results
+            "main_agent": "main_agent",  # Route back to main agent after step completes
             "conversational_agent": "conversational_agent",
             "end": END
         }
     )
+    
+    # Main agent can route back to itself for planning decisions
+    # This is already handled by the conditional edges above, but we need to ensure main_agent can loop
     
     # Conversational agent ends the workflow
     graph.add_conditional_edges(
@@ -153,11 +161,18 @@ async def run(user_message: str, config: dict = None) -> dict:
         "visa_result": None,
         "tripadvisor_result": None,
         "utilities_result": None,
-        "join_retry_count": 0
+        "join_retry_count": 0,
+        # New execution state fields for dynamic multi-step planning
+        "plan": [],
+        "current_step": 0,
+        "results": {},
+        "pending_nodes": [],
+        "finished_steps": [],
+        "user_questions": []
     }
     
     if config is None:
-        config = {"recursion_limit": 100}  # Increased to accommodate join_node retries
+        config = {"recursion_limit": 200}  # Increased to accommodate multi-step planning loops
     
     final_state = await app.ainvoke(initial_state, config)
     return final_state

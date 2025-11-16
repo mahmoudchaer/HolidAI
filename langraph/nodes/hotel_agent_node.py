@@ -206,6 +206,12 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                 if hotel_result.get("error"):
                     # Store error result and return
                     updated_state["hotel_result"] = hotel_result
+                    if "results" not in updated_state:
+                        updated_state["results"] = {}
+                    updated_state["results"]["hotel_agent"] = hotel_result
+                    updated_state["results"]["hotel"] = hotel_result
+                    updated_state["results"]["hotel_result"] = hotel_result
+                    updated_state["results"]["hotel_options"] = hotel_result
                     # No need to set route - using add_edge means we automatically route to join_node
                     return updated_state
                 
@@ -341,6 +347,12 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                 # Store the result directly in state for parallel execution
                 # Make sure we're storing a proper dict, not None
                 updated_state["hotel_result"] = hotel_result
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["hotel_agent"] = hotel_result
+                updated_state["results"]["hotel"] = hotel_result
+                updated_state["results"]["hotel_result"] = hotel_result
+                updated_state["results"]["hotel_options"] = hotel_result
                 # No need to set route - using add_edge means we automatically route to join_node
                 
                 # Debug: Verify what we're actually storing
@@ -355,12 +367,26 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                 print(f"Error in hotel_agent_node: {e}")
                 print(f"Traceback: {traceback.format_exc()}")
                 # Store error in result
-                updated_state["hotel_result"] = {"error": True, "error_message": str(e)}
+                error_result = {"error": True, "error_message": str(e)}
+                updated_state["hotel_result"] = error_result
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["hotel_agent"] = error_result
+                updated_state["results"]["hotel"] = error_result
+                updated_state["results"]["hotel_result"] = error_result
+                updated_state["results"]["hotel_options"] = error_result
                 # No need to set route - using add_edge means we automatically route to join_node
                 return updated_state
     
     # No tool call - store empty result
-    updated_state["hotel_result"] = {"error": True, "error_message": "No hotel search parameters provided"}
+    error_result = {"error": True, "error_message": "No hotel search parameters provided"}
+    updated_state["hotel_result"] = error_result
+    if "results" not in updated_state:
+        updated_state["results"] = {}
+    updated_state["results"]["hotel_agent"] = error_result
+    updated_state["results"]["hotel"] = error_result
+    updated_state["results"]["hotel_result"] = error_result
+    updated_state["results"]["hotel_options"] = error_result
     # No need to set route - using add_edge means we automatically route to join_node
     
     return updated_state

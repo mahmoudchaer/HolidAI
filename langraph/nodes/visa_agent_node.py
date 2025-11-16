@@ -201,19 +201,40 @@ async def visa_agent_node(state: AgentState) -> AgentState:
                     visa_info = visa_result.get("result", "No visa information available.")
                     response_text = f"Here are the visa requirements:\n\n{visa_info}"
                 
-                # Store result directly in state for parallel execution
+                # Store result in both legacy field and new results structure
                 updated_state["visa_result"] = visa_result
+                # Initialize results dict if not present
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["visa_agent"] = visa_result
+                updated_state["results"]["visa"] = visa_result
+                updated_state["results"]["visa_result"] = visa_result
+                updated_state["results"]["visa_info"] = visa_result
                 # No need to set route - using add_edge means we automatically route to join_node
                 
             except Exception as e:
                 # Store error in result
-                updated_state["visa_result"] = {"error": True, "error_message": str(e)}
+                error_result = {"error": True, "error_message": str(e)}
+                updated_state["visa_result"] = error_result
+                if "results" not in updated_state:
+                    updated_state["results"] = {}
+                updated_state["results"]["visa_agent"] = error_result
+                updated_state["results"]["visa"] = error_result
+                updated_state["results"]["visa_result"] = error_result
+                updated_state["results"]["visa_info"] = error_result
                 # No need to set route - using add_edge means we automatically route to join_node
             
             return updated_state
     
     # No tool call - store empty result
-    updated_state["visa_result"] = {"error": True, "error_message": "No visa requirement parameters provided"}
+    error_result = {"error": True, "error_message": "No visa requirement parameters provided"}
+    updated_state["visa_result"] = error_result
+    if "results" not in updated_state:
+        updated_state["results"] = {}
+    updated_state["results"]["visa_agent"] = error_result
+    updated_state["results"]["visa"] = error_result
+    updated_state["results"]["visa_result"] = error_result
+    updated_state["results"]["visa_info"] = error_result
     # No need to set route - using add_edge means we automatically route to join_node
     
     return updated_state
