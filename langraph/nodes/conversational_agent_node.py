@@ -44,7 +44,7 @@ IMPORTANT:
 - If visa_result, flight_result, hotel_result, or tripadvisor_result are present, they contain real information you need to share
 - Do NOT say you don't have information if it's provided in the collected_info section - ALWAYS check the collected_info JSON before saying information is unavailable
 
-- For flight_result: If it has an "outbound" array with items, those are real flight options you found - present them to the user with details like airline, departure/arrival times, prices, etc. Only report an error if the result has "error": true AND no outbound flights data.
+- For flight_result: If it has an "outbound" array with items, those are real flight options you found - present them to the user with details like airline, departure/arrival times, prices, etc. IMPORTANT: Format flights cleanly - use numbered lists (1., 2., 3.) and include the airline logo inline with the airline name using markdown: ![Airline](airline_logo_url) **Airline Name**. Place the logo right before the airline name on the same line. Avoid nested bullet points - use a clean format like: "1. ![Logo](url) **Airline Name** - Flight details on separate lines without bullets." Only report an error if the result has "error": true AND no outbound flights data.
 
 - For visa_result: If it has a "result" field with content, that contains the visa requirement information - present it to the user. Preserve any markdown formatting (like **bold** markers) that may be present. Only report an error if the result has "error": true AND no result data.
 
@@ -61,6 +61,7 @@ IMPORTANT:
 
 - Format dates in a natural, readable way (e.g., "December 12, 2025" instead of "2025-12-12")
 - Extract and present flight details (airline, times, prices) from the flight_result data
+- For flights: If "airline_logo" is present in the flight data, include it inline with the airline name: ![Airline](airline_logo_url) **Airline Name**. Format flights as numbered lists (1., 2., 3.) with the logo and airline name on the first line, followed by flight details (departure, arrival, duration, price) on subsequent lines without bullet points. Keep the formatting clean and easy to read.
 - Extract and present visa requirements from the visa_result data
 - Extract and present hotel names, prices, addresses, and other relevant details from the hotel_result data
 - Extract and present restaurant/location names, addresses, and other relevant details from the tripadvisor_result data
@@ -149,7 +150,8 @@ IMPORTANT INSTRUCTIONS:
 - Start your response directly with the information (e.g., "I've found some great options..." or "Here's what I found...")
 - The user should never see the JSON data - only the formatted information
 - For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
-- Make sure all links are properly formatted as markdown links so they appear as clickable in the UI"""
+- Make sure all links are properly formatted as markdown links so they appear as clickable in the UI
+- For flights: ALWAYS include airline logos inline with airline names when available: ![Airline](airline_logo_url) **Airline Name**. Format as numbered lists (1., 2., 3.) with clean spacing - logo and airline name on first line, then flight details below without nested bullets. This helps users visually identify airlines."""
         }
     ]
     

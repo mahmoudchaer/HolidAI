@@ -184,11 +184,12 @@ def register_utilities_tools(mcp):
             }
     
     @mcp.tool(description=get_doc("get_real_time_date_time", "utilities"))
-    async def get_real_time_date_time(location: str) -> Dict:
+    async def get_real_time_date_time(location: str = "UTC") -> Dict:
         """Get real-time date and time for a specific country or city.
         
         Args:
-            location: Country name or city name (e.g., "New York", "London", "Japan", "Lebanon")
+            location: Country name or city name (e.g., "New York", "London", "Japan", "Lebanon"). 
+                     If not specified or "global"/"utc"/"gmt", defaults to UTC.
             
         Returns:
             Dictionary with current date, time, timezone, and related information
@@ -197,8 +198,18 @@ def register_utilities_tools(mcp):
         try:
             location_lower = location.lower().strip()
             
+            # Handle special cases: global, utc, gmt -> use UTC
+            if location_lower in ["global", "utc", "gmt", ""]:
+                location = "UTC"
+                location_lower = "utc"
+                timezone = "UTC"
+            else:
+                timezone = None
+            
             # Comprehensive timezone mapping
             timezone_map = {
+                # Special cases
+                "utc": "UTC", "gmt": "UTC", "global": "UTC",
                 # Major Cities - US
                 "new york": "America/New_York", "nyc": "America/New_York", "new york city": "America/New_York",
                 "los angeles": "America/Los_Angeles", "la": "America/Los_Angeles", "san francisco": "America/Los_Angeles",
@@ -254,8 +265,9 @@ def register_utilities_tools(mcp):
                 "peru": "America/Lima", "colombia": "America/Bogota"
             }
             
-            # Try to find timezone in map
-            timezone = timezone_map.get(location_lower)
+            # Try to find timezone in map (if not already set to UTC)
+            if not timezone:
+                timezone = timezone_map.get(location_lower)
             
             # Try variations
             if not timezone:
@@ -277,12 +289,18 @@ def register_utilities_tools(mcp):
             # Use Python's datetime with timezone (Python 3.9+)
             try:
                 from zoneinfo import ZoneInfo
-                tz = ZoneInfo(timezone)
+                if timezone == "UTC":
+                    tz = ZoneInfo("UTC")
+                else:
+                    tz = ZoneInfo(timezone)
             except (ImportError, Exception):
                 # Fallback to pytz if zoneinfo not available
                 try:
                     import pytz
-                    tz = pytz.timezone(timezone)
+                    if timezone == "UTC":
+                        tz = pytz.UTC
+                    else:
+                        tz = pytz.timezone(timezone)
                 except ImportError:
                     # If neither available, use WorldTimeAPI
                     return await _get_time_from_worldtimeapi(location, location_lower, timezone_map)
@@ -324,9 +342,18 @@ def register_utilities_tools(mcp):
     async def _get_time_from_worldtimeapi(location: str, location_lower: str, timezone_map: dict) -> Dict:
         """Fallback method using WorldTimeAPI."""
         try:
+            # Handle special cases: global, utc, gmt -> use UTC
+            if location_lower in ["global", "utc", "gmt", ""]:
+                timezone = "UTC"
+                location = "UTC"
+            else:
+                timezone = None
+            
             # Use provided timezone_map if available, otherwise use default
             if not timezone_map:
                 timezone_map = {
+                # Special cases
+                "utc": "UTC", "gmt": "UTC", "global": "UTC",
                 # Major Cities
                 "new york": "America/New_York",
                 "nyc": "America/New_York",
@@ -463,8 +490,9 @@ def register_utilities_tools(mcp):
                 "colombia": "America/Bogota"
             }
             
-            # Try to find timezone in map
-            timezone = timezone_map.get(location_lower)
+            # Try to find timezone in map (if not already set to UTC)
+            if not timezone:
+                timezone = timezone_map.get(location_lower)
             
             # If not found, try with common variations
             if not timezone:
@@ -517,6 +545,23 @@ def register_utilities_tools(mcp):
                     "error_message": f"Could not determine timezone for '{location}'. Please try using a major city name or country name.",
                     "error_code": "INVALID_LOCATION",
                     "suggestion": "Try using major city names like 'New York', 'London', 'Tokyo' or country names like 'USA', 'UK', 'Japan'"
+                }
+            
+            # For UTC, use a simpler approach
+            if timezone == "UTC":
+                from datetime import timezone as tz
+                now = datetime.now(tz.utc)
+                return {
+                    "error": False,
+                    "location": "UTC",
+                    "timezone": "UTC",
+                    "date": now.strftime("%Y-%m-%d"),
+                    "time": now.strftime("%H:%M:%S"),
+                    "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
+                    "day_of_week": now.strftime("%A"),
+                    "utc_offset": "+00:00",
+                    "abbreviation": "UTC",
+                    "timezone_name": "UTC"
                 }
             
             # Fetch timezone data

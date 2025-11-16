@@ -95,7 +95,7 @@ IMPORTANT:
 - Use your LLM understanding to determine parameters from the user's message - NO code-based parsing is used
 - For weather: Extract city name or country name from the user's message
 - For currency conversion: Extract from_currency, to_currency, and amount (if specified) from the user's message
-- For date/time: Extract city name or country name from the user's message
+- For date/time: Extract city name or country name from the user's message. If user asks for "today's date" or "current date" without specifying a location, use "UTC" as the location parameter. The location parameter is optional and defaults to UTC.
 - For eSIM bundles: Extract country name from the user's message (e.g., "Qatar", "USA", "Japan")
 - For holidays: Extract country name, and optionally year, month, and day from the user's message (e.g., "holidays in Qatar", "holidays in USA in December", "holidays in Lebanon on January 1st")
 - Use the tool schemas to understand required vs optional parameters

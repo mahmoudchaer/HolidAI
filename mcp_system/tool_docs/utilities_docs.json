@@ -87,9 +87,9 @@
     ]
   },
   "get_real_time_date_time": {
-    "description": "Get real-time date and time for a specific country or city. Returns current date, time, timezone information, day of week, and UTC offset. Uses WorldTimeAPI (free, no key required). Supports major cities and countries worldwide.",
+    "description": "Get real-time date and time for a specific country or city. Returns current date, time, timezone information, day of week, and UTC offset. Uses WorldTimeAPI (free, no key required). Supports major cities and countries worldwide. If no location is specified or user asks for 'today's date' without a location, defaults to UTC.",
     "inputs": {
-      "location": "string – required – Country name or city name (e.g., 'New York', 'London', 'Japan', 'Lebanon', 'Tokyo', 'Dubai'). Can be major city names or country names. The tool will attempt to determine the appropriate timezone."
+      "location": "string – optional – Country name or city name (e.g., 'New York', 'London', 'Japan', 'Lebanon', 'Tokyo', 'Dubai'). Can be major city names or country names. The tool will attempt to determine the appropriate timezone. If not specified, 'global', 'utc', or 'gmt' is provided, defaults to UTC timezone."
     },
     "outputs": {
       "error": "boolean – indicates if an error occurred",
@@ -107,6 +107,12 @@
       "suggestion": "string – optional suggestion for resolving errors"
     },
     "examples": [
+      {
+        "title": "Get today's date (UTC)",
+        "body": {
+          "location": "UTC"
+        }
+      },
       {
         "title": "Get current time in New York",
         "body": {
