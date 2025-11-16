@@ -633,6 +633,19 @@ def register_flight_tools(mcp):
         elif trip_type_normalized == "roundtrip":
             trip_type_normalized = "round-trip"
         
+        # Convert string numeric parameters to proper types
+        if max_price is not None:
+            try:
+                max_price = float(max_price) if not isinstance(max_price, (int, float)) else max_price
+            except (ValueError, TypeError):
+                max_price = None
+        
+        if max_duration is not None:
+            try:
+                max_duration = int(max_duration) if not isinstance(max_duration, int) else max_duration
+            except (ValueError, TypeError):
+                max_duration = None
+        
         # Validate inputs first
         is_valid, validation_error = _validate_flight_inputs(
             trip_type_normalized, departure, arrival, departure_date, arrival_date
@@ -838,6 +851,25 @@ def register_flight_tools(mcp):
             trip_type_normalized = "one-way"
         elif trip_type_normalized == "roundtrip":
             trip_type_normalized = "round-trip"
+        
+        # Convert string numeric parameters to proper types
+        if max_price is not None:
+            try:
+                max_price = float(max_price) if not isinstance(max_price, (int, float)) else max_price
+            except (ValueError, TypeError):
+                max_price = None
+        
+        if max_duration is not None:
+            try:
+                max_duration = int(max_duration) if not isinstance(max_duration, int) else max_duration
+            except (ValueError, TypeError):
+                max_duration = None
+        
+        if days_flex is not None:
+            try:
+                days_flex = int(days_flex) if not isinstance(days_flex, int) else days_flex
+            except (ValueError, TypeError):
+                days_flex = 3
         
         # Validate inputs first
         is_valid, validation_error = _validate_flight_inputs(

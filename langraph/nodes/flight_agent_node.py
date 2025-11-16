@@ -115,6 +115,10 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     Returns:
         Updated agent state with response
     """
+    from datetime import datetime
+    start_time = datetime.now()
+    print(f"[{start_time.strftime('%H:%M:%S.%f')[:-3]}] 🛫 FLIGHT AGENT STARTED")
+    
     user_message = state.get("user_message", "")
     
     # Always use LLM to extract parameters from user message
@@ -243,11 +247,17 @@ async def flight_agent_node(state: AgentState) -> AgentState:
                 updated_state["flight_result"] = {"error": True, "error_message": str(e)}
                 # No need to set route - using add_edge means we automatically route to join_node
             
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🛫 FLIGHT AGENT COMPLETED (Duration: {duration:.3f}s)")
             return updated_state
     
     # No tool call - store empty result
     updated_state["flight_result"] = {"error": True, "error_message": "No flight search parameters provided"}
     # No need to set route - using add_edge means we automatically route to join_node
     
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🛫 FLIGHT AGENT COMPLETED (Duration: {duration:.3f}s)")
     return updated_state
 

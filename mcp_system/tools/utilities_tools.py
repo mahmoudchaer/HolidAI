@@ -622,15 +622,23 @@ def register_utilities_tools(mcp):
             }
     
     @mcp.tool(description=get_doc("get_esim_bundles", "utilities"))
-    async def get_esim_bundles(country: str) -> Dict:
+    async def get_esim_bundles(country: str, limit: Optional[int] = 50) -> Dict:
         """Get available eSIM bundles for a specific country from esimradar.com.
         
         Args:
             country: Country name (e.g., "Qatar", "USA", "UAE", "Lebanon", "Japan")
+            limit: Maximum number of bundles to return (default: 50, max: 200)
             
         Returns:
             Dictionary with list of eSIM bundles including provider, plan, validity, price, and link
         """
+        # Validate and enforce limit
+        if limit is None:
+            limit = 50
+        elif limit < 1:
+            limit = 50
+        elif limit > 200:
+            limit = 200
         try:
             # Map country names to esimradar.com slugs and country codes
             country_mapping = {
@@ -1044,13 +1052,19 @@ def register_utilities_tools(mcp):
                         "debug": f"Processed {len(rows)} table rows but found no valid bundles"
                     }
                 
-                print(f"eSIM Tool: Successfully extracted {len(bundles)} bundles for {country}")
+                # Apply limit to bundles
+                total_bundles = len(bundles)
+                bundles_limited = bundles[:limit]
+                
+                print(f"eSIM Tool: Successfully extracted {total_bundles} bundles for {country}, returning {len(bundles_limited)}")
                 return {
                     "error": False,
                     "country": country,
-                    "bundles": bundles,
-                    "count": len(bundles),
-                    "source": "esimradar.com"
+                    "bundles": bundles_limited,
+                    "count": len(bundles_limited),
+                    "total_available": total_bundles,
+                    "source": "esimradar.com",
+                    "limited": total_bundles > limit
                 }
                 
         except httpx.HTTPStatusError as e:

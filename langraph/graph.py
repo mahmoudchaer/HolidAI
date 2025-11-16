@@ -4,6 +4,7 @@ from typing import Literal, Union, List
 from langgraph.graph import StateGraph, END
 from state import AgentState
 from nodes.main_agent_node import main_agent_node
+from nodes.plan_executor_node import plan_executor_node
 from nodes.visa_agent_node import visa_agent_node
 from nodes.flight_agent_node import flight_agent_node
 from nodes.hotel_agent_node import hotel_agent_node
@@ -29,7 +30,9 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return route
     
     # Handle string routes
-    if route == "hotel_agent":
+    if route == "plan_executor":
+        return "plan_executor"
+    elif route == "hotel_agent":
         return "hotel_agent"
     elif route == "visa_agent":
         return "visa_agent"
@@ -60,6 +63,7 @@ def create_graph() -> StateGraph:
     
     # Add nodes
     graph.add_node("main_agent", main_agent_node)
+    graph.add_node("plan_executor", plan_executor_node)
     graph.add_node("visa_agent", visa_agent_node)
     graph.add_node("flight_agent", flight_agent_node)
     graph.add_node("hotel_agent", hotel_agent_node)
@@ -71,32 +75,41 @@ def create_graph() -> StateGraph:
     # Set entry point
     graph.set_entry_point("main_agent")
     
-    # Add conditional routing from main_agent
-    # This handles both single routes and lists for parallel execution
+    # Main agent routes to plan_executor or conversational_agent
     graph.add_conditional_edges(
         "main_agent",
         route_decision,
         {
-            "main_agent": "main_agent",
+            "plan_executor": "plan_executor",
+            "conversational_agent": "conversational_agent",
+            "end": END
+        }
+    )
+    
+    # Plan executor routes to agents (parallel execution) or join_node when done
+    graph.add_conditional_edges(
+        "plan_executor",
+        route_decision,
+        {
+            "plan_executor": "plan_executor",
             "hotel_agent": "hotel_agent",
             "visa_agent": "visa_agent",
             "flight_agent": "flight_agent",
             "tripadvisor_agent": "tripadvisor_agent",
             "utilities_agent": "utilities_agent",
-            "conversational_agent": "conversational_agent",
             "join_node": "join_node",
             "end": END
         }
     )
     
-    # All specialized agents return to join_node using add_edge
+    # All specialized agents return to plan_executor to continue to next step
     # When multiple nodes use add_edge to route to the same target,
     # LangGraph automatically waits for all of them to complete and merges their state
-    graph.add_edge("visa_agent", "join_node")
-    graph.add_edge("flight_agent", "join_node")
-    graph.add_edge("hotel_agent", "join_node")
-    graph.add_edge("tripadvisor_agent", "join_node")
-    graph.add_edge("utilities_agent", "join_node")
+    graph.add_edge("visa_agent", "plan_executor")
+    graph.add_edge("flight_agent", "plan_executor")
+    graph.add_edge("hotel_agent", "plan_executor")
+    graph.add_edge("tripadvisor_agent", "plan_executor")
+    graph.add_edge("utilities_agent", "plan_executor")
     
     # Join node routes to conversational agent when ready, or back to itself if waiting
     graph.add_conditional_edges(
@@ -153,11 +166,13 @@ async def run(user_message: str, config: dict = None) -> dict:
         "visa_result": None,
         "tripadvisor_result": None,
         "utilities_result": None,
-        "join_retry_count": 0
+        "join_retry_count": 0,
+        "execution_plan": [],
+        "current_step": 0
     }
     
     if config is None:
-        config = {"recursion_limit": 100}  # Increased to accommodate join_node retries
+        config = {"recursion_limit": 100}  # Increased to accommodate join_node retries and multi-step execution
     
     final_state = await app.ainvoke(initial_state, config)
     return final_state

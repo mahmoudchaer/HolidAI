@@ -22,16 +22,15 @@ load_dotenv(dotenv_path=env_path)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def get_main_agent_prompt(agents_called: list, collected_info: dict) -> str:
+def get_main_agent_prompt() -> str:
     """Get the system prompt for the Main Agent."""
-    base_prompt = """You are the Main Agent, an orchestrator that coordinates specialized agents to help users with travel tasks.
+    return """You are the Main Agent, an orchestrator that creates multi-step execution plans for specialized travel agents.
 
 Your role:
-- Understand user requests and determine which specialized agents are needed
-- Each specialized agent will intelligently understand the user's message and extract all necessary parameters using LLM reasoning
-- You do NOT need to extract parameters - just determine which agents are needed
-- After agents return, review the collected information and decide if more agents are needed
-- Once you have all necessary information, route to "conversational_agent" to generate the final response
+- Analyze user requests and create a sequential execution plan
+- CRITICAL: Identify dependencies - if one task needs results from another, they MUST be in separate steps
+- Group only truly independent agents in the same step (they'll run in parallel)
+- Place dependent agents in later steps
 
 Available specialized agents:
 - flight_agent: For flight searches (one-way, round-trip, flexible dates, etc.)
@@ -39,65 +38,96 @@ Available specialized agents:
 - visa_agent: For visa requirement checks
 - tripadvisor_agent: For location searches, restaurants, attractions, reviews, etc.
 - utilities_agent: For utility functions including:
-  * Weather information for cities/countries
-  * Currency conversion between different currencies
-  * Current date and time for cities/countries
-  * eSIM bundles and mobile data plans for countries (e.g., "eSIM for Qatar", "eSIM bundles for Japan")
+  * get_holidays: Get holidays for a country (to avoid booking on holidays)
+  * Weather, currency conversion, date/time
+  * eSIM bundles for mobile data
 
-IMPORTANT: 
-- You ONLY need to determine which agents are needed based on the user's request
-- Each agent will intelligently understand the user's message and extract all parameters using LLM reasoning - you don't need to do any parameter extraction
-- Simply respond with a JSON object indicating which agents are needed
-- The agents have access to full tool documentation and will extract all necessary parameters from the user's message
-"""
-    
-    if agents_called:
-        base_prompt += f"\n\nAgents already called: {', '.join(agents_called)}"
-        base_prompt += "\nYou have information from these agents. Review if you need more agents or if you're ready to generate the final response."
-    
-    if collected_info:
-        base_prompt += "\n\nCollected information summary:"
-        for key, value in collected_info.items():
-            if value:
-                base_prompt += f"\n- {key}: Information available"
-    
-    return base_prompt
+CRITICAL DEPENDENCY RULES:
+1. HOLIDAYS affect booking → must be fetched BEFORE flight/hotel booking
+2. eSIM, weather, currency DON'T depend on booking → can run in parallel with booking
+3. utilities_agent can execute MULTIPLE tools in one call (e.g., holidays + eSIM together)
+4. Minimize steps by grouping truly independent tasks
+
+TRUE DEPENDENCIES (must be sequential):
+- Holidays → Flights/Hotels (if user wants to avoid holidays)
+- City search → Flights/Hotels (if booking depends on finding city)
+- eSIM prices → Currency conversion (conversion needs prices)
+- Flights/Hotels results → Currency conversion (if converting booking prices)
+
+INDEPENDENT TASKS (can run in parallel):
+- eSIM bundles are independent of flights/hotels/holidays
+- Weather is independent of everything
+- Getting holidays + getting eSIM = both can happen in same utilities_agent call!
+
+OPTIMIZATION STRATEGY:
+- If ONLY holidays needed: utilities_agent can get holidays + eSIM in SAME step
+- After holidays known: flights, hotels, AND more utilities (weather) can all run parallel
+- Only currency conversion needs to wait (needs prices from previous steps)
+
+Example 1 - Simple independent (1 step):
+User: "Find flights and hotels to Paris"
+Plan: Step 1: [flight_agent, hotel_agent]
+
+Example 2 - Optimized with holidays (3 steps NOT 4!):
+User: "Book flight/hotel avoiding holidays, get eSIM, convert to AED"
+Plan:
+  Step 1: [utilities_agent] - get holidays AND eSIM bundles (2 tools, 1 step!)
+  Step 2: [flight_agent, hotel_agent] - book avoiding holidays
+  Step 3: [utilities_agent] - convert eSIM prices to AED
+
+Example 3 - Maximum parallelization (3 steps):
+User: "Avoid holidays, book flights/hotels, get eSIM and weather, convert to AED"
+Plan:
+  Step 1: [utilities_agent] - get holidays
+  Step 2: [flight_agent, hotel_agent, utilities_agent] - book + eSIM/weather (all parallel!)
+  Step 3: [utilities_agent] - convert prices to AED
+
+Respond with a JSON object containing the execution plan."""
 
 
 async def main_agent_node(state: AgentState) -> AgentState:
-    """Main Agent node that determines which agents are needed and returns list for parallel execution.
+    """Main Agent node that creates a multi-step execution plan.
     
     Args:
         state: Current agent state
         
     Returns:
-        Updated agent state with list of nodes to execute in parallel
+        Updated agent state with execution plan
     """
     user_message = state.get("user_message", "")
     
-    # Prepare messages for LLM to determine which agents are needed
+    # Prepare messages for LLM to create execution plan
     messages = [
-        {"role": "system", "content": get_main_agent_prompt([], {})},
-        {"role": "user", "content": f"""Analyze the user's request and determine which specialized agents are needed.
+        {"role": "system", "content": get_main_agent_prompt()},
+        {"role": "user", "content": f"""Analyze the user's request and create a multi-step execution plan.
 
 User's message: {user_message}
 
-Available agents:
-- flight_agent: For flight searches
-- hotel_agent: For hotel searches
-- visa_agent: For visa requirement checks
-- tripadvisor_agent: For location/restaurant/attraction searches
-- utilities_agent: For utility functions including weather, currency conversion, date/time, and eSIM bundles/mobile data plans for countries
+Create a plan with steps. Each step should contain agents that can run in parallel.
+If agents have dependencies (one needs results from another), place them in separate steps.
 
-IMPORTANT: If the user asks about eSIM, eSIM bundles, mobile data plans, SIM cards, or data plans for a country, you MUST set needs_utilities to true.
+Respond with a JSON object in this format:
+{{
+  "execution_plan": [
+    {{
+      "step_number": 1,
+      "agents": ["agent1", "agent2"],
+      "description": "What this step does"
+    }},
+    {{
+      "step_number": 2,
+      "agents": ["agent3"],
+      "description": "What this step does (may use results from step 1)"
+    }}
+  ]
+}}
 
-Respond with a JSON object indicating which agents are needed. Example:
-{{"needs_flights": true, "needs_hotels": true, "needs_visa": false, "needs_tripadvisor": false, "needs_utilities": true}}
+Available agent names: flight_agent, hotel_agent, visa_agent, tripadvisor_agent, utilities_agent
 
-If no specialized agents are needed, respond with all false values."""}
+If no agents are needed, return an empty execution_plan array."""}
     ]
     
-    # Call LLM to determine needed agents
+    # Call LLM to create execution plan
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages
@@ -108,12 +138,10 @@ If no specialized agents are needed, respond with all false values."""}
     
     # Extract JSON from the LLM response
     content = message.content or ""
-    needs_analysis = {}
     
-    # LLM should return JSON - extract it from the response
+    # Parse the execution plan
     try:
-        # Try to find JSON in the response (might be wrapped in text)
-        # Find the first { and try to match balanced braces
+        # Find JSON in response
         start_idx = content.find('{')
         if start_idx != -1:
             brace_count = 0
@@ -128,80 +156,64 @@ If no specialized agents are needed, respond with all false values."""}
                         break
             if brace_count == 0:
                 json_str = content[start_idx:end_idx]
-                needs_analysis = json.loads(json_str)
+                plan_data = json.loads(json_str)
             else:
-                # Try parsing the whole content as JSON
-                needs_analysis = json.loads(content)
+                plan_data = json.loads(content)
         else:
-            # Try parsing the whole content as JSON
-            needs_analysis = json.loads(content)
+            plan_data = json.loads(content)
     except Exception as e:
-        # If LLM didn't return valid JSON, default to no agents needed
-        # The LLM should always return valid JSON based on the prompt
         print(f"Warning: Could not parse LLM response as JSON: {e}")
-        print(f"LLM response content: {content[:500]}")  # Print first 500 chars for debugging
-        needs_analysis = {
-            "needs_flights": False,
-            "needs_hotels": False,
-            "needs_visa": False,
-            "needs_tripadvisor": False,
-            "needs_utilities": False
-        }
+        print(f"LLM response content: {content[:500]}")
+        plan_data = {"execution_plan": []}
     
-    # Debug: Log what agents are needed
-    print(f"Main agent: Determined needs - flights: {needs_analysis.get('needs_flights')}, hotels: {needs_analysis.get('needs_hotels')}, visa: {needs_analysis.get('needs_visa')}, tripadvisor: {needs_analysis.get('needs_tripadvisor')}, utilities: {needs_analysis.get('needs_utilities')}")
+    execution_plan = plan_data.get("execution_plan", [])
     
-    # Build list of nodes to execute in parallel
-    nodes_to_execute = []
-    updated_state = state.copy()
-    
-    # Agents will extract all parameters from user_message using LLM
-    # No need to pass task contexts - LLM has access to tool documentation
-    
-    if needs_analysis.get("needs_flights", False):
-        nodes_to_execute.append("flight_agent")
-        updated_state["needs_flights"] = True
+    # Log the execution plan
+    print("\n=== Main Agent: Created Execution Plan ===")
+    if not execution_plan:
+        print("No agents needed for this request")
     else:
-        updated_state["needs_flights"] = False
+        for step in execution_plan:
+            step_num = step.get("step_number", 0)
+            agents = step.get("agents", [])
+            description = step.get("description", "")
+            print(f"Step {step_num}: {agents} - {description}")
+    print("=========================================\n")
+    
+    # Set needs flags based on all agents in the plan
+    all_agents = []
+    for step in execution_plan:
+        all_agents.extend(step.get("agents", []))
+    
+    updated_state = {
+        "execution_plan": execution_plan,
+        "current_step": 0,
+        "needs_flights": "flight_agent" in all_agents,
+        "needs_hotels": "hotel_agent" in all_agents,
+        "needs_visa": "visa_agent" in all_agents,
+        "needs_tripadvisor": "tripadvisor_agent" in all_agents,
+        "needs_utilities": "utilities_agent" in all_agents,
+    }
+    
+    # Clear results for agents not in plan
+    if "flight_agent" not in all_agents:
         updated_state["flight_result"] = None
-    
-    if needs_analysis.get("needs_hotels", False):
-        nodes_to_execute.append("hotel_agent")
-        updated_state["needs_hotels"] = True
-    else:
-        updated_state["needs_hotels"] = False
+    if "hotel_agent" not in all_agents:
         updated_state["hotel_result"] = None
-    
-    if needs_analysis.get("needs_visa", False):
-        nodes_to_execute.append("visa_agent")
-        updated_state["needs_visa"] = True
-    else:
-        updated_state["needs_visa"] = False
+    if "visa_agent" not in all_agents:
         updated_state["visa_result"] = None
-    
-    if needs_analysis.get("needs_tripadvisor", False):
-        nodes_to_execute.append("tripadvisor_agent")
-        updated_state["needs_tripadvisor"] = True
-    else:
-        updated_state["needs_tripadvisor"] = False
+    if "tripadvisor_agent" not in all_agents:
         updated_state["tripadvisor_result"] = None
-    
-    if needs_analysis.get("needs_utilities", False):
-        nodes_to_execute.append("utilities_agent")
-        updated_state["needs_utilities"] = True
-    else:
-        updated_state["needs_utilities"] = False
+    if "utilities_agent" not in all_agents:
         updated_state["utilities_result"] = None
     
     # If no agents needed, route directly to conversational
-    if not nodes_to_execute:
+    if not execution_plan:
         updated_state["route"] = "conversational_agent"
         updated_state["ready_for_response"] = True
-        print("Main agent: No agents needed, routing to conversational_agent")
     else:
-        # Return list of nodes for parallel execution
-        updated_state["route"] = nodes_to_execute
-        print(f"Main agent: Routing to parallel nodes: {nodes_to_execute}")
+        # Route to plan executor to start executing the plan
+        updated_state["route"] = "plan_executor"
     
     return updated_state
 

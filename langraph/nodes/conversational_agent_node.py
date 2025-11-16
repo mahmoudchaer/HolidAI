@@ -21,6 +21,58 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 
+def truncate_large_results(collected_info: dict, max_items: int = 20) -> dict:
+    """Truncate large result arrays to avoid context overflow.
+    
+    Args:
+        collected_info: Dictionary with collected results
+        max_items: Maximum number of items to keep in arrays
+        
+    Returns:
+        Truncated copy of collected_info
+    """
+    import copy
+    truncated = copy.deepcopy(collected_info)
+    
+    # Truncate hotel images if present
+    if "hotel_result" in truncated and isinstance(truncated["hotel_result"], dict):
+        hotels = truncated["hotel_result"].get("hotels", [])
+        for hotel in hotels:
+            # Keep only first 3 images per hotel
+            if "hotelImages" in hotel and isinstance(hotel["hotelImages"], list):
+                hotel["hotelImages"] = hotel["hotelImages"][:3]
+            # Truncate room types
+            if "roomTypes" in hotel and isinstance(hotel["roomTypes"], list):
+                hotel["roomTypes"] = hotel["roomTypes"][:2]
+    
+    # Truncate eSIM bundles if present
+    if "utilities_result" in truncated and isinstance(truncated["utilities_result"], dict):
+        if "bundles" in truncated["utilities_result"] and isinstance(truncated["utilities_result"]["bundles"], list):
+            bundles = truncated["utilities_result"]["bundles"]
+            if len(bundles) > max_items:
+                truncated["utilities_result"]["bundles"] = bundles[:max_items]
+                truncated["utilities_result"]["truncated"] = True
+                truncated["utilities_result"]["total_bundles"] = len(bundles)
+    
+    # Truncate flight options if present
+    if "flight_result" in truncated and isinstance(truncated["flight_result"], dict):
+        if "outbound" in truncated["flight_result"] and isinstance(truncated["flight_result"]["outbound"], list):
+            outbound = truncated["flight_result"]["outbound"]
+            if len(outbound) > max_items:
+                truncated["flight_result"]["outbound"] = outbound[:max_items]
+                truncated["flight_result"]["truncated"] = True
+    
+    # Truncate TripAdvisor locations if present
+    if "tripadvisor_result" in truncated and isinstance(truncated["tripadvisor_result"], dict):
+        if "data" in truncated["tripadvisor_result"] and isinstance(truncated["tripadvisor_result"]["data"], list):
+            data = truncated["tripadvisor_result"]["data"]
+            if len(data) > max_items:
+                truncated["tripadvisor_result"]["data"] = data[:max_items]
+                truncated["tripadvisor_result"]["truncated"] = True
+    
+    return truncated
+
+
 def get_conversational_agent_prompt() -> str:
     """Get the system prompt for the Conversational Agent."""
     return """You are a helpful travel assistant that provides friendly, natural, and conversational responses to users about their travel queries.
@@ -133,6 +185,10 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     
     # Prepare messages for LLM
     import json
+    
+    # Truncate large results to avoid context overflow
+    truncated_info = truncate_large_results(collected_info, max_items=20)
+    
     messages = [
         {"role": "system", "content": get_conversational_agent_prompt()},
         {
@@ -140,7 +196,7 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
             "content": f"""User's original message: {user_message}
 
 Below is the data collected from specialized agents (THIS IS FOR YOUR REFERENCE ONLY - DO NOT INCLUDE IT IN YOUR RESPONSE):
-{json.dumps(collected_info, indent=2, ensure_ascii=False) if collected_info else "No information was collected from specialized agents."}
+{json.dumps(truncated_info, indent=2, ensure_ascii=False) if truncated_info else "No information was collected from specialized agents."}
 
 IMPORTANT INSTRUCTIONS:
 - Extract the relevant information from the JSON above
@@ -149,6 +205,7 @@ IMPORTANT INSTRUCTIONS:
 - Start your response directly with the information (e.g., "I've found some great options..." or "Here's what I found...")
 - The user should never see the JSON data - only the formatted information
 - For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
+- If data was truncated (indicated by "truncated": true or "limited": true), mention that more options are available
 - Make sure all links are properly formatted as markdown links so they appear as clickable in the UI"""
         }
     ]

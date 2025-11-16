@@ -89,15 +89,25 @@ Available tools (you will see their full schemas with function calling):
 - get_hotel_rates_by_price: Search for hotels by price range
 - get_hotel_details: Get detailed information about specific hotels
 
-IMPORTANT:
-- Use your LLM understanding to determine parameters from the user's message - NO code-based parsing is used
-- Convert dates to YYYY-MM-DD format based on your understanding
+IMPORTANT DATE HANDLING:
+- If user specifies dates, use them exactly as provided
+- If NO dates are mentioned, use these smart defaults:
+  * checkin: 7 days from today (YYYY-MM-DD format)
+  * checkout: 3 nights after checkin (typical short stay)
+- Keep stays reasonable: 2-7 nights is typical unless user specifies longer
+- NEVER use date ranges longer than 14 days unless explicitly requested
+- Current date context: November 2024, so near-future dates should be in December 2024 or early 2025
+
+LOCATION HANDLING:
 - Determine location information - you MUST provide one of these combinations:
   * city_name AND country_code (BOTH required together) - e.g., "Beirut" requires country_code "LB" for Lebanon
   * OR iata_code (airport code)
   * OR hotel_ids (array of hotel IDs)
-  * When a city name is mentioned, use your knowledge to infer the country code (e.g., "Beirut" -> "LB", "Dubai" -> "AE", "Paris" -> "FR")
+  * When a city name is mentioned, use your knowledge to infer the country code (e.g., "Beirut" -> "LB", "Dubai" -> "AE", "Paris" -> "FR", "Rome" -> "IT")
+
+OTHER PARAMETERS:
 - Infer occupancies from user message using your understanding (adults, children)
+- Default to 2 adults if not specified
 - Use the tool schemas to understand required vs optional parameters
 - ALWAYS call a tool - do not ask for clarification unless absolutely critical information is missing
 - You have access to the full tool documentation through function calling - use it to understand parameter requirements
@@ -116,6 +126,10 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     Returns:
         Updated agent state with response
     """
+    from datetime import datetime
+    start_time = datetime.now()
+    print(f"[{start_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT STARTED")
+    
     user_message = state.get("user_message", "")
     updated_state = state.copy()
     
@@ -207,6 +221,9 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                     # Store error result and return
                     updated_state["hotel_result"] = hotel_result
                     # No need to set route - using add_edge means we automatically route to join_node
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).total_seconds()
+                    print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT COMPLETED (Duration: {duration:.3f}s)")
                     return updated_state
                 
                 # Ensure error flag is explicitly False if we have hotels
@@ -347,6 +364,9 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                 stored_result = updated_state.get("hotel_result")
                 print(f"Hotel agent: Verified stored result - type: {type(stored_result)}, is None: {stored_result is None}, has hotels: {len(stored_result.get('hotels', [])) if isinstance(stored_result, dict) else 0}")
                 
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT COMPLETED (Duration: {duration:.3f}s)")
                 return updated_state
                 
             except Exception as e:
@@ -357,11 +377,17 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                 # Store error in result
                 updated_state["hotel_result"] = {"error": True, "error_message": str(e)}
                 # No need to set route - using add_edge means we automatically route to join_node
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT COMPLETED (Duration: {duration:.3f}s)")
                 return updated_state
     
     # No tool call - store empty result
     updated_state["hotel_result"] = {"error": True, "error_message": "No hotel search parameters provided"}
     # No need to set route - using add_edge means we automatically route to join_node
     
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT COMPLETED (Duration: {duration:.3f}s)")
     return updated_state
 

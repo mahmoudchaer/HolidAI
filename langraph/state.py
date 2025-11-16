@@ -17,6 +17,21 @@ def reducer(left: Any, right: Any) -> Any:
     return right
 
 
+class ExecutionStep(TypedDict):
+    """A single step in the execution plan.
+    
+    Attributes:
+        step_number: The order of this step (1-indexed)
+        agents: List of agent node names to call in parallel
+        description: Human-readable description of what this step does
+        depends_on: Optional list of step numbers this step depends on
+    """
+    step_number: int
+    agents: List[str]
+    description: str
+    depends_on: Optional[List[int]]
+
+
 class AgentState(TypedDict):
     """Shared state for LangGraph agents.
     
@@ -39,6 +54,8 @@ class AgentState(TypedDict):
         tripadvisor_result: TripAdvisor results (set by tripadvisor_agent_node) - can be updated in parallel
         utilities_result: Utilities results (set by utilities_agent_node) - can be updated in parallel
         join_retry_count: Counter for join_node retries to prevent infinite loops
+        execution_plan: List of execution steps to run sequentially
+        current_step: Current step number being executed (0-indexed into execution_plan)
     """
     user_message: Annotated[str, reducer]  # Read-only, but needs reducer for parallel execution
     context: Annotated[Dict[str, Any], reducer]
@@ -58,4 +75,6 @@ class AgentState(TypedDict):
     tripadvisor_result: Annotated[Optional[Dict[str, Any]], reducer]
     utilities_result: Annotated[Optional[Dict[str, Any]], reducer]
     join_retry_count: Annotated[int, reducer]
+    execution_plan: Annotated[List[Dict[str, Any]], reducer]  # List of ExecutionStep dicts
+    current_step: Annotated[int, reducer]  # Current step being executed
 
