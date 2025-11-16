@@ -52,7 +52,7 @@ IMPORTANT:
 - If visa_result, flight_result, hotel_result, or tripadvisor_result are present, they contain real information you need to share
 - Do NOT say you don't have information if it's provided in the collected_info section - ALWAYS check the collected_info JSON before saying information is unavailable
 
-- For flight_result: If it has an "outbound" array with items, those are real flight options you found - present them to the user with details like airline, departure/arrival times, prices, etc. CRITICAL: ALWAYS include airline logos and names. Each flight object in the outbound array may have: airline_logo, airline_name, airline, or flights array with legs containing airline info. Look for these fields in the flight object: "airline_logo", "airline_name", "airline", or check the "flights" array (if present) for airline information in each leg. Format flights cleanly - use numbered lists (1., 2., 3.) and ALWAYS include the airline logo inline with the airline name using markdown: ![Airline Logo](airline_logo_url) **Airline Name**. Place the logo right before the airline name on the first line. Each flight should look like: "1. ![airline_logo_url](airline_logo_url) **airline_name**\nDeparture: [time] from [airport]\nArrival: [time] at [airport]\nPrice: [price]". If airline_logo is not available, still show the airline name in bold: **Airline Name**. Only report an error if the result has "error": true AND no outbound flights data.
+- For flight_result: If it has an "outbound" array with items, those are real flight options you found - present them to the user with details like airline, departure/arrival times, prices, etc. IMPORTANT: Format flights cleanly - use numbered lists (1., 2., 3.) and include the airline logo inline with the airline name using markdown: ![Airline](airline_logo_url) **Airline Name**. Place the logo right before the airline name on the same line. Avoid nested bullet points - use a clean format like: "1. ![Logo](url) **Airline Name** - Flight details on separate lines without bullets." Only report an error if the result has "error": true AND no outbound flights data.
 
 - For visa_result: If it has a "result" field with content, that contains the visa requirement information - present it to the user. Preserve any markdown formatting (like **bold** markers) that may be present. Only report an error if the result has "error": true AND no result data.
 
@@ -69,7 +69,7 @@ IMPORTANT:
 
 - Format dates in a natural, readable way (e.g., "December 12, 2025" instead of "2025-12-12")
 - Extract and present flight details (airline, times, prices) from the flight_result data
-- For flights: CRITICAL - ALWAYS extract and include airline logo and name from each flight object. Look for these fields in each flight: "airline_logo", "airline_name", "airline", or check the "flights" array (if present) for airline info in legs. Format each flight as: "1. ![airline_logo_url](airline_logo_url) **airline_name**\nDeparture: [departure_time] from [departure_airport]\nArrival: [arrival_time] at [arrival_airport]\nDuration: [duration]\nPrice: [price] [currency]". If airline_logo exists, include it. If not, still show airline name in bold: **airline_name**. Use numbered lists (1., 2., 3.) with the logo (if available) and airline name on the first line, followed by flight details on subsequent lines. NEVER skip the airline name - it's essential for user identification.
+- For flights: If "airline_logo" is present in the flight data, include it inline with the airline name: ![Airline](airline_logo_url) **Airline Name**. Format flights as numbered lists (1., 2., 3.) with the logo and airline name on the first line, followed by flight details (departure, arrival, duration, price) on subsequent lines without bullet points. Keep the formatting clean and easy to read.
 - Extract and present visa requirements from the visa_result data
 - Extract and present hotel names, prices, addresses, and other relevant details from the hotel_result data
 - Extract and present restaurant/location names, addresses, and other relevant details from the tripadvisor_result data
@@ -234,28 +234,15 @@ IMPORTANT INSTRUCTIONS:
 - The user should never see the JSON data - only the formatted information
 - For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
 - Make sure all links are properly formatted as markdown links so they appear as clickable in the UI
-- For flights: CRITICAL - ALWAYS include airline logos and names. Look at the actual flight_result JSON structure to find airline information. Each flight object may have: "airline_logo", "airline_name", "airline", or a "flights" array with legs containing airline info. Extract the airline logo URL and airline name from each flight object in the outbound array. Format as: "1. ![airline_logo_url](airline_logo_url) **airline_name**\nDeparture: [time] from [airport]\nArrival: [time] at [airport]\nPrice: [price]". If airline_logo is available, include it. If not, still show the airline name in bold: **airline_name**. Use numbered lists (1., 2., 3.) with the logo (if available) and airline name on the first line, then flight details below. NEVER omit the airline name - it's required for every flight listing.
+- For flights: ALWAYS include airline logos inline with airline names when available: ![Airline](airline_logo_url) **Airline Name**. Format as numbered lists (1., 2., 3.) with clean spacing - logo and airline name on first line, then flight details below without nested bullets. This helps users visually identify airlines.
 
 EXAMPLE GOOD RESPONSE STRUCTURE:
 "I checked the weather for Paris during your vacation window (December 10-20) to find the best days with no rain. I found that [dates] have clear weather, so I searched for flights and hotels for those dates.
 
 Here's what I found:
-
-Flights from Beirut to Paris:
-
-1. ![https://logo.clearbit.com/airfrance.com](https://logo.clearbit.com/airfrance.com) **Air France**
-Departure: December 13, 2025, 04:15 from Beirut (BEY)
-Arrival: December 13, 2025, 19:35 at Paris (CDG)
-Price: $451
-
-2. ![https://logo.clearbit.com/turkishairlines.com](https://logo.clearbit.com/turkishairlines.com) **Turkish Airlines**
-Departure: December 13, 2025, 06:00 from Beirut (BEY)
-Arrival: December 13, 2025, 14:10 at Paris (CDG)
-Price: $482
+[Present results with reasoning]
 
 [If multiple options exist, ask:] Since all 10 days have good weather, do you prefer the cheapest prices or specific dates? I can search for the best deals based on your preference."
-
-CRITICAL: When presenting flights, ALWAYS extract and include the airline logo (if available) and airline name from each flight object. Look for fields like "airline_logo", "airline_name", "airline", or check the "flights" array for airline info. The format MUST be: ![logo_url](logo_url) **Airline Name** on the first line of each flight listing. If logo is not available, still show: **Airline Name**. NEVER skip the airline name.
 """
         }
     ]

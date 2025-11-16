@@ -33,16 +33,13 @@ Your role:
 3. ADAPT: Modify plans dynamically based on results (e.g., weather affects dates, flight availability affects hotels)
 4. DECIDE: After each step, decide whether to continue, modify the plan, ask the user, or finish
 
-CRITICAL: BE INTELLIGENT AND SELECTIVE
-- Make OBVIOUS assumptions (e.g., Paris is in France, Beirut is in Lebanon) - don't ask about these
-- Ask for user input when it would help avoid wrong assumptions (e.g., if all dates have good weather, ask about price preferences)
-- Don't always create deep plans - sometimes asking the user first makes life easier
-- ONLY gather information the user actually needs or explicitly requested
-- If user mentions travel → ASK what they need (flights? hotels? activities? visa?) instead of assuming they need everything
-- If user mentions a destination and dates → Check weather first (needed for planning), then ASK what else they need
-- Don't automatically check visa requirements unless user explicitly asks or it's critical for their immediate planning
-- Don't automatically get activities/restaurants unless user asks for them
-- Balance between being helpful and not overwhelming the user with unnecessary information
+CRITICAL: BE INTELLIGENT AND PROACTIVE
+- If user mentions a destination and dates → AUTOMATICALLY check weather first (weather affects travel planning)
+- If user wants to travel → AUTOMATICALLY check weather, then flights/hotels, then visa requirements
+- If user mentions a country → AUTOMATICALLY check visa requirements if nationality is mentioned
+- If user wants activities → AUTOMATICALLY get them after flights/hotels are confirmed
+- You should create logical sequences WITHOUT the user explicitly telling you step-by-step what to do
+- Think about what information is needed FIRST before other steps can proceed
 
 Available worker nodes:
 - utilities_agent: Weather, currency conversion, date/time, eSIM bundles
@@ -62,29 +59,22 @@ INTELLIGENT PLANNING EXAMPLES:
 
 Example 1: User says "I want to travel to Paris next week"
 → Step 1: Check weather for Paris (utilities_agent) - produces: weather_data
-→ Step 2: ASK user what they need: "What do you need help with? Flights? Hotels? Both?"
-→ Don't assume they need everything - let them tell you
+→ Step 2: Get flights and hotels (flight_agent, hotel_agent) - requires: weather_data, produces: flight_options, hotel_options
+→ Step 3: Check visa if nationality mentioned (visa_agent) - requires: flight_options
+→ Step 4: Get activities (tripadvisor_agent) - requires: flight_options, hotel_options
 
 Example 2: User says "Find me flights to Dubai"
 → Step 1: Get flights (flight_agent) - produces: flight_options
-→ Only get flights - don't assume they need hotels, visa, or activities
+→ Step 2: Get hotels (hotel_agent) - requires: flight_options, produces: hotel_options
+→ Step 3: Check visa if nationality mentioned (visa_agent) - requires: flight_options
 
-Example 3: User says "I want to go to Paris, I have 10 days vacation, prefer no rain, cheapest possible"
-→ Step 1: Check weather (utilities_agent) - needed to find no-rain days
-→ Step 2: ASK user: "What do you need? Flights? Hotels? Both?"
-→ Don't automatically get visa or activities unless user asks
-
-Example 4: User says "What's the weather in Tokyo?"
+Example 3: User says "What's the weather in Tokyo?"
 → Step 1: Get weather (utilities_agent) - produces: weather_data
-→ Only get weather - nothing else needed
 
-DYNAMIC REASONING - ASK WHEN IT HELPS:
-- If weather shows all dates are good → ASK user about preferences (price, specific dates, etc.) BEFORE searching flights/hotels
+DYNAMIC REASONING:
 - If weather shows rain all week → modify plan to suggest different dates or ask user
 - If flights unavailable → adjust dates or ask user for alternatives
-- If results indicate missing info → ASK user clarifying questions rather than making assumptions
-- If multiple good options exist → ASK user for preferences to avoid wrong assumptions
-- Don't create deep plans when asking the user first would be simpler and more accurate
+- If results indicate missing info → add new steps or ask user clarifying questions
 
 When responding:
 - If creating/updating a plan: Return JSON with "action": "create_plan" or "update_plan" and "plan": [...]
@@ -130,8 +120,12 @@ def _check_requirements_satisfied(state: AgentState, requires: list) -> bool:
     return True
 
 
-def _generate_plan(state: AgentState) -> list:
-    """Use LLM to generate an intelligent, proactive execution plan."""
+def _generate_plan(state: AgentState) -> tuple:
+    """Use LLM to generate an intelligent, proactive execution plan.
+    
+    Returns:
+        tuple: (plan_list, question_or_none) - If question is not None, ask user first
+    """
     user_message = state.get("user_message", "").strip()
     
     # Check if this is just a greeting or simple query that doesn't need a plan
@@ -141,34 +135,64 @@ def _generate_plan(state: AgentState) -> list:
     # If it's just a greeting or very short non-travel query, return empty plan
     if user_lower in greetings or (len(user_message.split()) <= 2 and not any(word in user_lower for word in ["flight", "hotel", "travel", "trip", "visa", "weather", "destination", "book", "search"])):
         print("Main agent: Simple greeting or query detected, no plan needed")
-        return []  # Empty plan means route to conversational agent
+        return ([], None)  # Empty plan means route to conversational agent
     
     messages = [
         {"role": "system", "content": get_main_agent_prompt()},
-        {"role": "user", "content": f"""Create an intelligent, proactive execution plan for this user request.
+        {"role": "user", "content": f"""Analyze this user request and create an intelligent execution plan.
 
 User's message: {user_message}
 
-BE INTELLIGENT AND BALANCED:
-- Make OBVIOUS assumptions (Paris = France, Beirut = Lebanon) - don't ask about these
-- Ask for user input when it would help avoid wrong assumptions
-- Don't always create deep plans - sometimes asking first is better
+CRITICAL: Use your LLM reasoning to check if critical information is missing:
+- Read and understand the user's message completely
+- If user asks for hotels/flights but NO LOCATION/DESTINATION is mentioned → Return {{"action": "ask_user", "question": "Which city or destination are you interested in?"}}
+- If user asks for weather but NO LOCATION is mentioned → Return {{"action": "ask_user", "question": "Which city would you like to check the weather for?"}}
+- If user asks for visa but NO NATIONALITY or DESTINATION → Return {{"action": "ask_user", "question": "What is your nationality and which country are you traveling to?"}}
+- Use your understanding of the message - do NOT use regex or pattern matching, use LLM reasoning
+
+If all critical information is present, create a plan:
+{{
+  "action": "create_plan",
+  "plan": [...]
+}}
+
+If information is missing, ask:
+{{
+  "action": "ask_user",
+  "question": "..."
+}}
+
+Remember: Worker nodes will extract ALL parameters from the user message using LLM reasoning. You just need to check if the basic information (location, dates) is present in the message.
+
+BE INTELLIGENT AND PROACTIVE:
 - Analyze what the user wants to accomplish
 - Think about what information is needed FIRST (e.g., weather for travel destinations with dates)
+- Create logical sequences automatically - don't wait for explicit step-by-step instructions
 - Consider dependencies: weather affects travel dates, flights affect hotels, destination affects visa
 
 INTELLIGENT PLANNING RULES:
-1. If user mentions travel to a destination with dates → Check weather first (needed for planning), then ASK what they need (flights? hotels? both?)
-2. If user explicitly asks for flights → Get flights only (don't assume hotels)
-3. If user explicitly asks for hotels → Get hotels only (don't assume flights)
-4. If user explicitly asks for both → Get both flights and hotels
+1. If user mentions travel to a destination with dates → ALWAYS check weather first (Step 1)
+2. If user wants flights/hotels → Get weather first if dates mentioned, then flights/hotels in parallel
+3. If user mentions nationality and destination → Check visa requirements
+4. If user wants activities/restaurants → Get them after flights/hotels are found
 5. If user only asks about weather → Just get weather (single step)
-6. If user mentions nationality and destination → DON'T automatically check visa unless user explicitly asks or it's critical
-7. If user wants activities/restaurants → Only get them if user explicitly asks
-8. If multiple good options exist → ASK user for preferences rather than assuming
-9. ALWAYS ask what the user needs instead of assuming they need everything
+6. If user only asks about flights → Get flights, then hotels (logical sequence)
 
-Create a plan that makes sense logically, but ASK the user what they need instead of assuming they need flights, hotels, visa, and activities all at once.
+IMPORTANT ABOUT WORKER NODES:
+- Worker nodes (utilities_agent, flight_agent, hotel_agent, etc.) receive the FULL user_message
+- They use LLM reasoning to extract ALL parameters from the user message (location, dates, preferences, etc.)
+- You do NOT need to extract or pass parameters - just create the plan
+- The worker nodes will intelligently understand the user's message and extract what they need
+- DO NOT create steps that produce fake result keys like "non_rainy_dates" - use real result keys like "weather_data", "flight_options", "hotel_options"
+
+VALID RESULT KEYS:
+- "weather_data" (from utilities_agent)
+- "flight_options" or "flight_result" (from flight_agent)
+- "hotel_options" or "hotel_result" (from hotel_agent)
+- "visa_info" or "visa_result" (from visa_agent)
+- "activities" or "tripadvisor_result" (from tripadvisor_agent)
+
+Create a plan that makes sense logically. Be proactive - the user doesn't need to tell you "check weather first".
 
 Return a JSON object with:
 {{
@@ -180,7 +204,7 @@ Return a JSON object with:
   ]
 }}
 
-Make sure the plan is intelligent and logical based on the user's request."""}
+Make sure the plan is intelligent and logical based on the user's request. Use only valid result keys."""}
     ]
     
     response = client.chat.completions.create(
@@ -192,12 +216,18 @@ Make sure the plan is intelligent and logical based on the user's request."""}
     content = response.choices[0].message.content or ""
     result = _extract_json_from_response(content)
     
+    # Check if we need to ask the user first
+    if result.get("action") == "ask_user":
+        question = result.get("question", "I need more information to proceed.")
+        print(f"Main agent: Need to ask user: {question}")
+        return ([], question)
+    
     if result.get("action") == "create_plan" and "plan" in result:
         plan = result["plan"]
         print(f"Main agent: Generated intelligent plan with {len(plan)} steps")
         for step in plan:
             print(f"  Step {step.get('id')}: {step.get('nodes')} (requires: {step.get('requires')}, produces: {step.get('produces')})")
-        return plan
+        return (plan, None)
     
     # Fallback: intelligent heuristic-based plan
     print("Warning: LLM did not return valid plan, using intelligent fallback")
@@ -224,90 +254,84 @@ Make sure the plan is intelligent and logical based on the user's request."""}
         })
         return plan
     
-    # Rule 2: If user mentions travel with destination and dates, check weather first (needed for planning)
-    # Check if user implicitly wants flights/hotels (e.g., "cheapest possible", "book", "plan my trip")
-    has_implicit_travel_request = any(word in user_lower for word in ["cheapest", "cheap", "budget", "book", "plan my trip", "help me plan", "find me"])
-    
-    if has_destination and has_dates:
+    # Rule 2: If user mentions travel with destination and dates, check weather first
+    if has_destination and has_dates and (has_flight_query or has_hotel_query):
         plan.append({
             "id": node_id,
             "nodes": ["utilities_agent"],
             "requires": [],
             "produces": ["weather_data"]
         })
-        # If user implicitly wants travel planning (cheapest, book, etc.), we'll proceed with flights+hotels after weather
-        # Otherwise, we'll ask what they need
-        if not has_implicit_travel_request and not (has_flight_query or has_hotel_query):
-            # After weather, we should ask what they need - don't assume flights/hotels/visa/activities
-            # The decision logic will handle asking the user
-            return plan
         node_id += 1
     
-    # Rule 2b: If user implicitly wants travel planning or explicitly asks, add flights and hotels
-    if (has_implicit_travel_request or has_flight_query or has_hotel_query) and has_destination:
-        parallel_nodes = []
-        if has_flight_query or has_implicit_travel_request:
-            parallel_nodes.append("flight_agent")
-        if has_hotel_query or has_implicit_travel_request:
-            parallel_nodes.append("hotel_agent")
-        
-        if parallel_nodes:
-            requires = ["weather_data"] if node_id > 1 else []
-            produces = [f"{node.replace('_agent', '')}_options" for node in parallel_nodes]
-            plan.append({
-                "id": node_id,
-                "nodes": parallel_nodes,
-                "requires": requires,
-                "produces": produces
-            })
-            node_id += 1
+    # Rule 3: Get flights and hotels (can run in parallel after weather if needed)
+    parallel_nodes = []
+    if has_flight_query:
+        parallel_nodes.append("flight_agent")
+    if has_hotel_query:
+        parallel_nodes.append("hotel_agent")
     
-    # Rule 3: Only get what user explicitly asks for (if not already added in Rule 2b)
-    # Only add if we haven't already added them due to implicit travel request
-    if has_flight_query and not has_implicit_travel_request and not any(step.get("nodes") == ["flight_agent"] or "flight_agent" in step.get("nodes", []) for step in plan):
+    if parallel_nodes:
+        requires = ["weather_data"] if node_id > 1 else []
+        produces = [f"{node.replace('_agent', '')}_options" for node in parallel_nodes]
         plan.append({
             "id": node_id,
-            "nodes": ["flight_agent"],
-            "requires": [],
-            "produces": ["flight_options"]
+            "nodes": parallel_nodes,
+            "requires": requires,
+            "produces": produces
         })
         node_id += 1
     
-    if has_hotel_query and not has_implicit_travel_request and not any(step.get("nodes") == ["hotel_agent"] or "hotel_agent" in step.get("nodes", []) for step in plan):
-        plan.append({
-            "id": node_id,
-            "nodes": ["hotel_agent"],
-            "requires": [],
-            "produces": ["hotel_options"]
-        })
-        node_id += 1
-    
-    # Rule 4: Only check visa if explicitly mentioned
-    if has_visa_query:
+    # Rule 4: Check visa if mentioned or if we have destination
+    if has_visa_query or (has_destination and any(word in user_lower for word in ["citizen", "nationality", "passport", "from"])):
+        requires = ["flight_options"] if node_id > 1 else []
         plan.append({
             "id": node_id,
             "nodes": ["visa_agent"],
-            "requires": [],
+            "requires": requires,
             "produces": ["visa_info"]
         })
         node_id += 1
     
-    # Rule 5: Only get activities if explicitly mentioned
+    # Rule 5: Get activities after flights/hotels
     if has_activity_query:
+        requires = []
+        if has_flight_query:
+            requires.append("flight_options")
+        if has_hotel_query:
+            requires.append("hotel_options")
+        if not requires:
+            requires = ["weather_data"] if node_id > 1 else []
+        
         plan.append({
             "id": node_id,
             "nodes": ["tripadvisor_agent"],
-            "requires": [],
+            "requires": requires,
             "produces": ["activities"]
         })
         node_id += 1
+    
+    # Rule 6: If only flights mentioned, still get hotels (logical sequence)
+    if has_flight_query and not has_hotel_query and not plan:
+        plan.append({
+            "id": 1,
+            "nodes": ["flight_agent"],
+            "requires": [],
+            "produces": ["flight_options"]
+        })
+        plan.append({
+            "id": 2,
+            "nodes": ["hotel_agent"],
+            "requires": ["flight_options"],
+            "produces": ["hotel_options"]
+        })
     
     # Default: if nothing matches, just get utilities
     if not plan:
         plan = [{"id": 1, "nodes": ["utilities_agent"], "requires": [], "produces": ["utilities_result"]}]
     
     print(f"Main agent: Generated fallback plan with {len(plan)} steps")
-    return plan
+    return (plan, None)
 
 
 def _decide_next_action(state: AgentState) -> dict:
@@ -318,37 +342,22 @@ def _decide_next_action(state: AgentState) -> dict:
     results = state.get("results", {})
     finished_steps = state.get("finished_steps", [])
     
-    # Build context about current state with actual data for decision-making
+    # Build context about current state
     results_summary = {}
     for key, value in results.items():
         if isinstance(value, dict):
             if value.get("error"):
                 results_summary[key] = f"Error: {value.get('error_message', 'Unknown error')}"
             else:
-                # Include actual data for weather to help decision-making
-                if key in ["weather_data", "utilities_agent", "utilities", "utilities_result"]:
-                    # Include weather description to check if all dates are good
-                    description = value.get("description", "")
-                    location = value.get("location", "")
-                    temperature = value.get("temperature", "")
-                    results_summary[key] = f"Success - Location: {location}, Temp: {temperature}°C, Conditions: {description}"
-                else:
-                    results_summary[key] = "Success"
+                results_summary[key] = "Success"
         else:
             results_summary[key] = str(value)[:100]  # Truncate long values
-    
-    # Check if user mentioned preferences in original message
-    user_lower = user_message.lower()
-    has_price_preference = any(word in user_lower for word in ["cheap", "budget", "expensive", "luxury", "price", "cost", "affordable"])
-    has_date_preference = any(word in user_lower for word in ["specific date", "prefer", "favorite", "best date", "which date"])
-    has_clear_preferences = has_price_preference or has_date_preference
     
     messages = [
         {"role": "system", "content": get_main_agent_prompt()},
         {"role": "user", "content": f"""You are executing a multi-step plan. Intelligently decide what to do next.
 
 User's original request: {user_message}
-User mentioned preferences: {"Yes (price/date preferences mentioned)" if has_clear_preferences else "No (no clear preferences mentioned)"}
 
 Current plan:
 {json.dumps(plan, indent=2)}
@@ -359,21 +368,17 @@ Finished steps: {finished_steps}
 Results so far:
 {json.dumps(results_summary, indent=2)}
 
-BE INTELLIGENT IN YOUR DECISION - ASK WHEN IT HELPS:
-- If weather check is complete AND user hasn't specified what they need → ASK user: "What do you need help with? Flights? Hotels? Both?"
-- If weather shows ALL dates are good AND user has NO clear preferences → ASK user about preferences (price, specific dates) BEFORE searching flights/hotels
+BE INTELLIGENT IN YOUR DECISION:
 - If weather shows bad conditions (rain, storms) → consider modifying plan or asking user about alternative dates
 - If flights are unavailable → consider adjusting dates or asking user for alternatives
-- If multiple good options exist AND user preferences unclear → ASK user for preferences to avoid wrong assumptions
-- Don't make assumptions about what user needs (flights, hotels, visa, activities) - ASK instead
-- Don't automatically get visa or activities unless user explicitly asks
-- Only continue automatically if user explicitly requested something (e.g., "cheapest possible" implies flights+hotels)
-- If user already mentioned what they need (flights, hotels, both) → you can proceed
+- If results are good → continue to next step automatically
+- Only ask user if absolutely necessary (missing critical info) or if results suggest alternatives
+- Default to continuing the plan if results are satisfactory
 
 Decide:
 1. If plan needs modification based on results → "update_plan" with new plan
-2. If we need user input (when preferences unclear or multiple good options) → "ask_user" with question
-3. If we should continue to next step (user preferences clear) → "continue" with next_step
+2. If we need user input (only if critical) → "ask_user" with question
+3. If we should continue to next step (default) → "continue" with next_step
 4. If we're done → "finish"
 
 Return JSON:
@@ -424,7 +429,22 @@ async def main_agent_node(state: AgentState) -> AgentState:
     if "plan" not in state or not state.get("plan"):
         # First time: create a plan
         print("Main agent: Creating initial plan...")
-        plan = _generate_plan(state)
+        plan_result = _generate_plan(state)
+        if isinstance(plan_result, tuple):
+            plan, question = plan_result
+        else:
+            # Backward compatibility
+            plan = plan_result
+            question = None
+        
+        # If we need to ask the user, route to conversational agent
+        if question:
+            updated_state["user_questions"] = [question]
+            updated_state["route"] = "conversational_agent"
+            updated_state["ready_for_response"] = True
+            print(f"Main agent: Need to ask user before proceeding: {question}")
+            return updated_state
+        
         updated_state["plan"] = plan
         updated_state["current_step"] = 0
         updated_state["results"] = {}

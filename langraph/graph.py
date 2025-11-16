@@ -45,10 +45,6 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return "join_node"
     elif route == "main_agent":
         return "main_agent"
-    elif route == "ask_user":
-        # Safeguard: if somehow route is "ask_user", route to conversational_agent instead
-        print(f"Warning: Route was 'ask_user', routing to conversational_agent instead")
-        return "conversational_agent"
     else:
         return "end"
 
