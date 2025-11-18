@@ -114,6 +114,25 @@ async def visa_agent_node(state: AgentState) -> AgentState:
     Returns:
         Updated agent state with response
     """
+    import time
+    from datetime import datetime
+    
+    start_time = time.time()
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    
+    # Check if this node should execute (for parallel execution mode)
+    pending_nodes = state.get("pending_nodes", [])
+    if isinstance(pending_nodes, list) and len(pending_nodes) > 0:
+        # If we're in parallel mode and this node is not in pending_nodes, skip execution
+        if "visa_agent" not in pending_nodes:
+            # Not supposed to execute, just pass through to join_node
+            updated_state = state.copy()
+            updated_state["route"] = "join_node"
+            print(f"[{timestamp}] Visa agent: SKIPPED (not in pending_nodes: {pending_nodes})")
+            return updated_state
+    
+    print(f"[{timestamp}] Visa agent: STARTING execution (pending_nodes: {pending_nodes})")
+    
     user_message = state.get("user_message", "")
     updated_state = state.copy()
     
@@ -209,6 +228,9 @@ async def visa_agent_node(state: AgentState) -> AgentState:
                 updated_state["results"]["visa_agent"] = visa_result
                 updated_state["results"]["visa"] = visa_result
                 updated_state["results"]["visa_result"] = visa_result
+                elapsed = time.time() - start_time
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"[{timestamp}] Visa agent: COMPLETED in {elapsed:.2f}s")
                 updated_state["results"]["visa_info"] = visa_result
                 # No need to set route - using add_edge means we automatically route to join_node
                 
@@ -221,6 +243,9 @@ async def visa_agent_node(state: AgentState) -> AgentState:
                 updated_state["results"]["visa_agent"] = error_result
                 updated_state["results"]["visa"] = error_result
                 updated_state["results"]["visa_result"] = error_result
+                elapsed = time.time() - start_time
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"[{timestamp}] Visa agent: COMPLETED with ERROR in {elapsed:.2f}s")
                 updated_state["results"]["visa_info"] = error_result
                 # No need to set route - using add_edge means we automatically route to join_node
             
@@ -234,6 +259,9 @@ async def visa_agent_node(state: AgentState) -> AgentState:
     updated_state["results"]["visa_agent"] = error_result
     updated_state["results"]["visa"] = error_result
     updated_state["results"]["visa_result"] = error_result
+    elapsed = time.time() - start_time
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}] Visa agent: COMPLETED (no tool call) in {elapsed:.2f}s")
     updated_state["results"]["visa_info"] = error_result
     # No need to set route - using add_edge means we automatically route to join_node
     

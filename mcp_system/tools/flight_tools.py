@@ -46,6 +46,7 @@ def _normalize_location(location: str) -> str:
         "UAE": "DXB",  # Dubai
         "UNITED ARAB EMIRATES": "DXB",
         "SAUDI ARABIA": "RUH",  # Riyadh
+        "JORDAN": "AMM",  # Amman
         "EGYPT": "CAI",  # Cairo
         "TURKEY": "IST",  # Istanbul
         "JAPAN": "NRT",  # Tokyo
@@ -68,6 +69,7 @@ def _normalize_location(location: str) -> str:
         "MADRID": "MAD",
         "DUBAI": "DXB",
         "RIYADH": "RUH",
+        "AMMAN": "AMM",
         "CAIRO": "CAI",
         "ISTANBUL": "IST",
         "TOKYO": "NRT",

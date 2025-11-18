@@ -116,6 +116,25 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     Returns:
         Updated agent state with response
     """
+    import time
+    from datetime import datetime
+    
+    start_time = time.time()
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    
+    # Check if this node should execute (for parallel execution mode)
+    pending_nodes = state.get("pending_nodes", [])
+    if isinstance(pending_nodes, list) and len(pending_nodes) > 0:
+        # If we're in parallel mode and this node is not in pending_nodes, skip execution
+        if "hotel_agent" not in pending_nodes:
+            # Not supposed to execute, just pass through to join_node
+            updated_state = state.copy()
+            updated_state["route"] = "join_node"
+            print(f"[{timestamp}] Hotel agent: SKIPPED (not in pending_nodes: {pending_nodes})")
+            return updated_state
+    
+    print(f"[{timestamp}] Hotel agent: STARTING execution (pending_nodes: {pending_nodes})")
+    
     user_message = state.get("user_message", "")
     updated_state = state.copy()
     
@@ -339,7 +358,9 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                     hotel_result["error_message"] = "No hotels found matching the criteria"
                 
                 # Debug: Log what we're storing
-                print(f"Hotel agent: Storing result with {hotels_count} hotel(s), error: {hotel_result.get('error', False)}")
+                elapsed = time.time() - start_time
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"[{timestamp}] Hotel agent: COMPLETED in {elapsed:.2f}s - Storing result with {hotels_count} hotel(s), error: {hotel_result.get('error', False)}")
                 if hotels_count > 0:
                     hotel_names = [h.get("name", "Unknown") for h in hotel_result.get("hotels", [])[:3]]
                     print(f"Hotel agent: Hotel names: {hotel_names}")

@@ -1,6 +1,8 @@
 """Join node that waits for all required nodes in the current step to complete."""
 
 import asyncio
+import time
+from datetime import datetime
 from state import AgentState
 
 
@@ -51,9 +53,13 @@ async def join_node(state: AgentState) -> AgentState:
         if step_id not in finished_steps:
             finished_steps.append(step_id)
         updated_state["finished_steps"] = finished_steps
+        # CRITICAL FIX: Clear pending_nodes after step completes
         updated_state["pending_nodes"] = []
+        if "_parallel_mode" in updated_state:
+            del updated_state["_parallel_mode"]
         updated_state["route"] = "main_agent"
-        print(f"Join node: Step {step_id} complete, routing back to main agent")
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[{timestamp}] Join node: Step {step_id} complete, routing back to main agent")
         return updated_state
     
     # Check which nodes have completed
@@ -86,9 +92,14 @@ async def join_node(state: AgentState) -> AgentState:
         if step_id not in finished_steps:
             finished_steps.append(step_id)
         updated_state["finished_steps"] = finished_steps
+        # CRITICAL FIX: Clear pending_nodes after step completes to prevent reuse
         updated_state["pending_nodes"] = []
+        # Also clear the parallel mode flag
+        if "_parallel_mode" in updated_state:
+            del updated_state["_parallel_mode"]
         updated_state["route"] = "main_agent"
-        print(f"Join node: All nodes completed for step {step_id}, routing back to main agent")
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[{timestamp}] Join node: All nodes completed for step {step_id} (nodes: {completed_nodes}), routing back to main agent")
         return updated_state
     
     # Some nodes still missing, wait and retry
@@ -96,7 +107,8 @@ async def join_node(state: AgentState) -> AgentState:
     MAX_RETRIES = 20  # Maximum retries (10 seconds with 0.5s delay)
     
     if join_retry_count < MAX_RETRIES:
-        print(f"Join node: Waiting for nodes {missing_nodes} to complete... (retry {join_retry_count + 1}/{MAX_RETRIES})")
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[{timestamp}] Join node: Waiting for nodes {missing_nodes} to complete... (retry {join_retry_count + 1}/{MAX_RETRIES}, completed: {completed_nodes})")
         await asyncio.sleep(0.5)  # Wait for parallel nodes to complete
         updated_state["join_retry_count"] = join_retry_count + 1
         updated_state["route"] = "join_node"  # Route back to self to retry
@@ -108,8 +120,13 @@ async def join_node(state: AgentState) -> AgentState:
         if step_id not in finished_steps:
             finished_steps.append(step_id)
         updated_state["finished_steps"] = finished_steps
+        # CRITICAL FIX: Clear pending_nodes even on timeout
         updated_state["pending_nodes"] = []
+        if "_parallel_mode" in updated_state:
+            del updated_state["_parallel_mode"]
         updated_state["route"] = "main_agent"
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[{timestamp}] Join node: Max retries reached. Proceeding with missing nodes: {missing_nodes}")
         return updated_state
 
 

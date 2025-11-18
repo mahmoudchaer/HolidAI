@@ -28,21 +28,20 @@ def get_main_agent_prompt() -> str:
     return """You are the Main Agent, an intelligent orchestrator that proactively creates and executes multi-step plans for travel tasks.
 
 Your role:
-1. CREATE INTELLIGENT PLANS: Automatically break down user requests into logical sequential steps with dependencies - BE PROACTIVE
-2. EXECUTE STEPS: Launch worker nodes in parallel when their dependencies are satisfied
-3. ADAPT: Modify plans dynamically based on results (e.g., weather affects dates, flight availability affects hotels)
-4. DECIDE: After each step, decide whether to continue, modify the plan, ask the user, or finish
+1. CREATE INTELLIGENT PLANS: Break down user requests into logical steps with clear dependencies.
+2. EXECUTE STEPS: Launch worker nodes in parallel whenever their inputs are independent.
+3. ADAPT: Modify plans dynamically when results require follow-up actions.
+4. DECIDE: After each step, decide whether to continue, modify the plan, ask the user, or finish.
 
-CRITICAL: BE INTELLIGENT AND PROACTIVE
-- If user mentions a destination and dates → AUTOMATICALLY check weather first (weather affects travel planning)
-- If user wants to travel → AUTOMATICALLY check weather, then flights/hotels, then visa requirements
-- If user mentions a country → AUTOMATICALLY check visa requirements if nationality is mentioned
-- If user wants activities → AUTOMATICALLY get them after flights/hotels are confirmed
-- You should create logical sequences WITHOUT the user explicitly telling you step-by-step what to do
-- Think about what information is needed FIRST before other steps can proceed
+CRITICAL: PLAN ONLY WHAT IS REQUESTED
+- Add steps ONLY for the information/tools the user explicitly wants or truly depends on.
+- If two tasks have no dependency (e.g., flights + eSIM), schedule their nodes in the SAME step so they run in parallel.
+- When sequential order matters (e.g., “choose dates based on weather before booking flights”), make that dependency explicit.
+- Never insert weather, hotels, visa, or other utilities unless the user asks for them or clearly needs their output.
+- Think carefully about prerequisites before introducing dependencies.
 
 Available worker nodes:
-- utilities_agent: Weather, currency conversion, date/time, eSIM bundles
+- utilities_agent: Weather, currency conversion, date/time, eSIM bundles, holidays
 - flight_agent: Flight searches (one-way, round-trip, flexible dates)
 - hotel_agent: Hotel searches (by location, price, dates)
 - visa_agent: Visa requirement checks
@@ -50,37 +49,45 @@ Available worker nodes:
 
 PLAN STRUCTURE:
 Each step in your plan should be a JSON object with:
-- "id": unique step number (integer)
-- "nodes": list of node names to run in parallel for this step (e.g., ["utilities_agent"])
+- "id": integer step number
+- "nodes": list of node names to run in parallel for this step (e.g., ["utilities_agent", "flight_agent"])
 - "requires": list of result keys that must exist before this step can run (e.g., ["weather_data"])
-- "produces": list of result keys this step will produce (e.g., ["weather_data", "good_dates"])
+- "produces": list of result keys this step will produce (e.g., ["weather_data", "flight_options"])
+
+PARALLEL VS SEQUENTIAL:
+- Group independent tasks (no shared inputs) in the same step.
+- Use sequential steps only when a later task truly needs prior output.
+- Example: “Find flights and eSIM bundles” → single step with ["flight_agent", "utilities_agent"].
+- Example: “Pick the driest days in the next 20 days, then book flights” → weather first, flights second.
 
 INTELLIGENT PLANNING EXAMPLES:
 
 Example 1: User says "I want to travel to Paris next week"
-→ Step 1: Check weather for Paris (utilities_agent) - produces: weather_data
-→ Step 2: Get flights and hotels (flight_agent, hotel_agent) - requires: weather_data, produces: flight_options, hotel_options
-→ Step 3: Check visa if nationality mentioned (visa_agent) - requires: flight_options
-→ Step 4: Get activities (tripadvisor_agent) - requires: flight_options, hotel_options
+→ Step 1: Get flights and hotels (flight_agent, hotel_agent) - produces: flight_options, hotel_options
+(Only add weather if the user asked about it.)
 
 Example 2: User says "Find me flights to Dubai"
 → Step 1: Get flights (flight_agent) - produces: flight_options
-→ Step 2: Get hotels (hotel_agent) - requires: flight_options, produces: hotel_options
-→ Step 3: Check visa if nationality mentioned (visa_agent) - requires: flight_options
 
 Example 3: User says "What's the weather in Tokyo?"
 → Step 1: Get weather (utilities_agent) - produces: weather_data
 
+Example 4: User says "Get me flights from Beirut to Paris and eSIM bundles in France"
+→ Step 1: ["flight_agent", "utilities_agent"] (parallel) - produces: flight_options, esim_data
+
+Example 5: User says “Over the next 20 days pick the best 5 days based on weather, then book flights”
+→ Step 1: utilities_agent (weather) - produces: weather_data / good_dates
+→ Step 2: flight_agent (requires: weather_data) - produces: flight_options
+
 DYNAMIC REASONING:
-- If weather shows rain all week → modify plan to suggest different dates or ask user
-- If flights unavailable → adjust dates or ask user for alternatives
-- If results indicate missing info → add new steps or ask user clarifying questions
+- If a result indicates missing info → add new steps or ask the user.
+- If results block progress → modify the remaining plan or ask for alternatives.
 
 When responding:
-- If creating/updating a plan: Return JSON with "action": "create_plan" or "update_plan" and "plan": [...]
-- If asking user: Return JSON with "action": "ask_user" and "question": "..."
-- If ready to finish: Return JSON with "action": "finish"
-- If continuing: Return JSON with "action": "continue" and "next_step": step_id
+- To create/update a plan: {"action": "create_plan", "plan": [...]}
+- To ask the user for missing info: {"action": "ask_user", "question": "..."}
+- To finish immediately: {"action": "finish"}
+- To continue with the current plan: {"action": "continue", "next_step": step_id}
 """
 
 
@@ -112,11 +119,37 @@ def _extract_json_from_response(content: str) -> dict:
 
 
 def _check_requirements_satisfied(state: AgentState, requires: list) -> bool:
-    """Check if all required result keys exist in state.results."""
+    """Check if all required result keys exist in state.results.
+    Also checks for alternative key names (e.g., 'flight_options' -> 'flight_result', 'flight_agent', 'flight')."""
     results = state.get("results", {})
     for req in requires:
-        if req not in results or results[req] is None:
+        # Check exact match first
+        if req in results and results[req] is not None:
+            continue
+        
+        # Check for alternative keys based on common patterns
+        alternative_keys = []
+        if req == "flight_options":
+            alternative_keys = ["flight_result", "flight_agent", "flight"]
+        elif req == "hotel_options":
+            alternative_keys = ["hotel_result", "hotel_agent", "hotel"]
+        elif req == "visa_info":
+            alternative_keys = ["visa_result", "visa_agent", "visa"]
+        elif req == "weather_data":
+            alternative_keys = ["utilities_result", "utilities_agent", "utilities"]
+        elif req == "activities":
+            alternative_keys = ["tripadvisor_result", "tripadvisor_agent", "tripadvisor"]
+        
+        # Check if any alternative key exists
+        found = False
+        for alt_key in alternative_keys:
+            if alt_key in results and results[alt_key] is not None:
+                found = True
+                break
+        
+        if not found:
             return False
+    
     return True
 
 
@@ -164,45 +197,62 @@ If information is missing, ask:
 
 Remember: Worker nodes will extract ALL parameters from the user message using LLM reasoning. You just need to check if the basic information (location, dates) is present in the message.
 
-BE INTELLIGENT AND PROACTIVE:
-- Analyze what the user wants to accomplish
-- Think about what information is needed FIRST (e.g., weather for travel destinations with dates)
-- Create logical sequences automatically - don't wait for explicit step-by-step instructions
-- Consider dependencies: weather affects travel dates, flights affect hotels, destination affects visa
+BE INTELLIGENT BUT NOT OVERLY PROACTIVE:
+- Analyze what the user explicitly asks for - do ONLY what they request.
+- Add weather/date utilities ONLY if the user asks for them or explicitly needs weather-derived reasoning.
+- Flights/hotels without weather requests → call only flight_agent/hotel_agent.
+- Only add hotels if user explicitly asks for hotels (or mentions both flights AND hotels).
+- Consider dependencies ONLY when truly relevant (e.g., weather needed before choosing dates, flights before hotels, nationality before visa).
+
+CRITICAL: DISTINGUISH UTILITY QUERIES FROM TRAVEL PLANNING
+- Utility-only queries (holidays, weather, currency, date/time, eSIM) → ONLY use utilities_agent.
+- Travel planning queries (flights, hotels, visa, activities) → Use the relevant agents with clear dependencies.
 
 INTELLIGENT PLANNING RULES:
-1. If user mentions travel to a destination with dates → ALWAYS check weather first (Step 1)
-2. If user wants flights/hotels → Get weather first if dates mentioned, then flights/hotels in parallel
-3. If user mentions nationality and destination → Check visa requirements
-4. If user wants activities/restaurants → Get them after flights/hotels are found
-5. If user only asks about weather → Just get weather (single step)
-6. If user only asks about flights → Get flights, then hotels (logical sequence)
+1. If user ONLY asks about holidays/weather/currency/date/time/eSIM → Use utilities_agent (single step).
+2. Flights with dates → call flight_agent (weather only if explicitly requested or clearly needed for reasoning).
+3. Flights without dates → call flight_agent (single step).
+4. Hotels with dates → call hotel_agent (weather only if explicitly requested).
+5. Flights + hotels → schedule both; if independent, run them in the same step; add weather only when asked/needed.
+6. Flights + eSIM (or any independent combo) → place nodes in the same step for parallel execution.
+7. If user mentions nationality AND requests visa info → add visa_agent (parallel unless dependent on other data).
+8. Activities/restaurants → call tripadvisor_agent AFTER flights/hotels if those were requested; otherwise single step.
+9. Always justify dependencies: do not block other steps unless their data is required.
 
 IMPORTANT ABOUT WORKER NODES:
-- Worker nodes (utilities_agent, flight_agent, hotel_agent, etc.) receive the FULL user_message
-- They use LLM reasoning to extract ALL parameters from the user message (location, dates, preferences, etc.)
-- You do NOT need to extract or pass parameters - just create the plan
-- The worker nodes will intelligently understand the user's message and extract what they need
-- DO NOT create steps that produce fake result keys like "non_rainy_dates" - use real result keys like "weather_data", "flight_options", "hotel_options"
+- Worker nodes receive the FULL user_message.
+- They determine their own parameters.
+- You ONLY create the plan structure.
+- DO NOT invent fake result keys like "non_rainy_dates" - use real keys such as "weather_data", "flight_options", "hotel_options".
 
 VALID RESULT KEYS:
-- "weather_data" (from utilities_agent)
+- "weather_data" (from utilities_agent - weather queries)
+- "holidays_data" (from utilities_agent - holidays queries)
+- "esim_data" (from utilities_agent - eSIM queries)
+- "utilities_result" (from utilities_agent - any utility query)
 - "flight_options" or "flight_result" (from flight_agent)
 - "hotel_options" or "hotel_result" (from hotel_agent)
 - "visa_info" or "visa_result" (from visa_agent)
 - "activities" or "tripadvisor_result" (from tripadvisor_agent)
 
-Create a plan that makes sense logically. Be proactive - the user doesn't need to tell you "check weather first".
+Create a plan that makes sense logically. CRITICAL: If dates are mentioned, ALWAYS check weather first. Do ONLY what the user asks for - don't add hotels unless the user explicitly requests them or mentions both flights AND hotels.
 
 Return a JSON object with:
 {{
   "action": "create_plan",
   "plan": [
-    {{"id": 1, "nodes": ["utilities_agent"], "requires": [], "produces": ["weather_data"]}},
-    {{"id": 2, "nodes": ["flight_agent", "hotel_agent"], "requires": ["weather_data"], "produces": ["flight_options", "hotel_options"]}},
+    {{"id": 1, "nodes": ["utilities_agent"], "requires": [], "produces": ["holidays_data"]}},
     ...
   ]
 }}
+
+EXAMPLES:
+- User: "get me holidays in Dubai, UAE in December 2025" → Plan: [{{"id": 1, "nodes": ["utilities_agent"], "requires": [], "produces": ["holidays_data"]}}]
+- User: "get me flights from Beirut to Paris from december 13 2025 till december 17 2025" → Plan: [{{"id": 1, "nodes": ["flight_agent"], "requires": [], "produces": ["flight_options"]}}]
+- User: "find me hotels in Dubai for December 20-25" → Plan: [{{"id": 1, "nodes": ["hotel_agent"], "requires": [], "produces": ["hotel_options"]}}]
+- User: "get me flights from Beirut to Paris" (no dates) → Plan: [{{"id": 1, "nodes": ["flight_agent"], "requires": [], "produces": ["flight_options"]}}]
+- User: "I want to travel to Paris next week and need good weather days" → Plan: [{{"id": 1, "nodes": ["utilities_agent"], "requires": [], "produces": ["weather_data"]}}, {{"id": 2, "nodes": ["flight_agent", "hotel_agent"], "requires": ["weather_data"], "produces": ["flight_options", "hotel_options"]}}]
+- User: "what's the weather in Tokyo?" → Plan: [{{"id": 1, "nodes": ["utilities_agent"], "requires": [], "produces": ["weather_data"]}}]
 
 Make sure the plan is intelligent and logical based on the user's request. Use only valid result keys."""}
     ]
@@ -282,8 +332,11 @@ Make sure the plan is intelligent and logical based on the user's request. Use o
         })
         node_id += 1
     
-    # Rule 4: Check visa if mentioned or if we have destination
-    if has_visa_query or (has_destination and any(word in user_lower for word in ["citizen", "nationality", "passport", "from"])):
+    # Rule 4: Check visa if mentioned or if we have destination and nationality
+    # Check for nationality mentions (common patterns: "I am [nationality]", "I'm [nationality]", "[nationality] citizen", etc.)
+    # The LLM-based plan generation will catch most cases, but this is a fallback for keyword detection
+    has_nationality = any(phrase in user_lower for phrase in ["citizen", "nationality", "passport", "i am", "i'm", "from"]) or any(word in user_lower for word in ["lebanese", "american", "british", "french", "german", "italian", "spanish", "canadian", "australian", "indian", "chinese", "japanese", "brazilian", "mexican", "russian", "turkish", "egyptian", "emirati", "saudi", "kuwaiti", "qatari", "omani", "bahraini", "jordanian", "syrian", "iraqi", "iranian", "pakistani", "bangladeshi", "thai", "vietnamese", "korean", "philippine", "indonesian", "malaysian", "singaporean", "nigerian", "kenyan", "ethiopian", "moroccan", "algerian", "tunisian"])
+    if has_visa_query or (has_destination and has_nationality):
         requires = ["flight_options"] if node_id > 1 else []
         plan.append({
             "id": node_id,
@@ -378,16 +431,19 @@ BE INTELLIGENT IN YOUR DECISION:
 Decide:
 1. If plan needs modification based on results → "update_plan" with new plan
 2. If we need user input (only if critical) → "ask_user" with question
-3. If we should continue to next step (default) → "continue" with next_step
+3. If we should continue to next step (default) → "continue" (do NOT provide next_step - it will be auto-incremented)
 4. If we're done → "finish"
+
+IMPORTANT: When returning "continue", do NOT provide next_step. The system will automatically move to the next step index (current_step + 1).
 
 Return JSON:
 {{
   "action": "continue|update_plan|ask_user|finish",
-  "next_step": <step_id> (if action is continue),
   "plan": [...] (if action is update_plan),
   "question": "..." (if action is ask_user)
-}}"""}
+}}
+
+DO NOT include "next_step" in your response - it will be calculated automatically."""}
     ]
     
     response = client.chat.completions.create(
@@ -505,22 +561,33 @@ async def main_agent_node(state: AgentState) -> AgentState:
                 return updated_state
             
             elif action.get("action") == "continue":
-                # Move to next step - use next_step from action, or increment current_step
-                next_step_idx = action.get("next_step")
-                # next_step from action should be an index (0-based), but check if it's valid
-                if next_step_idx is None or next_step_idx < 0 or next_step_idx >= len(plan):
-                    # If invalid, just increment
-                    next_step_idx = current_step + 1
+                # Move to next step - ALWAYS increment by 1, don't trust LLM's next_step
+                # The LLM might return step IDs instead of indices, causing confusion
+                next_step_idx = current_step + 1
+                
+                # Validate the next step index
+                if next_step_idx >= len(plan):
+                    # Plan is complete
+                    updated_state["route"] = "conversational_agent"
+                    updated_state["ready_for_response"] = True
+                    print("Main agent: Plan complete, routing to conversational agent")
+                    return updated_state
                 
                 updated_state["current_step"] = next_step_idx
                 current_step = next_step_idx
-                print(f"Main agent: Continuing to step index {next_step_idx}")
+                print(f"Main agent: Continuing to step index {next_step_idx} (step ID: {plan[next_step_idx].get('id')})")
             else:
                 # Default: move to next step
                 next_step_idx = current_step + 1
+                if next_step_idx >= len(plan):
+                    # Plan is complete
+                    updated_state["route"] = "conversational_agent"
+                    updated_state["ready_for_response"] = True
+                    print("Main agent: Plan complete, routing to conversational agent")
+                    return updated_state
                 updated_state["current_step"] = next_step_idx
                 current_step = next_step_idx
-                print(f"Main agent: Default action - moving to step index {next_step_idx}")
+                print(f"Main agent: Default action - moving to step index {next_step_idx} (step ID: {plan[next_step_idx].get('id')})")
     
     # Execute current step
     if current_step < len(plan):
@@ -546,9 +613,13 @@ async def main_agent_node(state: AgentState) -> AgentState:
         
         # Launch nodes for this step
         if step_nodes:
+            # CRITICAL: Clear any old pending_nodes first, then set fresh value
+            # This ensures we don't reuse stale state from previous steps
             updated_state["pending_nodes"] = step_nodes.copy()
             updated_state["route"] = step_nodes  # Route to worker nodes in parallel
-            print(f"Main agent: Launching step {step_id} (index {current_step}) with nodes: {step_nodes}")
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            print(f"[{timestamp}] Main agent: Launching step {step_id} (index {current_step}) with nodes: {step_nodes}")
         else:
             # Empty step, mark as finished and continue
             finished_steps = updated_state.get("finished_steps", [])

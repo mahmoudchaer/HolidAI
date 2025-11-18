@@ -115,6 +115,25 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     Returns:
         Updated agent state with response
     """
+    import time
+    from datetime import datetime
+    
+    start_time = time.time()
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    
+    # Check if this node should execute (for parallel execution mode)
+    pending_nodes = state.get("pending_nodes", [])
+    if isinstance(pending_nodes, list) and len(pending_nodes) > 0:
+        # If we're in parallel mode and this node is not in pending_nodes, skip execution
+        if "flight_agent" not in pending_nodes:
+            # Not supposed to execute, just pass through to join_node
+            updated_state = state.copy()
+            updated_state["route"] = "join_node"
+            print(f"[{timestamp}] Flight agent: SKIPPED (not in pending_nodes: {pending_nodes})")
+            return updated_state
+    
+    print(f"[{timestamp}] Flight agent: STARTING execution (pending_nodes: {pending_nodes})")
+    
     user_message = state.get("user_message", "")
     
     # Always use LLM to extract parameters from user message
@@ -242,7 +261,21 @@ async def flight_agent_node(state: AgentState) -> AgentState:
                 updated_state["results"]["flight_agent"] = flight_result
                 updated_state["results"]["flight"] = flight_result
                 updated_state["results"]["flight_result"] = flight_result
+                updated_state["results"]["flight_options"] = flight_result  # Alias for plan requirements
                 # No need to set route - using add_edge means we automatically route to join_node
+                
+                # Log completion with timing
+                elapsed = time.time() - start_time
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                # Safely get outbound count - handle both regular and flexible flight results
+                outbound_count = 0
+                if tool_name == "agent_get_flights_flexible_tool":
+                    flights = flight_result.get("flights", [])
+                    outbound_count = len(flights) if flights else 0
+                else:
+                    outbound = flight_result.get("outbound", [])
+                    outbound_count = len(outbound) if outbound else 0
+                print(f"[{timestamp}] Flight agent: COMPLETED in {elapsed:.2f}s (found {outbound_count} flights)")
                 
             except Exception as e:
                 # Store error in result
@@ -253,7 +286,13 @@ async def flight_agent_node(state: AgentState) -> AgentState:
                 updated_state["results"]["flight_agent"] = error_result
                 updated_state["results"]["flight"] = error_result
                 updated_state["results"]["flight_result"] = error_result
+                updated_state["results"]["flight_options"] = error_result  # Alias for plan requirements
                 # No need to set route - using add_edge means we automatically route to join_node
+                
+                # Log completion with timing (error case)
+                elapsed = time.time() - start_time
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"[{timestamp}] Flight agent: COMPLETED with ERROR in {elapsed:.2f}s: {str(e)[:100]}")
             
             return updated_state
     
@@ -265,7 +304,13 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     updated_state["results"]["flight_agent"] = error_result
     updated_state["results"]["flight"] = error_result
     updated_state["results"]["flight_result"] = error_result
+    updated_state["results"]["flight_options"] = error_result  # Alias for plan requirements
     # No need to set route - using add_edge means we automatically route to join_node
+    
+    # Log completion with timing (no tool call case)
+    elapsed = time.time() - start_time
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}] Flight agent: COMPLETED (no tool call) in {elapsed:.2f}s")
     
     return updated_state
 

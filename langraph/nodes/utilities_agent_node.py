@@ -91,9 +91,19 @@ Available tools (you will see their full schemas with function calling):
 - get_esim_bundles: Get available eSIM bundles for a country
 - get_holidays: Get holidays for a specific country, optionally filtered by date
 
-IMPORTANT:
+IMPORTANT - TOOL SELECTION PRIORITY:
+- If user asks about flights/travel/hotels with dates → Use get_real_time_weather (weather affects travel planning)
+- If user explicitly asks for holidays → Use get_holidays
+- If user explicitly asks about weather → Use get_real_time_weather
+- If user asks about currency → Use convert_currencies
+- If user asks about date/time → Use get_real_time_date_time
+- If user asks about eSIM → Use get_esim_bundles
+
+CRITICAL: When user mentions travel/flights/hotels with dates, they need WEATHER information, NOT holidays. Only use get_holidays when the user explicitly asks about holidays.
+
+PARAMETER EXTRACTION:
 - Use your LLM understanding to determine parameters from the user's message - NO code-based parsing is used
-- For weather: Extract city name or country name from the user's message
+- For weather: Extract city name or country name from the user's message (destination city for travel queries)
 - For currency conversion: Extract from_currency, to_currency, and amount (if specified) from the user's message
 - For date/time: Extract city name or country name from the user's message. If user asks for "today's date" or "current date" without specifying a location, use "UTC" as the location parameter. The location parameter is optional and defaults to UTC.
 - For eSIM bundles: Extract country name from the user's message (e.g., "Qatar", "USA", "Japan")
@@ -107,30 +117,179 @@ You have access to the full tool documentation through function calling. Use you
     return base_prompt + docs_text
 
 
+def _plan_utility_tasks(user_message: str) -> dict:
+    """Use the LLM to determine which utility tools are required and their parameters."""
+    planning_prompt = """You convert user travel/utility requests into structured tool plans.
+Return strict JSON with this shape (do not add text outside JSON):
+{
+  "weather": {"needed": bool, "location": "<city or country or ''>"},
+  "date_time": {"needed": bool, "location": "<city or country or ''>"},
+  "esim": {"needed": bool, "country": "<country or ''>"},
+  "currency": {"needed": bool, "from_currency": "<code>", "to_currency": "<code>", "amount": <number or null>},
+  "holidays": {"needed": bool, "country": "<country or ''>", "year": <int or null>, "month": <int or null>, "day": <int or null>}
+}
+Rules:
+- Only mark a tool as needed if the user explicitly or implicitly requests it.
+- Reuse the same location for weather and date/time when appropriate.
+- If information is missing, keep needed=false (do NOT invent data).
+- Ensure amount is a number if provided, otherwise null.
+"""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": planning_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content
+        return json.loads(content)
+    except Exception as e:
+        print(f"Utilities planner error: {e}")
+        return {}
+
+
 async def utilities_agent_node(state: AgentState) -> AgentState:
-    """Utilities Agent node that handles utility queries (weather, currency, date/time).
+    """Utilities Agent node that handles utility queries (weather, currency, date/time)."""
+    import time
+    from datetime import datetime
     
-    Args:
-        state: Current agent state
-        
-    Returns:
-        Updated agent state with response
-    """
+    start_time = time.time()
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    
+    # Check if this node should execute (for parallel execution mode)
+    pending_nodes = state.get("pending_nodes", [])
+    if isinstance(pending_nodes, list) and len(pending_nodes) > 0:
+        # If we're in parallel mode and this node is not in pending_nodes, skip execution
+        if "utilities_agent" not in pending_nodes:
+            # Not supposed to execute, just pass through to join_node
+            updated_state = state.copy()
+            updated_state["route"] = "join_node"
+            print(f"[{timestamp}] Utilities agent: SKIPPED (not in pending_nodes: {pending_nodes})")
+            return updated_state
+    
+    print(f"[{timestamp}] Utilities agent: STARTING execution (pending_nodes: {pending_nodes})")
+    
     user_message = state.get("user_message", "")
     updated_state = state.copy()
     
-    # Always use LLM to extract parameters from user message
-    # LLM has access to tool documentation and can intelligently extract parameters
-    # Get tools available to utilities agent
-    tools = await UtilitiesAgentClient.list_tools()
+    # First, try to determine if multiple utility tools are required
+    plan = _plan_utility_tasks(user_message)
+    requested_tools = {
+        "weather": plan.get("weather", {}),
+        "date_time": plan.get("date_time", {}),
+        "esim": plan.get("esim", {}),
+        "currency": plan.get("currency", {}),
+        "holidays": plan.get("holidays", {})
+    }
     
-    # Prepare messages for LLM
+    def _tool_needed(entry: dict, required_fields: list) -> bool:
+        if not entry or not entry.get("needed"):
+            return False
+        return all(entry.get(field) not in [None, "", []] for field in required_fields)
+    
+    multi_tool_plan = any([
+        _tool_needed(requested_tools["weather"], ["location"]),
+        _tool_needed(requested_tools["date_time"], ["location"]),
+        _tool_needed(requested_tools["esim"], ["country"]),
+        _tool_needed(requested_tools["currency"], ["from_currency", "to_currency"]),
+        _tool_needed(requested_tools["holidays"], ["country"])
+    ])
+    
+    if multi_tool_plan:
+        combined_result = {
+            "error": False,
+            "tasks": {},
+            "errors": []
+        }
+        if "results" not in updated_state:
+            updated_state["results"] = {}
+        results_ref = updated_state["results"]
+        executed_any = False
+        
+        async def _execute_tool(tool_name: str, params: dict, result_key: str = None):
+            nonlocal executed_any
+            try:
+                result = await UtilitiesAgentClient.invoke(tool_name, **params)
+            except Exception as exc:
+                result = {"error": True, "error_message": str(exc)}
+            combined_result["tasks"][tool_name] = result
+            if result.get("error"):
+                combined_result["error"] = True
+                combined_result["errors"].append({
+                    "tool": tool_name,
+                    "message": result.get("error_message", "Unknown error")
+                })
+            executed_any = True
+            if result_key:
+                results_ref[result_key] = result
+        
+        if _tool_needed(requested_tools["weather"], ["location"]):
+            await _execute_tool(
+                "get_real_time_weather",
+                {"location": requested_tools["weather"]["location"]},
+                "weather_data"
+            )
+        
+        if _tool_needed(requested_tools["date_time"], ["location"]):
+            await _execute_tool(
+                "get_real_time_date_time",
+                {"location": requested_tools["date_time"]["location"]},
+                "date_time_data"
+            )
+        
+        if _tool_needed(requested_tools["esim"], ["country"]):
+            await _execute_tool(
+                "get_esim_bundles",
+                {"country": requested_tools["esim"]["country"]},
+                "esim_data"
+            )
+        
+        if _tool_needed(requested_tools["currency"], ["from_currency", "to_currency"]):
+            currency_params = {
+                "from_currency": requested_tools["currency"]["from_currency"],
+                "to_currency": requested_tools["currency"]["to_currency"]
+            }
+            amount = requested_tools["currency"].get("amount")
+            if isinstance(amount, (int, float)):
+                currency_params["amount"] = amount
+            await _execute_tool(
+                "convert_currencies",
+                currency_params,
+                "currency_data"
+            )
+        
+        if _tool_needed(requested_tools["holidays"], ["country"]):
+            holiday_params = {"country": requested_tools["holidays"]["country"]}
+            for key in ["year", "month", "day"]:
+                value = requested_tools["holidays"].get(key)
+                if value not in [None, ""]:
+                    holiday_params[key] = value
+            await _execute_tool(
+                "get_holidays",
+                holiday_params,
+                "holidays_data"
+            )
+        
+        if executed_any:
+            updated_state["utilities_result"] = combined_result
+            results_ref["utilities_agent"] = combined_result
+            results_ref["utilities"] = combined_result
+            results_ref["utilities_result"] = combined_result
+            elapsed = time.time() - start_time
+            timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            print(f"[{timestamp}] Utilities agent: COMPLETED in {elapsed:.2f}s")
+            return updated_state
+    
+    # Fallback to single-tool function-calling path
+    tools = await UtilitiesAgentClient.list_tools()
     messages = [
         {"role": "system", "content": get_utilities_agent_prompt()},
         {"role": "user", "content": user_message}
     ]
     
-    # Build function calling schema for utilities tools
     functions = []
     def _sanitize_schema(schema: dict) -> dict:
         """Ensure arrays have 'items' and sanitize nested schemas."""
@@ -150,7 +309,7 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
         return sanitized
 
     for tool in tools:
-        if tool["name"] in ["get_real_time_weather", "convert_currencies", "get_real_time_date_time", "get_esim_bundles"]:
+        if tool["name"] in ["get_real_time_weather", "convert_currencies", "get_real_time_date_time", "get_esim_bundles", "get_holidays"]:
             input_schema = tool.get("inputSchema", {})
             input_schema = _sanitize_schema(input_schema)
             functions.append({
@@ -162,13 +321,12 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
                 }
             })
     
-    # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
             tools=functions,
-            tool_choice="required"  # Force tool call when tools are available
+            tool_choice="required"
         )
     else:
         response = client.chat.completions.create(
@@ -178,37 +336,36 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
     
     message = response.choices[0].message
     
-    # Check if LLM wants to call a tool
     if message.tool_calls:
         tool_call = message.tool_calls[0]
         tool_name = tool_call.function.name
         
         if tool_name in ["get_real_time_weather", "convert_currencies", "get_real_time_date_time", "get_esim_bundles", "get_holidays"]:
-            import json
             args = json.loads(tool_call.function.arguments)
-            
-            # LLM has extracted all parameters from user message - use them directly
-            # Call the utilities tool via MCP
             try:
                 utilities_result = await UtilitiesAgentClient.invoke(tool_name, **args)
                 
-                # Store result in both legacy field and new results structure
                 updated_state["utilities_result"] = utilities_result
-                # Initialize results dict if not present
                 if "results" not in updated_state:
                     updated_state["results"] = {}
                 updated_state["results"]["utilities_agent"] = utilities_result
                 updated_state["results"]["utilities"] = utilities_result
                 updated_state["results"]["utilities_result"] = utilities_result
-                # Also store with semantic keys based on tool used
+                elapsed = time.time() - start_time
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"[{timestamp}] Utilities agent: COMPLETED in {elapsed:.2f}s")
                 if tool_name == "get_real_time_weather":
                     updated_state["results"]["weather_data"] = utilities_result
                 elif tool_name == "get_esim_bundles":
                     updated_state["results"]["esim_data"] = utilities_result
-                # No need to set route - using add_edge means we automatically route to join_node
+                elif tool_name == "get_holidays":
+                    updated_state["results"]["holidays_data"] = utilities_result
+                elif tool_name == "get_real_time_date_time":
+                    updated_state["results"]["date_time_data"] = utilities_result
+                elif tool_name == "convert_currencies":
+                    updated_state["results"]["currency_data"] = utilities_result
                 
             except Exception as e:
-                # Store error in result
                 error_result = {"error": True, "error_message": str(e)}
                 updated_state["utilities_result"] = error_result
                 if "results" not in updated_state:
@@ -216,11 +373,12 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
                 updated_state["results"]["utilities_agent"] = error_result
                 updated_state["results"]["utilities"] = error_result
                 updated_state["results"]["utilities_result"] = error_result
-                # No need to set route - using add_edge means we automatically route to join_node
+                elapsed = time.time() - start_time
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"[{timestamp}] Utilities agent: COMPLETED with ERROR in {elapsed:.2f}s")
             
             return updated_state
     
-    # No tool call - store empty result
     error_result = {"error": True, "error_message": "No utility parameters provided"}
     updated_state["utilities_result"] = error_result
     if "results" not in updated_state:
@@ -228,7 +386,9 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
     updated_state["results"]["utilities_agent"] = error_result
     updated_state["results"]["utilities"] = error_result
     updated_state["results"]["utilities_result"] = error_result
-    # No need to set route - using add_edge means we automatically route to join_node
+    elapsed = time.time() - start_time
+    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}] Utilities agent: COMPLETED (no tool call) in {elapsed:.2f}s")
     
     return updated_state
 

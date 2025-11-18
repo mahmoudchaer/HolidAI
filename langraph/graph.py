@@ -11,22 +11,30 @@ from nodes.tripadvisor_agent_node import tripadvisor_agent_node
 from nodes.utilities_agent_node import utilities_agent_node
 from nodes.conversational_agent_node import conversational_agent_node
 from nodes.join_node import join_node
+from nodes.parallel_dispatcher_node import parallel_dispatcher_node
 
 
-def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
+def route_decision(state: AgentState) -> str:
     """Route decision function based on state.route.
     
     Args:
         state: Current agent state
         
     Returns:
-        Next node name(s) - can be a string, list of strings for parallel execution, or "end"
+        Next node name as a string
     """
     route = state.get("route", "main_agent")
     
-    # If route is a list, return it for parallel execution
-    if isinstance(route, list):
-        return route
+    # If route is a list, optimize routing:
+    # - Single node: route directly (no need for parallel dispatcher overhead)
+    # - Multiple nodes: use parallel dispatcher for true parallel execution
+    if isinstance(route, list) and len(route) > 0:
+        if len(route) == 1:
+            # Single node - route directly (pending_nodes already set by main_agent_node)
+            return route[0]
+        else:
+            # Multiple nodes - use parallel dispatcher
+            return "parallel_dispatcher"
     
     # Handle string routes
     if route == "hotel_agent":
@@ -45,6 +53,8 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return "join_node"
     elif route == "main_agent":
         return "main_agent"
+    elif route == "parallel_dispatcher":
+        return "parallel_dispatcher"
     else:
         return "end"
 
@@ -60,6 +70,7 @@ def create_graph() -> StateGraph:
     
     # Add nodes
     graph.add_node("main_agent", main_agent_node)
+    graph.add_node("parallel_dispatcher", parallel_dispatcher_node)
     graph.add_node("visa_agent", visa_agent_node)
     graph.add_node("flight_agent", flight_agent_node)
     graph.add_node("hotel_agent", hotel_agent_node)
@@ -78,6 +89,7 @@ def create_graph() -> StateGraph:
         route_decision,
         {
             "main_agent": "main_agent",
+            "parallel_dispatcher": "parallel_dispatcher",
             "hotel_agent": "hotel_agent",
             "visa_agent": "visa_agent",
             "flight_agent": "flight_agent",
@@ -88,6 +100,16 @@ def create_graph() -> StateGraph:
             "end": END
         }
     )
+    
+    # Parallel dispatcher routes to all worker nodes in parallel
+    # LangGraph executes all edges from a node in parallel
+    # Each worker node checks if it's in pending_nodes before executing
+    # If not in pending_nodes, the worker node immediately routes to join_node
+    graph.add_edge("parallel_dispatcher", "flight_agent")
+    graph.add_edge("parallel_dispatcher", "hotel_agent")
+    graph.add_edge("parallel_dispatcher", "visa_agent")
+    graph.add_edge("parallel_dispatcher", "utilities_agent")
+    graph.add_edge("parallel_dispatcher", "tripadvisor_agent")
     
     # All specialized agents return to join_node using add_edge
     # When multiple nodes use add_edge to route to the same target,

@@ -677,82 +677,86 @@ def register_utilities_tools(mcp):
             Dictionary with list of eSIM bundles including provider, plan, validity, price, and link
         """
         try:
-            # Map country names to esimradar.com slugs and country codes
+            # Map country names to esimradar.com URL patterns
+            # Format: (country_name_slug, country_code, country_short_slug)
+            # country_name_slug: for /esim/{name}/ pattern (e.g., "united-arab-emirates")
+            # country_short_slug: for /esim-{short}/ pattern (e.g., "qatar", "usa")
+            # country_code: for /esim-{code}/ pattern (e.g., "qa", "us")
             country_mapping = {
                 # Middle East
-                "qatar": ("esim-qatar", "qa"),
-                "uae": ("esim-uae", "ae"),
-                "united arab emirates": ("esim-uae", "ae"),
-                "emirates": ("esim-uae", "ae"),  # Alternative name
-                "dubai": ("esim-uae", "ae"),  # Common city reference
-                "saudi arabia": ("esim-saudi-arabia", "sa"),
-                "kuwait": ("esim-kuwait", "kw"),
-                "bahrain": ("esim-bahrain", "bh"),
-                "oman": ("esim-oman", "om"),
-                "lebanon": ("esim-lebanon", "lb"),
-                "jordan": ("esim-jordan", "jo"),
-                "egypt": ("esim-egypt", "eg"),
-                "turkey": ("esim-turkey", "tr"),
+                "qatar": ("qatar", "qa", "qatar"),
+                "uae": ("united-arab-emirates", "ae", "uae"),
+                "united arab emirates": ("united-arab-emirates", "ae", "uae"),
+                "emirates": ("united-arab-emirates", "ae", "uae"),
+                "dubai": ("united-arab-emirates", "ae", "uae"),  # Dubai -> UAE
+                "saudi arabia": ("saudi-arabia", "sa", "saudi-arabia"),
+                "kuwait": ("kuwait", "kw", "kuwait"),
+                "bahrain": ("bahrain", "bh", "bahrain"),
+                "oman": ("oman", "om", "oman"),
+                "lebanon": ("lebanon", "lb", "lebanon"),
+                "jordan": ("jordan", "jo", "jordan"),
+                "egypt": ("egypt", "eg", "egypt"),
+                "turkey": ("turkey", "tr", "turkey"),
                 # Asia
-                "japan": ("esim-japan", "jp"),
-                "china": ("esim-china", "cn"),
-                "south korea": ("esim-south-korea", "kr"),
-                "korea": ("esim-south-korea", "kr"),
-                "singapore": ("esim-singapore", "sg"),
-                "thailand": ("esim-thailand", "th"),
-                "malaysia": ("esim-malaysia", "my"),
-                "indonesia": ("esim-indonesia", "id"),
-                "philippines": ("esim-philippines", "ph"),
-                "vietnam": ("esim-vietnam", "vn"),
-                "india": ("esim-india", "in"),
-                "hong kong": ("esim-hong-kong", "hk"),
-                "taiwan": ("esim-taiwan", "tw"),
+                "japan": ("japan", "jp", "japan"),
+                "china": ("china", "cn", "china"),
+                "south korea": ("south-korea", "kr", "south-korea"),
+                "korea": ("south-korea", "kr", "south-korea"),
+                "singapore": ("singapore", "sg", "singapore"),
+                "thailand": ("thailand", "th", "thailand"),
+                "malaysia": ("malaysia", "my", "malaysia"),
+                "indonesia": ("indonesia", "id", "indonesia"),
+                "philippines": ("philippines", "ph", "philippines"),
+                "vietnam": ("vietnam", "vn", "vietnam"),
+                "india": ("india", "in", "india"),
+                "hong kong": ("hong-kong", "hk", "hong-kong"),
+                "taiwan": ("taiwan", "tw", "taiwan"),
                 # Europe
-                "uk": ("esim-uk", "gb"),
-                "united kingdom": ("esim-uk", "gb"),
-                "britain": ("esim-uk", "gb"),
-                "france": ("esim-france", "fr"),
-                "germany": ("esim-germany", "de"),
-                "italy": ("esim-italy", "it"),
-                "spain": ("esim-spain", "es"),
-                "netherlands": ("esim-netherlands", "nl"),
-                "belgium": ("esim-belgium", "be"),
-                "switzerland": ("esim-switzerland", "ch"),
-                "austria": ("esim-austria", "at"),
-                "sweden": ("esim-sweden", "se"),
-                "norway": ("esim-norway", "no"),
-                "denmark": ("esim-denmark", "dk"),
-                "finland": ("esim-finland", "fi"),
-                "ireland": ("esim-ireland", "ie"),
-                "portugal": ("esim-portugal", "pt"),
-                "greece": ("esim-greece", "gr"),
-                "poland": ("esim-poland", "pl"),
-                "czech republic": ("esim-czech-republic", "cz"),
-                "hungary": ("esim-hungary", "hu"),
-                "russia": ("esim-russia", "ru"),
+                "uk": ("united-kingdom", "gb", "uk"),
+                "united kingdom": ("united-kingdom", "gb", "uk"),
+                "britain": ("united-kingdom", "gb", "uk"),
+                "france": ("france", "fr", "france"),
+                "germany": ("germany", "de", "germany"),
+                "italy": ("italy", "it", "italy"),
+                "spain": ("spain", "es", "spain"),
+                "netherlands": ("netherlands", "nl", "netherlands"),
+                "belgium": ("belgium", "be", "belgium"),
+                "switzerland": ("switzerland", "ch", "switzerland"),
+                "austria": ("austria", "at", "austria"),
+                "sweden": ("sweden", "se", "sweden"),
+                "norway": ("norway", "no", "norway"),
+                "denmark": ("denmark", "dk", "denmark"),
+                "finland": ("finland", "fi", "finland"),
+                "ireland": ("ireland", "ie", "ireland"),
+                "portugal": ("portugal", "pt", "portugal"),
+                "greece": ("greece", "gr", "greece"),
+                "poland": ("poland", "pl", "poland"),
+                "czech republic": ("czech-republic", "cz", "czech-republic"),
+                "hungary": ("hungary", "hu", "hungary"),
+                "russia": ("russia", "ru", "russia"),
                 # Americas
-                "usa": ("esim-usa", "us"),
-                "united states": ("esim-usa", "us"),
-                "us": ("esim-usa", "us"),
-                "canada": ("esim-canada", "ca"),
-                "mexico": ("esim-mexico", "mx"),
-                "brazil": ("esim-brazil", "br"),
-                "argentina": ("esim-argentina", "ar"),
-                "chile": ("esim-chile", "cl"),
-                "colombia": ("esim-colombia", "co"),
+                "usa": ("united-states", "us", "usa"),
+                "united states": ("united-states", "us", "usa"),
+                "us": ("united-states", "us", "usa"),
+                "canada": ("canada", "ca", "canada"),
+                "mexico": ("mexico", "mx", "mexico"),
+                "brazil": ("brazil", "br", "brazil"),
+                "argentina": ("argentina", "ar", "argentina"),
+                "chile": ("chile", "cl", "chile"),
+                "colombia": ("colombia", "co", "colombia"),
                 # Oceania
-                "australia": ("esim-australia", "au"),
-                "new zealand": ("esim-new-zealand", "nz"),
+                "australia": ("australia", "au", "australia"),
+                "new zealand": ("new-zealand", "nz", "new-zealand"),
                 # Africa
-                "south africa": ("esim-south-africa", "za"),
+                "south africa": ("south-africa", "za", "south-africa"),
             }
             
             country_lower = country.lower().strip()
             
             # Try to find country in mapping
-            country_slug, country_code = None, None
+            country_name_slug, country_code, country_short_slug = None, None, None
             if country_lower in country_mapping:
-                country_slug, country_code = country_mapping[country_lower]
+                country_name_slug, country_code, country_short_slug = country_mapping[country_lower]
             else:
                 # Try variations
                 variations = [
@@ -761,10 +765,10 @@ def register_utilities_tools(mcp):
                 ]
                 for var in variations:
                     if var in country_mapping:
-                        country_slug, country_code = country_mapping[var]
+                        country_name_slug, country_code, country_short_slug = country_mapping[var]
                         break
                 
-                if not country_slug:
+                if not country_name_slug:
                     return {
                         "error": True,
                         "error_message": f"Country '{country}' not found in eSIM database. Please try using a supported country name.",
@@ -772,17 +776,21 @@ def register_utilities_tools(mcp):
                         "suggestion": "Try using country names like 'Qatar', 'USA', 'UAE', 'Japan', 'Lebanon', etc."
                     }
             
-            # Scrape eSIM data - try primary URL first
+            # Generate URLs to try in order of likelihood
+            # Based on testing, different countries use different URL patterns
             urls_to_try = [
-                f"https://esimradar.com/{country_slug}/?s={country_code}",
-                f"https://esimradar.com/{country_slug}/",
+                # Pattern 1: /esim/{country-name-slug}/ (works for UAE, Qatar, Japan, etc.)
+                f"https://esimradar.com/esim/{country_name_slug}/",
+                # Pattern 2: /esim-{country-short-slug}/ (works for Qatar, Japan, USA, etc.)
+                f"https://esimradar.com/esim-{country_short_slug}/",
+                # Pattern 3: /esim-{country-code}/ (works for some countries like QA, US)
                 f"https://esimradar.com/esim-{country_code.lower()}/",
             ]
             
-            # For UAE, also try alternative formats
-            if country_code.lower() == "ae" or "uae" in country_lower or "united arab emirates" in country_lower:
-                urls_to_try.insert(1, "https://esimradar.com/esim-uae/")
-                urls_to_try.insert(2, "https://esimradar.com/uae/")
+            # For Lebanon, also try Middle East regional page (Lebanon is included there)
+            if country_lower == "lebanon" or country_code.lower() == "lb":
+                urls_to_try.insert(1, "https://esimradar.com/esim/middle-east/")
+                urls_to_try.insert(2, "https://esimradar.com/esim-middle-east/")
             
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -815,7 +823,7 @@ def register_utilities_tools(mcp):
                 if not response or response.status_code != 200:
                     return {
                         "error": True,
-                        "error_message": f"Could not fetch eSIM data for '{country}'. Tried multiple URL formats but none worked.",
+                        "error_message": f"Could not fetch eSIM data for '{country}'. The country may not be available on esimradar.com or the website structure has changed.",
                         "error_code": "HTTP_ERROR",
                         "country": country,
                         "urls_tried": urls_to_try
@@ -947,11 +955,27 @@ def register_utilities_tools(mcp):
                     
                     print(f"eSIM Tool: Inferred column positions - Price: {price_col_idx}, Provider: {provider_col_idx}, Plan: {plan_col_idx}, Validity: {validity_col_idx}")
                 
+                # Check if we're on a regional page (like Middle East) and need to filter by country
+                is_regional_page = "middle-east" in url.lower() if url else False
+                country_filter_keywords = []
+                if is_regional_page:
+                    # For Lebanon on Middle East page, filter by country keywords
+                    if country_lower == "lebanon" or country_code.lower() == "lb":
+                        country_filter_keywords = ["lebanon", "lb", "beirut"]
+                    # Add more country filters as needed for other countries on regional pages
+                
                 for row_idx, row in enumerate(rows[start_idx:], start=start_idx):
                     cols = row.find_all("td")
                     # Need at least 4 columns (provider, plan, validity, price) - some tables might not have image column
                     if len(cols) < 4:
                         continue  # Skip invalid rows
+                    
+                    # If on regional page, filter rows by country
+                    if is_regional_page and country_filter_keywords:
+                        row_text = row.get_text().lower()
+                        # Check if row contains country keywords
+                        if not any(keyword in row_text for keyword in country_filter_keywords):
+                            continue  # Skip rows that don't match the country
                     
                     # Use detected column positions if available, otherwise use smart defaults based on table structure
                     # Based on the debug output, the structure is: [empty, plan, data_gb, validity, price_per_gb, total_price, ...]
@@ -1223,14 +1247,68 @@ def register_utilities_tools(mcp):
                 }
             
             # Determine year (default to current year)
+            # Convert to int if it's a string (LLM might pass strings)
             if year is None:
                 year = datetime.now().year
-            elif year < 2000 or year > 2100:
-                return {
-                    "error": True,
-                    "error_message": f"Year must be between 2000 and 2100. Provided: {year}",
-                    "error_code": "INVALID_YEAR"
-                }
+            else:
+                try:
+                    if isinstance(year, str):
+                        year = int(year)
+                    elif not isinstance(year, int):
+                        year = int(year)
+                except (ValueError, TypeError):
+                    return {
+                        "error": True,
+                        "error_message": f"Invalid year format: {year}. Year must be a number between 2000 and 2100.",
+                        "error_code": "INVALID_YEAR"
+                    }
+                
+                if year < 2000 or year > 2100:
+                    return {
+                        "error": True,
+                        "error_message": f"Year must be between 2000 and 2100. Provided: {year}",
+                        "error_code": "INVALID_YEAR"
+                    }
+            
+            # Convert month to int if it's a string
+            if month is not None:
+                try:
+                    if isinstance(month, str):
+                        month = int(month)
+                    elif not isinstance(month, int):
+                        month = int(month)
+                    if month < 1 or month > 12:
+                        return {
+                            "error": True,
+                            "error_message": f"Month must be between 1 and 12. Provided: {month}",
+                            "error_code": "INVALID_MONTH"
+                        }
+                except (ValueError, TypeError):
+                    return {
+                        "error": True,
+                        "error_message": f"Invalid month format: {month}. Month must be a number between 1 and 12.",
+                        "error_code": "INVALID_MONTH"
+                    }
+            
+            # Convert day to int if it's a string
+            if day is not None:
+                try:
+                    if isinstance(day, str):
+                        day = int(day)
+                    elif not isinstance(day, int):
+                        day = int(day)
+                    if day < 1 or day > 31:
+                        return {
+                            "error": True,
+                            "error_message": f"Day must be between 1 and 31. Provided: {day}",
+                            "error_code": "INVALID_DAY"
+                        }
+                except (ValueError, TypeError):
+                    return {
+                        "error": True,
+                        "error_message": f"Invalid day format: {day}. Day must be a number between 1 and 31.",
+                        "error_code": "INVALID_DAY"
+                    }
             
             # Build API request
             params = {

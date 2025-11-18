@@ -12,9 +12,9 @@ def reducer(left: Any, right: Any) -> Any:
     
     Special handling for:
     - results: Merge dictionaries (both left and right results are preserved)
-    - pending_nodes: Merge lists and remove duplicates
     - finished_steps: Merge lists and remove duplicates
     - user_questions: Merge lists and remove duplicates
+    - pending_nodes: REPLACE entirely (not merge) - this is set by main_agent/parallel_dispatcher
     """
     # If right is None, keep left (preserve existing value)
     if right is None:
@@ -27,6 +27,7 @@ def reducer(left: Any, right: Any) -> Any:
         return merged
     
     # Special handling for list fields - merge and deduplicate
+    # BUT: pending_nodes should be replaced, not merged (it's set by orchestrator)
     if isinstance(left, list) and isinstance(right, list):
         merged = list(left)
         for item in right:
@@ -35,6 +36,19 @@ def reducer(left: Any, right: Any) -> Any:
         return merged
     
     # Otherwise, use right (latest value)
+    return right
+
+
+def pending_nodes_reducer(left: Any, right: Any) -> Any:
+    """Special reducer for pending_nodes that REPLACES instead of merging.
+    
+    pending_nodes should always be replaced entirely, not merged, because:
+    - It's set by main_agent for each step
+    - It's cleared by join_node when step completes
+    - Merging would cause stale values to persist across steps
+    """
+    # Always use right (latest value) - replace entirely
+    # If right is None or empty list, that's intentional (clearing)
     return right
 
 
@@ -92,7 +106,7 @@ class AgentState(TypedDict):
     plan: Annotated[List[Dict[str, Any]], reducer]  # List of plan steps
     current_step: Annotated[int, reducer]  # Current step index
     results: Annotated[Dict[str, Any], reducer]  # Results dictionary
-    pending_nodes: Annotated[List[str], reducer]  # Nodes currently executing
+    pending_nodes: Annotated[List[str], pending_nodes_reducer]  # Nodes currently executing (REPLACE, don't merge)
     finished_steps: Annotated[List[int], reducer]  # Completed step IDs
     user_questions: Annotated[List[str], reducer]  # Questions to ask user
 
