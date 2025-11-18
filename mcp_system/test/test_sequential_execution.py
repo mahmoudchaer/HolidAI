@@ -6,12 +6,20 @@ import os
 import io
 
 # Fix encoding for Windows console
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if __name__ == "__main__":
+    try:
+        if hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError, OSError):
+        pass
 
-# Add langraph to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "langraph"))
+# Add project root and langraph to path (go up 2 levels from mcp_system/test/ to project root)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+langraph_path = os.path.join(project_root, "langraph")
+sys.path.insert(0, langraph_path)  # Add langraph first so relative imports work
+sys.path.insert(0, project_root)   # Also add project root for other imports
 
-from langraph.graph import run
+from graph import run
 
 
 async def test_simple_parallel():
