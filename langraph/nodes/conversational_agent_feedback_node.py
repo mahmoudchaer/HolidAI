@@ -163,6 +163,13 @@ async def conversational_agent_feedback_node(state: AgentState) -> AgentState:
         print("Conversational Feedback: No response to validate")
         return {"route": "end"}
     
+    # If RFI is asking for missing info, skip validation and just END
+    # (The response is asking the user for more info, not a final answer)
+    rfi_status = state.get("rfi_status", "")
+    if rfi_status == "missing_info":
+        print("Conversational Feedback: RFI asking for missing info, skipping validation")
+        return {"route": "end"}
+    
     # Prepare validation context (summarize collected info to avoid token limits)
     collected_summary = {
         "has_flight_data": bool(collected_info.get("flight_result")),

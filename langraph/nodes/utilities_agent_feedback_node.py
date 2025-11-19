@@ -87,7 +87,8 @@ VALIDATION RULES:
    - **Remember**: Only validate tools that were requested in current_step_task
 
 4. Error legitimacy:
-   - Valid errors: API timeout, invalid parameters, no data available
+   - **CRITICAL**: If error_code is "DATA_UNAVAILABLE", ALWAYS accept (data simply doesn't exist) - DO NOT RETRY
+   - Valid errors: API timeout, invalid parameters, no data available (all should be ACCEPTED, not retried)
    - Invalid errors: missing required parameters (should not happen at this stage)
    - **IMPORTANT**: Programming errors (TypeError, AttributeError) should trigger retry
    - **IMPORTANT**: If error_code is "UNEXPECTED_ERROR" with traceback, it's likely a bug - retry might not help
@@ -219,7 +220,21 @@ Response: {
   "feedback_message": "eSIM bundles with prices retrieved successfully. The conversational agent will handle the currency conversion to AED."
 }
 
-**NOTE**: If step task mentions "convert eSIM prices" and eSIM bundles with prices are provided, NO explicit currency_conversion tool call is needed. The conversational agent handles simple arithmetic conversions."""
+Example 12 - DATA_UNAVAILABLE is legitimate (PASS):
+User: "Get eSIM bundles for Dubai"
+Current step task: "Get eSIM bundles for Dubai"
+Result summary: {
+  "has_error": true,
+  "error_code": "DATA_UNAVAILABLE",
+  "error_message": "eSIM data not available for 'Dubai' in our database."
+}
+Response: {
+  "validation_status": "pass",
+  "feedback_message": "DATA_UNAVAILABLE error is legitimate - the data simply doesn't exist in the database. The conversational agent will inform the user."
+}
+
+**NOTE**: If step task mentions "convert eSIM prices" and eSIM bundles with prices are provided, NO explicit currency_conversion tool call is needed. The conversational agent handles simple arithmetic conversions.
+"""
 
 
 async def utilities_agent_feedback_node(state: AgentState) -> AgentState:
@@ -256,6 +271,29 @@ async def utilities_agent_feedback_node(state: AgentState) -> AgentState:
             "utilities_feedback_message": None,
             "utilities_feedback_retry_count": 0
         }
+    
+    # Check for DATA_UNAVAILABLE errors - these are legitimate and won't be fixed by retrying
+    if utilities_result.get("error_code") == "DATA_UNAVAILABLE":
+        print(f"Utilities Feedback: DATA_UNAVAILABLE error detected - {utilities_result.get('error_message', '')} - accepting as legitimate")
+        return {
+            "utilities_feedback_message": None,
+            "utilities_feedback_retry_count": 0
+        }
+    
+    # Check for DATA_UNAVAILABLE in multiple results
+    if utilities_result.get("multiple_results"):
+        all_data_unavailable = True
+        for result_item in utilities_result.get("results", []):
+            tool_result = result_item.get("result", {})
+            if tool_result.get("error_code") != "DATA_UNAVAILABLE":
+                all_data_unavailable = False
+                break
+        if all_data_unavailable:
+            print("Utilities Feedback: All results have DATA_UNAVAILABLE error - accepting as legitimate")
+            return {
+                "utilities_feedback_message": None,
+                "utilities_feedback_retry_count": 0
+            }
     
     # Prepare validation context (truncate large data)
     result_summary = {

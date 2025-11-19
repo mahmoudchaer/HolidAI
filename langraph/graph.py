@@ -3,6 +3,7 @@
 from typing import Literal, Union, List
 from langgraph.graph import StateGraph, END
 from state import AgentState
+from nodes.rfi_node import rfi_node
 from nodes.main_agent_node import main_agent_node
 from nodes.feedback_node import feedback_node
 from nodes.plan_executor_node import plan_executor_node
@@ -31,14 +32,16 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
     Returns:
         Next node name(s) - can be a string, list of strings for parallel execution, or "end"
     """
-    route = state.get("route", "main_agent")
+    route = state.get("route", "rfi_node")
     
     # If route is a list, return it for parallel execution
     if isinstance(route, list):
         return route
     
     # Handle string routes
-    if route == "feedback":
+    if route == "rfi_node":
+        return "rfi_node"
+    elif route == "feedback":
         return "feedback"
     elif route == "plan_executor_feedback":
         return "plan_executor_feedback"
@@ -74,6 +77,7 @@ def create_graph() -> StateGraph:
     graph = StateGraph(AgentState)
     
     # Add nodes - main workflow nodes
+    graph.add_node("rfi_node", rfi_node)  # RFI node - validates logical completeness FIRST
     graph.add_node("main_agent", main_agent_node)
     graph.add_node("feedback", feedback_node)
     graph.add_node("plan_executor", plan_executor_node)
@@ -92,8 +96,19 @@ def create_graph() -> StateGraph:
     graph.add_node("conversational_agent", conversational_agent_node)
     graph.add_node("conversational_agent_feedback", conversational_agent_feedback_node)
     
-    # Set entry point
-    graph.set_entry_point("main_agent")
+    # Set entry point - RFI node validates first!
+    graph.set_entry_point("rfi_node")
+    
+    # RFI node routes based on information completeness
+    graph.add_conditional_edges(
+        "rfi_node",
+        route_decision,
+        {
+            "main_agent": "main_agent",           # Complete info -> proceed to Main Agent
+            "conversational_agent": "conversational_agent",  # Missing info -> ask user
+            "end": END
+        }
+    )
     
     # Main agent routes to feedback for validation or conversational agent for simple queries
     graph.add_conditional_edges(

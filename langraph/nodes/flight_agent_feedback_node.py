@@ -85,16 +85,23 @@ Response: {
   "feedback_message": "Flight search completed successfully with valid results"
 }
 
-Example 2 - Empty results without explanation (RETRY):
-User: "Find flights from Dubai to Beirut"
-Result: {"error": false, "outbound": []}
+Example 2 - Empty results with vague dates (PASS):
+User: "Find flights from London to Dubai in November 2025"
+Result: {"error": false, "outbound": [], "return": []}
 Response: {
-  "validation_status": "need_retry",
-  "feedback_message": "No flights found but no error explanation provided",
-  "suggested_action": "Retry search with adjusted parameters or provide clear error message"
+  "validation_status": "pass",
+  "feedback_message": "User provided vague date (month/year only), empty results are acceptable"
 }
 
-Example 3 - Valid error (PASS):
+Example 3 - Empty results with no dates (PASS):
+User: "Find flights from Dubai to Paris"
+Result: {"error": false, "outbound": []}
+Response: {
+  "validation_status": "pass",
+  "feedback_message": "User did not provide travel dates, so empty flight results are expected and acceptable"
+}
+
+Example 4 - Valid error (PASS):
 User: "Find flights for invalid date"
 Result: {"error": true, "error_message": "Invalid date format"}
 Response: {
@@ -102,12 +109,12 @@ Response: {
   "feedback_message": "Error properly reported - invalid date format"
 }
 
-Example 4 - Missing required data (RETRY):
-User: "Find flights from Dubai to Beirut"
+Example 5 - Missing required data with specific dates (RETRY):
+User: "Find flights from Dubai to Beirut on December 25, 2025"
 Result: {"error": false, "outbound": [{"airline": "Emirates"}]} (missing price)
 Response: {
   "validation_status": "need_retry",
-  "feedback_message": "Flight results missing critical information (prices)",
+  "feedback_message": "User provided specific dates but flight results are missing critical information (prices)",
   "suggested_action": "Retry search to retrieve complete flight information including prices"
 }"""
 

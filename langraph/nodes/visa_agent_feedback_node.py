@@ -41,7 +41,12 @@ def get_visa_agent_feedback_prompt() -> str:
 - ✅ Any formatting or structure complaints - data is there? Good!
 - ✅ "Other info missing" (flights, hotels, etc.) - this is ONLY about visa, ignore other requests!
 
-**KEY RULE**: If result says "visa required" or "no visa required" with stay duration, **IT'S GOOD**!
+**KEY RULES**:
+- ✅ "No visa required" = PASS
+- ✅ "Visa required" with details = PASS
+- ✅ "Visa on arrival" = PASS
+- ✅ "Visa may be obtained on arrival" = PASS
+- ❌ "Visa may be required, please check" = RETRY (truly vague)
 
 Respond with JSON:
 {
@@ -71,12 +76,22 @@ User: "Need visa for France?"
 Result: {"error": false, "result": ""}
 Response: {"validation_status": "need_retry", "feedback_message": "No visa information returned"}
 
-Example 5 - Vague answer (RETRY):
+Example 5 - Visa on arrival (PASS):
+User: "UK to Dubai visa?"
+Result: {"result": "Visa may be obtained on arrival"}
+Response: {"validation_status": "pass", "feedback_message": "Visa on arrival policy clearly stated"}
+
+Example 6 - Visa on arrival with details (PASS):
+User: "UK to UAE visa?"
+Result: {"result": "UK citizens can obtain visa on arrival. Fee applies."}
+Response: {"validation_status": "pass", "feedback_message": "Visa on arrival information provided"}
+
+Example 7 - Truly vague answer (RETRY):
 User: "UAE to France visa?"
 Result: {"result": "Visa may be required, please check"}
-Response: {"validation_status": "need_retry", "feedback_message": "Answer too vague"}
+Response: {"validation_status": "need_retry", "feedback_message": "Answer too vague - doesn't say if visa is actually required or not"}
 
-Example 6 - Error (PASS):
+Example 8 - Error (PASS):
 User: "Visa for invalid-country?"
 Result: {"error": true, "error_message": "Country not found"}
 Response: {"validation_status": "pass", "feedback_message": "Error handled"}"""
