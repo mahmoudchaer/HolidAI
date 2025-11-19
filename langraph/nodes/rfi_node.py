@@ -56,9 +56,9 @@ WHAT YOU CHECK (Logical Requirements Only):
    - Examples of COMPLETE: "Best restaurants in Beirut"
 
 5. **Utilities (weather, currency, etc):**
-   - Weather: Need location
+   - Weather: Need location (can be multiple: "weather in Paris and London")
    - Currency: Need from/to currencies
-   - eSIM: Need country
+   - eSIM: Need country/countries (can be multiple: "eSIM for Lebanon and UAE" is COMPLETE)
    - Holidays: Need country
 
 IMPORTANT RULES:
@@ -66,7 +66,9 @@ IMPORTANT RULES:
 - Don't ask for tool-specific details (passenger counts, room numbers, etc) - that comes later
 - If user request is clear enough for a human to understand, it's good enough
 - Multiple requests can be in one message (e.g., "flights and hotels in Paris")
+- Multiple countries/locations are acceptable (e.g., "eSIM for Lebanon and UAE" is COMPLETE - don't ask which one)
 - Check EACH request type separately
+- If user mentions multiple countries/locations, they want ALL of them - don't ask for clarification
 
 MISSING INFO HANDLING:
 - If critical info missing: ask ONLY for that specific missing piece
@@ -127,6 +129,24 @@ Response: {
   "missing_fields": ["origin", "destination", "dates", "nationality"],
   "question_to_user": "I'd love to help you plan your trip! To get started, could you tell me: Where are you traveling from and to? What are your travel dates? And what is your nationality?",
   "analysis": "User wants flights, hotels, and visa info but didn't provide any specific details. Need all basic info."
+}
+
+Example 6 - eSIM with multiple countries (COMPLETE):
+User: "get me esim bundles for Lebanon and UAE"
+Response: {
+  "status": "complete",
+  "missing_fields": [],
+  "question_to_user": "",
+  "analysis": "User provided both countries (Lebanon and UAE) for eSIM bundles. This is complete - the system can fetch bundles for both countries."
+}
+
+Example 7 - eSIM with single country (COMPLETE):
+User: "eSIM bundles for Japan"
+Response: {
+  "status": "complete",
+  "missing_fields": [],
+  "question_to_user": "",
+  "analysis": "User provided country (Japan) for eSIM bundles. This is sufficient."
 }"""
 
 

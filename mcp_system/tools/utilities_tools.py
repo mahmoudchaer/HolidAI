@@ -739,17 +739,59 @@ def register_utilities_tools(mcp):
                         "suggestion": "Try using country names like 'Qatar', 'USA', 'UAE', 'Japan', 'Lebanon', etc."
                     }
             
-            # Scrape eSIM data - try primary URL first
-            urls_to_try = [
-                f"https://esimradar.com/{country_slug}/?s={country_code}",
-                f"https://esimradar.com/{country_slug}/",
-                f"https://esimradar.com/esim-{country_code.lower()}/",
-            ]
+            # Generate URL slugs - improved pattern matching
+            # Create country name slug (e.g., "lebanon" -> "lebanon", "uae" -> "uae")
+            country_name_slug = country_lower.replace(" ", "-").replace("_", "-")
+            # Create short slug (remove common words)
+            country_short_slug = country_name_slug.replace("united-", "").replace("arab-", "").replace("emirates", "uae")
             
-            # For UAE, also try alternative formats
-            if country_code.lower() == "ae" or "uae" in country_lower or "united arab emirates" in country_lower:
-                urls_to_try.insert(1, "https://esimradar.com/esim-uae/")
-                urls_to_try.insert(2, "https://esimradar.com/uae/")
+            # Scrape eSIM data - try multiple URL patterns
+            urls_to_try = []
+            
+            # For Lebanon, try Middle East regional page first (Lebanon is included there)
+            if country_lower == "lebanon" or country_code.lower() == "lb":
+                urls_to_try.extend([
+                    "https://esimradar.com/esim/middle-east/",
+                    "https://esimradar.com/esim-middle-east/",
+                    f"https://esimradar.com/esim/{country_name_slug}/",
+                    f"https://esimradar.com/esim-{country_name_slug}/",
+                    f"https://esimradar.com/{country_slug}/?s={country_code}",
+                    f"https://esimradar.com/{country_slug}/",
+                ])
+            # For UAE, try Middle East regional page first (UAE is included there, same as Lebanon)
+            elif country_code.lower() == "ae" or "uae" in country_lower or "united arab emirates" in country_lower:
+                urls_to_try.extend([
+                    # Try Middle East regional page first (UAE is included there)
+                    "https://esimradar.com/esim/middle-east/",
+                    "https://esimradar.com/esim-middle-east/",
+                    # Then try UAE-specific URLs
+                    "https://esimradar.com/esim/uae/",
+                    "https://esimradar.com/esim-uae/",
+                    "https://esimradar.com/esim/united-arab-emirates/",
+                    "https://esimradar.com/esim-united-arab-emirates/",
+                    "https://esimradar.com/esim/dubai/",
+                    "https://esimradar.com/esim-dubai/",
+                    "https://esimradar.com/esim-ae/",
+                    f"https://esimradar.com/{country_slug}/?s={country_code}",
+                    f"https://esimradar.com/{country_slug}/",
+                ])
+            else:
+                # For other countries, use standard patterns
+                urls_to_try.extend([
+                    # Pattern 1: /esim/{country-name-slug}/ (works for UAE, Qatar, Japan, etc.)
+                    f"https://esimradar.com/esim/{country_name_slug}/",
+                    # Pattern 2: /esim-{country-short-slug}/ (works for Qatar, Japan, USA, etc.)
+                    f"https://esimradar.com/esim-{country_short_slug}/",
+                    # Pattern 3: /esim-{country-code}/ (works for some countries like QA, US)
+                    f"https://esimradar.com/esim-{country_code.lower()}/",
+                    # Pattern 4: Original patterns with query string
+                    f"https://esimradar.com/{country_slug}/?s={country_code}",
+                    f"https://esimradar.com/{country_slug}/",
+                ])
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            urls_to_try = [url for url in urls_to_try if url not in seen and not seen.add(url)]
             
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -886,39 +928,101 @@ def register_utilities_tools(mcp):
                         # - Validity: <p>For 7 DAYS</p>
                         # - Price: <div class="text-lg font-extrabold whitespace-nowrap">USD4.50</div>
                         
-                        # Find all li elements that look like plan cards
+                        # Find all li elements that look like plan cards - try multiple selectors
                         plan_lis = soup.find_all("li", class_=lambda x: x and "cursor-pointer" in str(x) and "border-2" in str(x))
-                        print(f"eSIM Tool: Found {len(plan_lis)} plan <li> elements on Nomad")
                         
-                        # Parse each plan <li>
-                        for idx, plan_li in enumerate(plan_lis[:limit]):
+                        # If no results, try alternative selectors
+                        if not plan_lis:
+                            # Try finding by data attributes or other class patterns
+                            plan_lis = soup.find_all("li", class_=lambda x: x and ("plan" in str(x).lower() or "bundle" in str(x).lower() or "card" in str(x).lower()))
+                        
+                        # If still no results, try finding divs with plan-like classes
+                        if not plan_lis:
+                            plan_divs = soup.find_all("div", class_=lambda x: x and ("plan" in str(x).lower() or "bundle" in str(x).lower() or "card" in str(x).lower()))
+                            if plan_divs:
+                                print(f"eSIM Tool: Found {len(plan_divs)} plan <div> elements on Nomad (using divs instead of lis)")
+                                # Convert divs to a list-like structure for processing
+                                plan_lis = plan_divs
+                        
+                        print(f"eSIM Tool: Found {len(plan_lis)} plan elements on Nomad")
+                        
+                        # Parse each plan element
+                        for idx, plan_elem in enumerate(plan_lis[:limit]):
                             try:
-                                # Extract data amount from <span class="font-bold">
-                                data_elem = plan_li.find("span", class_=lambda x: x and "font-bold" in str(x))
-                                data_match = data_elem.get_text().strip() if data_elem else None
+                                # Extract data amount - try multiple patterns
+                                data_match = None
+                                # Try <span class="font-bold">
+                                data_elem = plan_elem.find("span", class_=lambda x: x and "font-bold" in str(x))
+                                if data_elem:
+                                    data_match = data_elem.get_text().strip()
+                                # Try finding text with GB/MB
+                                if not data_match:
+                                    text = plan_elem.get_text()
+                                    gb_match = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB)', text, re.IGNORECASE)
+                                    if gb_match:
+                                        data_match = f"{gb_match.group(1)} {gb_match.group(2).upper()}"
                                 
-                                # Extract validity from text containing "For X DAYS"
+                                # Extract validity - try multiple patterns
                                 validity_match = ""
-                                for p_tag in plan_li.find_all("p"):
+                                # Try "For X DAYS" pattern
+                                for p_tag in plan_elem.find_all("p"):
                                     p_text = p_tag.get_text()
                                     if "For" in p_text and "DAY" in p_text:
                                         validity_pattern = r'For\s+(\d+)\s+DAYS?'
                                         match = re.search(validity_pattern, p_text, re.IGNORECASE)
                                         if match:
                                             validity_match = f"{match.group(1)} days"
-                                        break
+                                            break
                                 
-                                # Extract price from <div class="text-lg font-extrabold whitespace-nowrap">
+                                # Also try finding validity in any text
+                                if not validity_match:
+                                    text = plan_elem.get_text()
+                                    validity_pattern = r'(\d+)\s*(?:day|days)'
+                                    match = re.search(validity_pattern, text, re.IGNORECASE)
+                                    if match:
+                                        validity_match = f"{match.group(1)} days"
+                                
+                                # Extract price - try multiple patterns
                                 price_match = None
-                                price_div = plan_li.find("div", class_=lambda x: x and "text-lg" in str(x) and "font-extrabold" in str(x) and "whitespace-nowrap" in str(x))
+                                # Try specific div class
+                                price_div = plan_elem.find("div", class_=lambda x: x and "text-lg" in str(x) and "font-extrabold" in str(x) and "whitespace-nowrap" in str(x))
+                                if not price_div:
+                                    # Try any div with price-like classes
+                                    price_div = plan_elem.find("div", class_=lambda x: x and ("price" in str(x).lower() or "cost" in str(x).lower() or "font-extrabold" in str(x) or "font-bold" in str(x)))
+                                
                                 if price_div:
                                     price_text = price_div.get_text().strip()
-                                    # Clean up price (e.g., "USD4.50" or "USD 4.50")
+                                    # Clean up price (e.g., "USD4.50" or "USD 4.50" or "$4.50")
                                     if "USD" in price_text:
                                         price_match = "USD " + price_text.replace("USD", "").strip()
+                                    elif "$" in price_text:
+                                        price_match = "USD " + price_text.replace("$", "").strip()
+                                    else:
+                                        # Try to extract number
+                                        price_num = re.search(r'(\d+\.?\d*)', price_text)
+                                        if price_num:
+                                            price_match = f"USD {price_num.group(1)}"
                                 
-                                # Get purchase link (use main page URL)
+                                # If still no price, try finding in all text
+                                if not price_match:
+                                    text = plan_elem.get_text()
+                                    price_pattern = r'[\$]?\s*(\d+\.?\d*)'
+                                    price_num = re.search(price_pattern, text)
+                                    if price_num:
+                                        price_match = f"USD {price_num.group(1)}"
+                                
+                                # Get purchase link (use main page URL or try to find link in element)
                                 purchase_link = url
+                                link_elem = plan_elem.find("a")
+                                if link_elem:
+                                    href = link_elem.get("href", "")
+                                    if href:
+                                        if href.startswith("http"):
+                                            purchase_link = href
+                                        elif href.startswith("/"):
+                                            purchase_link = f"https://www.getnomad.app{href}"
+                                        else:
+                                            purchase_link = f"https://www.getnomad.app/{href}"
                                 
                                 # Debug first 3
                                 if idx < 3:
@@ -1056,11 +1160,30 @@ def register_utilities_tools(mcp):
                     
                     print(f"eSIM Tool: Inferred column positions - Price: {price_col_idx}, Provider: {provider_col_idx}, Plan: {plan_col_idx}, Validity: {validity_col_idx}")
                 
+                # Check if we're on a regional page (like Middle East) and need to filter by country
+                is_regional_page = "middle-east" in url.lower() if url else False
+                country_filter_keywords = []
+                if is_regional_page:
+                    # For Lebanon on Middle East page, filter by country keywords
+                    if country_lower == "lebanon" or country_code.lower() == "lb":
+                        country_filter_keywords = ["lebanon", "lb", "beirut"]
+                    # Add more country filters as needed for other countries on regional pages
+                    # For UAE on Middle East page
+                    elif country_code.lower() == "ae" or "uae" in country_lower or "united arab emirates" in country_lower:
+                        country_filter_keywords = ["uae", "united arab emirates", "emirates", "dubai", "abu dhabi"]
+                
                 for row_idx, row in enumerate(rows[start_idx:], start=start_idx):
                     cols = row.find_all("td")
                     # Need at least 4 columns (provider, plan, validity, price) - some tables might not have image column
                     if len(cols) < 4:
                         continue  # Skip invalid rows
+                    
+                    # If on regional page, filter rows by country
+                    if is_regional_page and country_filter_keywords:
+                        row_text = row.get_text().lower()
+                        # Check if row contains country keywords
+                        if not any(keyword in row_text for keyword in country_filter_keywords):
+                            continue  # Skip rows that don't match the country
                     
                     # Use detected column positions if available, otherwise use smart defaults based on table structure
                     # Based on the debug output, the structure is: [empty, plan, data_gb, validity, price_per_gb, total_price, ...]
@@ -1118,40 +1241,71 @@ def register_utilities_tools(mcp):
                     # Find link - try multiple columns (skip None columns)
                     link = None
                     link_tag = None
-                    # Check column 8 which often has "View Details" link, or check all columns
-                    if len(cols) > 8:
+                    
+                    # Check column 9 which often has "View Details" link (based on terminal output)
+                    if len(cols) > 9:
+                        link_tag = cols[9].find("a")
+                        # Also check if column 9 has a button or span with onclick/data attributes
+                        if not link_tag:
+                            btn = cols[9].find(["button", "span", "div"], onclick=True)
+                            if btn:
+                                onclick = btn.get("onclick", "")
+                                # Try to extract URL from onclick handler
+                                url_match = re.search(r'["\'](https?://[^"\']+)["\']', onclick)
+                                if url_match:
+                                    link = url_match.group(1)
+                    
+                    # Also check column 8 as fallback
+                    if not link_tag and not link and len(cols) > 8:
                         link_tag = cols[8].find("a")
                     
-                    if not link_tag:
-                        cols_to_check = [c for c in [img_col, provider_col, info_col] if c is not None]
-                        for col in cols_to_check:
+                    # Check all columns for links if still not found
+                    if not link_tag and not link:
+                        for col_idx, col in enumerate(cols):
                             link_tag = col.find("a")
                             if link_tag:
                                 break
+                            # Also check for onclick handlers
+                            btn = col.find(["button", "span", "div"], onclick=True)
+                            if btn:
+                                onclick = btn.get("onclick", "")
+                                url_match = re.search(r'["\'](https?://[^"\']+)["\']', onclick)
+                                if url_match:
+                                    link = url_match.group(1)
+                                    break
                     
-                    if link_tag:
+                    # If still no link, try checking the row itself
+                    if not link_tag and not link:
+                        link_tag = row.find("a")
+                    
+                    # Extract href from link_tag if found
+                    if link_tag and not link:
                         link = link_tag.get("href", "")
-                        # Make link absolute if relative
-                        if link and not link.startswith("http"):
-                            if link.startswith("/"):
-                                link = f"https://esimradar.com{link}"
-                            else:
-                                link = f"https://esimradar.com/{link}"
-                        
-                        # Try to extract provider from link if still unknown
-                        if not provider_text or provider_text == "Unknown Provider":
-                            # Link might contain provider name in URL or text
-                            link_text = link_tag.get_text(strip=True)
-                            if link_text and link_text != "View Details":
-                                provider_text = link_text
-                            # Or check URL for provider name
-                            if provider_text == "Unknown Provider" and "/" in link:
-                                url_parts = link.split("/")
-                                for part in url_parts:
-                                    if part and part not in ["esim", "esimradar.com", "https:", "http:", ""]:
-                                        # Might be provider name
-                                        provider_text = part.replace("-", " ").title()
-                                        break
+                        # Also check for data-href or other data attributes
+                        if not link:
+                            link = link_tag.get("data-href", "") or link_tag.get("data-url", "")
+                    
+                    # Make link absolute if relative
+                    if link and not link.startswith("http"):
+                        if link.startswith("/"):
+                            link = f"https://esimradar.com{link}"
+                        else:
+                            link = f"https://esimradar.com/{link}"
+                    
+                    # Try to extract provider from link if still unknown
+                    if link_tag and (not provider_text or provider_text == "Unknown Provider"):
+                        # Link might contain provider name in URL or text
+                        link_text = link_tag.get_text(strip=True)
+                        if link_text and link_text != "View Details":
+                            provider_text = link_text
+                        # Or check URL for provider name
+                        if provider_text == "Unknown Provider" and link and "/" in link:
+                            url_parts = link.split("/")
+                            for part in url_parts:
+                                if part and part not in ["esim", "esimradar.com", "https:", "http:", ""]:
+                                    # Might be provider name
+                                    provider_text = part.replace("-", " ").title()
+                                    break
                     
                     # Extract text from columns
                     # Provider text was already extracted above
