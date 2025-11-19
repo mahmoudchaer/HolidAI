@@ -76,13 +76,35 @@ def get_utilities_agent_prompt() -> str:
     
     base_prompt = """You are the Utilities Agent, a specialized agent that helps users with utility functions like weather, currency conversion, and date/time information.
 
-CRITICAL: You MUST use the available tools to provide utility information. Do NOT respond without calling a tool.
+CRITICAL: You MUST use the available tools to provide utility information. DO NOT respond without calling a tool.
 
 Your role:
 - Understand the user's message using your LLM reasoning capabilities
-- Determine which utility tool is needed based on the user's query
+- Determine which utility tool(s) are needed based on EXPLICITLY REQUESTED utilities
+- ONLY call tools that are directly requested by the user - don't add extra information
 - Use the appropriate tool with parameters you determine from the user's message
 - The tool schemas will show you exactly what parameters are needed
+- You CAN make MULTIPLE parallel tool calls if user requests multiple operations (e.g., "weather in Paris and weather in Beirut" = 2 tool calls)
+
+CRITICAL - STRICT REQUEST MATCHING:
+- If user asks to "convert prices" or "convert to EUR/AED/etc" → use convert_currencies ONLY
+- If user asks for "weather" or "temperature" or "conditions" → use get_real_time_weather
+- If user asks for "eSIM" or "mobile data" → use get_esim_bundles
+- If user asks for "holidays" → use get_holidays
+- If user asks for "current time" or "what time is it" → use get_real_time_date_time
+
+FORBIDDEN BEHAVIORS:
+- DO NOT call weather just because a city is mentioned - ONLY if weather is explicitly requested
+- DO NOT add extra information - if user asks for currency conversion, ONLY do currency conversion
+- DO NOT call multiple tools unless the user explicitly requests multiple operations
+- Focus ONLY on the EXACT utility operations mentioned in the user's message
+
+EXAMPLES:
+- "Convert prices to EUR" → ONLY call convert_currencies (1 tool call)
+- "Get weather in Beirut" → ONLY call get_real_time_weather for Beirut (1 tool call)
+- "Weather in Paris and weather in Beirut" → Call get_real_time_weather TWICE (2 parallel tool calls: one for Paris, one for Beirut)
+- "Convert to EUR and get weather" → Call BOTH convert_currencies AND get_real_time_weather (2 different tool calls)
+- "Get hotels in Beirut. Convert prices to EUR" → ONLY call convert_currencies (weather NOT requested)
 
 Available tools (you will see their full schemas with function calling):
 - get_real_time_weather: Get current weather for a city or country
@@ -154,7 +176,7 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
         return sanitized
 
     for tool in tools:
-        if tool["name"] in ["get_real_time_weather", "convert_currencies", "get_real_time_date_time", "get_esim_bundles"]:
+        if tool["name"] in ["get_real_time_weather", "convert_currencies", "get_real_time_date_time", "get_esim_bundles", "get_holidays"]:
             input_schema = tool.get("inputSchema", {})
             input_schema = _sanitize_schema(input_schema)
             functions.append({
@@ -169,46 +191,83 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages,
             tools=functions,
-            tool_choice="required"  # Force tool call when tools are available
+            tool_choice="required",  # Force tool call when tools are available
+            parallel_tool_calls=True  # Enable multiple parallel tool calls (e.g., weather for 2 cities)
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages
         )
     
     message = response.choices[0].message
     
-    # Check if LLM wants to call a tool
+    # Check if LLM wants to call tools (can be multiple parallel calls)
     if message.tool_calls:
-        tool_call = message.tool_calls[0]
-        tool_name = tool_call.function.name
+        import json
         
-        if tool_name in ["get_real_time_weather", "convert_currencies", "get_real_time_date_time", "get_esim_bundles", "get_holidays"]:
-            import json
-            args = json.loads(tool_call.function.arguments)
+        # Debug: Log how many tool calls the LLM made
+        print(f"🔍 UTILITIES DEBUG - User message: {user_message}")
+        print(f"🔍 UTILITIES DEBUG - Number of tool calls: {len(message.tool_calls)}")
+        
+        # Process ALL tool calls (for multiple weather requests, currency conversions, etc.)
+        all_results = []
+        
+        for tool_call in message.tool_calls:
+            tool_name = tool_call.function.name
             
-            # LLM has extracted all parameters from user message - use them directly
-            # Call the utilities tool via MCP
-            try:
-                utilities_result = await UtilitiesAgentClient.invoke(tool_name, **args)
+            if tool_name in ["get_real_time_weather", "convert_currencies", "get_real_time_date_time", "get_esim_bundles", "get_holidays"]:
+                args = json.loads(tool_call.function.arguments)
                 
-                # Store result directly in state for parallel execution
-                updated_state["utilities_result"] = utilities_result
-                # No need to set route - using add_edge means we automatically route to join_node
+                # Debug: Log each tool call
+                print(f"🔍 UTILITIES DEBUG - Tool {len(all_results)+1}: {tool_name}, Args: {args}")
                 
-            except Exception as e:
-                # Store error in result
-                updated_state["utilities_result"] = {"error": True, "error_message": str(e)}
-                # No need to set route - using add_edge means we automatically route to join_node
-            
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🛠️ UTILITIES AGENT COMPLETED (Duration: {duration:.3f}s)")
-            return updated_state
+                # Validate that weather wasn't called unnecessarily
+                if tool_name == "get_real_time_weather":
+                    if "weather" not in user_message.lower() and "temperature" not in user_message.lower() and "conditions" not in user_message.lower():
+                        print(f"⚠️ WARNING: Weather called but not requested in message!")
+                        print(f"⚠️ User message was: {user_message}")
+                        print(f"⚠️ Skipping weather call - not explicitly requested")
+                        continue  # Skip this tool call, process next one
+                
+                # Call the utilities tool via MCP
+                try:
+                    utilities_result = await UtilitiesAgentClient.invoke(tool_name, **args)
+                    all_results.append({
+                        "tool": tool_name,
+                        "args": args,
+                        "result": utilities_result
+                    })
+                    
+                except Exception as e:
+                    all_results.append({
+                        "tool": tool_name,
+                        "args": args,
+                        "result": {"error": True, "error_message": str(e)}
+                    })
+        
+        # Combine all results
+        if len(all_results) == 0:
+            # No valid tool calls
+            updated_state["utilities_result"] = {"error": True, "error_message": "No valid utility operations performed"}
+        elif len(all_results) == 1:
+            # Single tool call - return result directly (backward compatible)
+            updated_state["utilities_result"] = all_results[0]["result"]
+        else:
+            # Multiple tool calls - return combined results
+            updated_state["utilities_result"] = {
+                "error": False,
+                "multiple_results": True,
+                "results": all_results
+            }
+        
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🛠️ UTILITIES AGENT COMPLETED (Duration: {duration:.3f}s)")
+        return updated_state
     
     # No tool call - store empty result
     updated_state["utilities_result"] = {"error": True, "error_message": "No utility parameters provided"}

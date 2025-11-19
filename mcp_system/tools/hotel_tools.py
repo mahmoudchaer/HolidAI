@@ -18,6 +18,7 @@ load_dotenv(dotenv_path=env_path)
 # API configuration
 API_ENDPOINT = "https://api.liteapi.travel/v3.0/hotels/rates"
 HOTEL_DETAILS_ENDPOINT = "https://api.liteapi.travel/v3.0/data/hotel"
+HOTELS_LIST_ENDPOINT = "https://api.liteapi.travel/v3.0/data/hotels"
 API_KEY = os.getenv("LITEAPI_KEY")
 
 # Validate that required credentials are set
@@ -535,6 +536,149 @@ def _make_hotel_details_api_call(hotel_id: str, language: Optional[str] = None, 
         }
 
 
+def _make_hotels_list_api_call(
+    country_code: Optional[str] = None,
+    city_name: Optional[str] = None,
+    hotel_name: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 100,
+    longitude: Optional[float] = None,
+    latitude: Optional[float] = None,
+    radius: Optional[int] = None,
+    min_rating: Optional[float] = None,
+    min_reviews_count: Optional[int] = None,
+    star_rating: Optional[str] = None,
+    hotel_ids: Optional[str] = None,
+    timeout: float = 10.0
+) -> Dict:
+    """Make API call to list/search hotels.
+    
+    Args:
+        country_code: Country code ISO-2 code (e.g., 'SG', 'US')
+        city_name: Name of the city
+        hotel_name: Name of the hotel (loose match, case-insensitive)
+        offset: Number of rows to skip before returning
+        limit: Maximum number of results (default: 100, max: 5000)
+        longitude: Longitude geo coordinates
+        latitude: Latitude geo coordinates
+        radius: Radius in meters (min 1000m)
+        min_rating: Minimum rating of the hotel (e.g., 8.6)
+        min_reviews_count: Minimum number of reviews
+        star_rating: Comma-separated list of star ratings (e.g., '3.5,4.0,5.0')
+        hotel_ids: Comma-separated list of hotel IDs (e.g., 'lp1897,lp1343')
+        timeout: Request timeout in seconds
+        
+    Returns:
+        Dict with hotel list or error information
+    """
+    try:
+        # Build query parameters
+        params = {
+            "offset": offset,
+            "limit": min(limit, 5000)  # Cap at API maximum
+        }
+        
+        if country_code:
+            params["countryCode"] = country_code
+        if city_name:
+            params["cityName"] = city_name
+        if hotel_name:
+            params["hotelName"] = hotel_name
+        if longitude is not None:
+            params["longitude"] = longitude
+        if latitude is not None:
+            params["latitude"] = latitude
+        if radius is not None:
+            params["radius"] = max(radius, 1000)  # Minimum 1000m
+        if min_rating is not None:
+            params["minRating"] = min_rating
+        if min_reviews_count is not None:
+            params["minReviewsCount"] = min_reviews_count
+        if star_rating:
+            params["starRating"] = star_rating
+        if hotel_ids:
+            params["hotelIds"] = hotel_ids
+        
+        headers = {
+            "X-API-Key": API_KEY,
+            "Accept": "application/json"
+        }
+        
+        with httpx.Client(timeout=timeout) as client:
+            response = client.get(
+                HOTELS_LIST_ENDPOINT,
+                params=params,
+                headers=headers
+            )
+            
+            # Check for HTTP errors
+            if response.status_code == 401:
+                return {
+                    "error": True,
+                    "error_code": "UNAUTHORIZED",
+                    "error_message": "Invalid API key. Please check your API credentials.",
+                    "hotels": [],
+                    "total": 0
+                }
+            
+            if response.status_code == 400:
+                error_data = response.json() if response.text else {}
+                return {
+                    "error": True,
+                    "error_code": "BAD_REQUEST",
+                    "error_message": error_data.get("message", "Invalid request parameters."),
+                    "hotels": [],
+                    "total": 0
+                }
+            
+            if response.status_code != 200:
+                return {
+                    "error": True,
+                    "error_code": "API_ERROR",
+                    "error_message": f"Hotel list API returned status {response.status_code}.",
+                    "hotels": [],
+                    "total": 0
+                }
+            
+            # Parse response
+            data = response.json()
+            
+            return {
+                "error": False,
+                "hotels": data.get("data", []),
+                "hotel_ids": data.get("hotelIds", []),
+                "total": data.get("total", 0)
+            }
+            
+    except httpx.TimeoutException:
+        return {
+            "error": True,
+            "error_code": "TIMEOUT",
+            "error_message": f"Request timed out after {timeout} seconds.",
+            "hotels": [],
+            "total": 0,
+            "suggestion": "Try again or increase the timeout value."
+        }
+    except httpx.RequestError as e:
+        return {
+            "error": True,
+            "error_code": "NETWORK_ERROR",
+            "error_message": f"Network error occurred: {str(e)}",
+            "hotels": [],
+            "total": 0,
+            "suggestion": "Check your internet connection and try again."
+        }
+    except Exception as e:
+        return {
+            "error": True,
+            "error_code": "UNKNOWN_ERROR",
+            "error_message": f"An unexpected error occurred: {str(e)}",
+            "hotels": [],
+            "total": 0,
+            "suggestion": "Please try again or contact support if the issue persists."
+        }
+
+
 def register_hotel_tools(mcp):
     """Register all hotel-related tools with the MCP server."""
     
@@ -730,4 +874,139 @@ def register_hotel_tools(mcp):
             }
         
         return _make_hotel_details_api_call(hotel_id.strip(), language, timeout)
+    
+    @mcp.tool(description=get_doc("get_list_of_hotels", "hotel"))
+    def get_list_of_hotels(
+        country_code: Optional[str] = None,
+        city_name: Optional[str] = None,
+        hotel_name: Optional[str] = None,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+        longitude: Optional[float] = None,
+        latitude: Optional[float] = None,
+        radius: Optional[int] = None,
+        min_rating: Optional[float] = None,
+        min_reviews_count: Optional[int] = None,
+        star_rating: Optional[str] = None,
+        hotel_ids: Optional[str] = None,
+        timeout: Optional[float] = None
+    ) -> Dict:
+        """Search and list hotels based on various criteria.
+        
+        Use this tool to browse/search for hotels WITHOUT needing specific dates.
+        This is perfect for general hotel browsing, finding hotels in a city, or searching by name.
+        
+        At least one search criterion should be provided (e.g., city_name, country_code, hotel_name, or hotel_ids).
+        
+        Args:
+            country_code: Country code ISO-2 code (e.g., 'LB', 'US', 'FR')
+            city_name: Name of the city (e.g., 'Beirut', 'Paris', 'New York')
+            hotel_name: Name or partial name of hotel (case-insensitive, e.g., 'hilton')
+            offset: Number of results to skip (for pagination). Default: 0
+            limit: Maximum number of results to return. Default: 100, Max: 5000
+            longitude: Longitude for geo-based search
+            latitude: Latitude for geo-based search
+            radius: Search radius in meters (minimum 1000m). Use with longitude/latitude.
+            min_rating: Minimum hotel rating (e.g., 8.0, 8.5)
+            min_reviews_count: Minimum number of reviews (e.g., 100)
+            star_rating: Comma-separated star ratings (e.g., '4.0,5.0')
+            hotel_ids: Comma-separated list of specific hotel IDs (e.g., 'lp1897,lp1343')
+            timeout: Request timeout in seconds. Default: 10.0
+            
+        Returns:
+            Dict with 'hotels' list containing hotel information, 'total' count, and error status
+        """
+        # Set defaults
+        offset = offset if offset is not None else 0
+        limit = limit if limit is not None else 100
+        timeout = timeout if timeout is not None else 10.0
+        
+        # Validate inputs
+        if offset < 0:
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid offset: {offset}. Offset must be 0 or greater.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        if limit <= 0:
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid limit: {limit}. Limit must be greater than 0.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        if limit > 5000:
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Limit too large: {limit}. Maximum allowed is 5000.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        if timeout <= 0:
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid timeout: {timeout}. Timeout must be greater than 0.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        # Validate geo search parameters
+        if (longitude is not None or latitude is not None or radius is not None):
+            if longitude is None or latitude is None:
+                return {
+                    "error": True,
+                    "error_code": "VALIDATION_ERROR",
+                    "error_message": "For geo-based search, both longitude and latitude are required.",
+                    "hotels": [],
+                    "total": 0
+                }
+            
+            if radius is not None and radius < 1000:
+                return {
+                    "error": True,
+                    "error_code": "VALIDATION_ERROR",
+                    "error_message": f"Invalid radius: {radius}. Minimum radius is 1000 meters.",
+                    "hotels": [],
+                    "total": 0
+                }
+        
+        # Check if at least one search criterion is provided
+        has_criteria = any([
+            country_code, city_name, hotel_name, hotel_ids,
+            (longitude is not None and latitude is not None)
+        ])
+        
+        if not has_criteria:
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": "At least one search criterion is required (country_code, city_name, hotel_name, hotel_ids, or geo coordinates).",
+                "hotels": [],
+                "total": 0,
+                "suggestion": "Provide at least one search parameter like city_name='Beirut' or country_code='LB'"
+            }
+        
+        return _make_hotels_list_api_call(
+            country_code=country_code,
+            city_name=city_name,
+            hotel_name=hotel_name,
+            offset=offset,
+            limit=limit,
+            longitude=longitude,
+            latitude=latitude,
+            radius=radius,
+            min_rating=min_rating,
+            min_reviews_count=min_reviews_count,
+            star_rating=star_rating,
+            hotel_ids=hotel_ids,
+            timeout=timeout
+        )
 

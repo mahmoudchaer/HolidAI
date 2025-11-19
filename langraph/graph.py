@@ -4,6 +4,7 @@ from typing import Literal, Union, List
 from langgraph.graph import StateGraph, END
 from state import AgentState
 from nodes.main_agent_node import main_agent_node
+from nodes.feedback_node import feedback_node
 from nodes.plan_executor_node import plan_executor_node
 from nodes.visa_agent_node import visa_agent_node
 from nodes.flight_agent_node import flight_agent_node
@@ -30,7 +31,9 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return route
     
     # Handle string routes
-    if route == "plan_executor":
+    if route == "feedback":
+        return "feedback"
+    elif route == "plan_executor":
         return "plan_executor"
     elif route == "hotel_agent":
         return "hotel_agent"
@@ -63,6 +66,7 @@ def create_graph() -> StateGraph:
     
     # Add nodes
     graph.add_node("main_agent", main_agent_node)
+    graph.add_node("feedback", feedback_node)
     graph.add_node("plan_executor", plan_executor_node)
     graph.add_node("visa_agent", visa_agent_node)
     graph.add_node("flight_agent", flight_agent_node)
@@ -75,13 +79,25 @@ def create_graph() -> StateGraph:
     # Set entry point
     graph.set_entry_point("main_agent")
     
-    # Main agent routes to plan_executor or conversational_agent
+    # Main agent routes to feedback for validation or conversational agent for simple queries
     graph.add_conditional_edges(
         "main_agent",
         route_decision,
         {
-            "plan_executor": "plan_executor",
+            "feedback": "feedback",
+            "plan_executor": "plan_executor",  # Only if no agents needed
             "conversational_agent": "conversational_agent",
+            "end": END
+        }
+    )
+    
+    # Feedback node routes based on validation result
+    graph.add_conditional_edges(
+        "feedback",
+        route_decision,
+        {
+            "plan_executor": "plan_executor",  # validation passed
+            "main_agent": "main_agent",  # plan needs fixing
             "end": END
         }
     )
@@ -165,6 +181,8 @@ async def run(user_message: str, config: dict = None) -> dict:
         "hotel_result": None,
         "visa_result": None,
         "tripadvisor_result": None,
+        "feedback_message": None,
+        "feedback_retry_count": 0,
         "utilities_result": None,
         "join_retry_count": 0,
         "execution_plan": [],

@@ -95,13 +95,24 @@ async def main_agent_node(state: AgentState) -> AgentState:
         Updated agent state with execution plan
     """
     user_message = state.get("user_message", "")
+    feedback_message = state.get("feedback_message")
     
-    # Prepare messages for LLM to create execution plan
-    messages = [
-        {"role": "system", "content": get_main_agent_prompt()},
-        {"role": "user", "content": f"""Analyze the user's request and create a multi-step execution plan.
+    # Build user prompt with optional feedback
+    user_prompt = f"""Analyze the user's request and create a multi-step execution plan.
 
-User's message: {user_message}
+User's message: {user_message}"""
+    
+    # If there's feedback from the feedback node, include it
+    if feedback_message:
+        user_prompt += f"""
+
+FEEDBACK FROM VALIDATOR:
+{feedback_message}
+
+Please revise the execution plan based on this feedback."""
+        print(f"Main Agent: Received feedback - {feedback_message}")
+    
+    user_prompt += """
 
 Create a plan with steps. Each step should contain agents that can run in parallel.
 If agents have dependencies (one needs results from another), place them in separate steps.
@@ -124,12 +135,17 @@ Respond with a JSON object in this format:
 
 Available agent names: flight_agent, hotel_agent, visa_agent, tripadvisor_agent, utilities_agent
 
-If no agents are needed, return an empty execution_plan array."""}
+If no agents are needed, return an empty execution_plan array."""
+    
+    # Prepare messages for LLM to create execution plan
+    messages = [
+        {"role": "system", "content": get_main_agent_prompt()},
+        {"role": "user", "content": user_prompt}
     ]
     
     # Call LLM to create execution plan
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=messages
     )
     
@@ -212,8 +228,8 @@ If no agents are needed, return an empty execution_plan array."""}
         updated_state["route"] = "conversational_agent"
         updated_state["ready_for_response"] = True
     else:
-        # Route to plan executor to start executing the plan
-        updated_state["route"] = "plan_executor"
+        # Route to feedback node for validation before execution
+        updated_state["route"] = "feedback"
     
     return updated_state
 

@@ -76,13 +76,24 @@ def get_tripadvisor_agent_prompt() -> str:
     
     base_prompt = """You are the TripAdvisor Agent, a specialized agent that helps users find attractions, restaurants, and reviews.
 
-CRITICAL: You MUST use the available tools to search for locations/attractions. Do NOT respond without calling a tool.
+CRITICAL: You MUST use the available tools to search for locations/attractions. DO NOT respond without calling a tool.
 
 Your role:
+- Focus EXCLUSIVELY on RESTAURANTS, ATTRACTIONS, and ACTIVITIES - NEVER hotels
+- Hotels are 100% handled by a separate agent - YOU MUST COMPLETELY IGNORE ANY hotel mentions
 - Understand the user's message using your LLM reasoning capabilities
+- Extract ONLY the restaurant/attraction/activity parts of the query
 - Use your understanding to determine what search parameters are needed
 - Use the appropriate TripAdvisor tool with parameters you determine from the user's message
 - The tool schemas will show you exactly what parameters are needed
+
+CRITICAL - STRICT DOMAIN RULES:
+- If query mentions "restaurants" → search ONLY for restaurants (category: "restaurants")
+- If query mentions "attractions" or "things to do" → search for attractions
+- If query mentions "hotels" + "restaurants" → IGNORE hotels completely, search ONLY restaurants
+- NEVER use "hotels" as search_query or category - this is FORBIDDEN
+- Your search_query should be like "restaurants in [city]" NOT "hotels in [city]"
+- Example: User says "hotels and restaurants in Beirut" → You search: "restaurants in Beirut" with category "restaurants"
 
 Available tools (you will see their full schemas with function calling):
 - search_locations: Search for locations/attractions (general search)
@@ -172,14 +183,14 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages
         )
     
@@ -193,6 +204,17 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
         
         import json
         args = json.loads(tool_call.function.arguments)
+        
+        # Debug: Log what the LLM chose
+        print(f"🔍 TRIPADVISOR DEBUG - Tool: {tool_name}, Args: {args}")
+        
+        # Validate that we're not searching for hotels
+        if "search_query" in args and "hotel" in args.get("search_query", "").lower():
+            print(f"⚠️ WARNING: TripAdvisor trying to search for hotels! Overriding to restaurants.")
+            # Override to search for restaurants instead
+            args["search_query"] = args["search_query"].replace("hotels", "restaurants").replace("hotel", "restaurant")
+            args["category"] = "restaurants"
+            print(f"✅ Corrected args: {args}")
         
         # LLM has extracted all parameters from user message - use them directly
         # Call the tripadvisor tool via MCP

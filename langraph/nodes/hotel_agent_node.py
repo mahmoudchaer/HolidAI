@@ -78,39 +78,65 @@ def get_hotel_agent_prompt() -> str:
 
 CRITICAL: You MUST use the available tools to search for hotels. Do NOT respond without calling a tool.
 
-Your role:
-- Understand the user's message using your LLM reasoning capabilities
-- Use your understanding to determine what hotel search parameters are needed
-- Use the appropriate hotel search tool with parameters you determine from the user's message
-- The tool schemas will show you exactly what parameters are needed
+=== TOOL SELECTION DECISION TREE ===
+
+Analyze the user's query and choose the RIGHT tool:
+
+1. **GENERAL BROWSING** (NO specific dates mentioned)
+   Query examples: "Find hotels in Beirut", "Show me hotels in Paris", "Hotels in London"
+   → Use: get_list_of_hotels
+   → Why: User wants to BROWSE hotels, not book. NO dates needed!
+   → Parameters: city_name, country_code (and optionally: min_rating, star_rating, limit)
+   → ⚠️ IMPORTANT: This tool returns NO PRICES - only hotel metadata (name, rating, location, amenities)
+
+2. **BOOKING / CHECKING RATES** (User mentions dates OR wants to book/check availability)
+   Query examples: "Book hotel in Paris for Feb 1-7", "Hotel rates in Rome", "Check availability"
+   → Use: get_hotel_rates or get_hotel_rates_by_price
+   → Why: User wants to book or check availability. Dates REQUIRED!
+   → Parameters: city_name, country_code, checkin, checkout, occupancies
+
+3. **SPECIFIC HOTEL DETAILS** (User has a hotel_id)
+   Query examples: "Tell me about hotel lp42fec", "Get details of this hotel"
+   → Use: get_hotel_details
+   → Why: User wants info about a specific hotel.
+   → Parameters: hotel_id
+
+CRITICAL RULES:
+- If user query is GENERAL browsing (no dates mentioned) → ALWAYS use get_list_of_hotels
+- If user query mentions booking/rates/availability OR has dates → use get_hotel_rates
+- DO NOT assume dates for general browsing queries!
+- DO NOT use get_hotel_rates when user just wants to browse hotels!
 
 Available tools (you will see their full schemas with function calling):
-- get_hotel_rates: Search for hotel rates
-- get_hotel_rates_by_price: Search for hotels by price range
-- get_hotel_details: Get detailed information about specific hotels
+- get_list_of_hotels: Browse/search hotels (NO dates required) - USE THIS FOR GENERAL QUERIES
+- get_hotel_rates: Search for hotel rates (dates required) - USE ONLY when dates needed
+- get_hotel_rates_by_price: Search for hotels by price (dates required)
+- get_hotel_details: Get details of specific hotel (hotel_id required)
 
-IMPORTANT DATE HANDLING:
+LOCATION HANDLING (for all tools):
+- Determine location information:
+  * city_name AND country_code (BOTH required together) - e.g., "Beirut" requires country_code "LB" for Lebanon
+  * When a city name is mentioned, use your knowledge to infer the country code:
+    - Beirut → LB (Lebanon)
+    - Dubai → AE (United Arab Emirates)
+    - Paris → FR (France)
+    - Rome → IT (Italy)
+    - London → GB (United Kingdom)
+    - New York → US (United States)
+
+DATE HANDLING (only for get_hotel_rates tools):
 - If user specifies dates, use them exactly as provided
-- If NO dates are mentioned, use these smart defaults:
+- If NO dates mentioned but user wants to BOOK/check rates, use smart defaults:
   * checkin: 7 days from today (YYYY-MM-DD format)
   * checkout: 3 nights after checkin (typical short stay)
 - Keep stays reasonable: 2-7 nights is typical unless user specifies longer
 - NEVER use date ranges longer than 14 days unless explicitly requested
 - Current date context: November 2024, so near-future dates should be in December 2024 or early 2025
 
-LOCATION HANDLING:
-- Determine location information - you MUST provide one of these combinations:
-  * city_name AND country_code (BOTH required together) - e.g., "Beirut" requires country_code "LB" for Lebanon
-  * OR iata_code (airport code)
-  * OR hotel_ids (array of hotel IDs)
-  * When a city name is mentioned, use your knowledge to infer the country code (e.g., "Beirut" -> "LB", "Dubai" -> "AE", "Paris" -> "FR", "Rome" -> "IT")
-
 OTHER PARAMETERS:
-- Infer occupancies from user message using your understanding (adults, children)
-- Default to 2 adults if not specified
+- Infer parameters from user message using your understanding
 - Use the tool schemas to understand required vs optional parameters
 - ALWAYS call a tool - do not ask for clarification unless absolutely critical information is missing
-- You have access to the full tool documentation through function calling - use it to understand parameter requirements
 
 You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
     
@@ -146,6 +172,7 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     
     # Build function calling schema for hotel tools
     functions = []
+    
     def _sanitize_schema(schema: dict) -> dict:
         """Ensure arrays have 'items' and sanitize nested schemas."""
         if not isinstance(schema, dict):
@@ -166,14 +193,26 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
         return sanitized
 
     for tool in tools:
-        if tool["name"] in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details"]:
+        if tool["name"] in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details", "get_list_of_hotels"]:
             input_schema = tool.get("inputSchema", {})
             input_schema = _sanitize_schema(input_schema)
+            
+            # Override descriptions to make tool selection crystal clear
+            description = tool.get("description", "Search for hotels")
+            if tool["name"] == "get_list_of_hotels":
+                description = "🔍 BROWSE hotels by location (NO dates needed). Use this for general queries like 'find hotels in [city]'. Returns list of hotels with details. This is the PRIMARY tool for browsing."
+            elif tool["name"] == "get_hotel_rates":
+                description = "💰 Get hotel RATES for specific dates (dates REQUIRED). Use ONLY when user mentions dates or wants to book/check availability."
+            elif tool["name"] == "get_hotel_rates_by_price":
+                description = "💰 Get hotel RATES sorted by price for specific dates (dates REQUIRED). Use ONLY when user wants cheapest options with dates."
+            elif tool["name"] == "get_hotel_details":
+                description = "🏨 Get details of a SPECIFIC hotel by ID (hotel_id REQUIRED). Use when you already have a hotel_id."
+            
             functions.append({
                 "type": "function",
                 "function": {
                     "name": tool["name"],
-                    "description": tool.get("description", "Search for hotels"),
+                    "description": description,
                     "parameters": input_schema
                 }
             })
@@ -181,14 +220,14 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages
         )
     
@@ -199,7 +238,7 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
         tool_call = message.tool_calls[0]
         tool_name = tool_call.function.name
         
-        if tool_name in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details"]:
+        if tool_name in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details", "get_list_of_hotels"]:
             import json
             args = json.loads(tool_call.function.arguments)
             
@@ -231,8 +270,9 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                     hotel_result["error"] = False
                 
                 # Fetch hotel details for top hotels and apply filters (same logic as delegated path)
+                # Note: get_list_of_hotels already returns enriched data, so skip enrichment for it
                 hotels = hotel_result.get("hotels", [])
-                if hotels and tool_name != "get_hotel_details":
+                if hotels and tool_name not in ["get_hotel_details", "get_list_of_hotels"]:
                     # Convert max_price to float if it's a string
                     if max_price and isinstance(max_price, str):
                         try:
@@ -337,6 +377,12 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                         print(f"Warning: Hotel enrichment failed: {enrich_error}")
                         # Keep the original hotels result - it's better than nothing
                         hotel_result["hotels"] = hotels
+                
+                elif hotels and tool_name == "get_list_of_hotels":
+                    # get_list_of_hotels already returns complete hotel data, no enrichment needed
+                    # Just store the hotels as-is
+                    hotel_result["hotels"] = hotels
+                    print(f"Hotel agent: get_list_of_hotels returned {len(hotels)} hotel(s) (no enrichment needed)")
                 
                 # Store the result directly in state for parallel execution
                 # Even if enrichment failed or no hotels found, store the result

@@ -56,6 +56,8 @@ class AgentState(TypedDict):
         join_retry_count: Counter for join_node retries to prevent infinite loops
         execution_plan: List of execution steps to run sequentially
         current_step: Current step number being executed (0-indexed into execution_plan)
+        feedback_message: Feedback message from validation nodes (for plan logic issues)
+        feedback_retry_count: Counter for feedback retries to prevent infinite loops
     """
     user_message: Annotated[str, reducer]  # Read-only, but needs reducer for parallel execution
     context: Annotated[Dict[str, Any], reducer]
@@ -77,4 +79,6 @@ class AgentState(TypedDict):
     join_retry_count: Annotated[int, reducer]
     execution_plan: Annotated[List[Dict[str, Any]], reducer]  # List of ExecutionStep dicts
     current_step: Annotated[int, reducer]  # Current step being executed
+    feedback_message: Annotated[Optional[str], reducer]  # Feedback from validation
+    feedback_retry_count: Annotated[int, reducer]  # Counter for feedback retries
 

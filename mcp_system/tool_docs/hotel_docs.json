@@ -183,6 +183,100 @@
         }
       }
     ]
+  },
+
+  "get_list_of_hotels": {
+    "description": "Search and retrieve a list of hotels based on various criteria WITHOUT requiring specific dates. This is the PRIMARY tool for general hotel browsing, finding hotels in a city, or searching by name. Use this when users want to browse hotels or get hotel information without booking specific rooms. Returns hotel metadata including names, addresses, ratings, amenities, images, and more. NO dates required – perfect for general browsing.",
+    "method": "GET",
+    "url": "https://api.liteapi.travel/v3.0/data/hotels",
+    "use_cases": [
+      "User wants to browse hotels in a city (e.g., 'Find hotels in Beirut', 'Show me hotels in Paris')",
+      "User wants to search hotels by name (e.g., 'Find Hilton hotels in London')",
+      "User wants hotels in a specific area (geo-based search)",
+      "User wants hotels with specific ratings or star ratings",
+      "General hotel exploration WITHOUT specific booking dates"
+    ],
+    "important_notes": [
+      "NO DATES REQUIRED – This tool is for browsing, not booking",
+      "Use get_hotel_rates when user wants to BOOK or check AVAILABILITY (dates required)",
+      "Use get_hotel_details when you have a specific hotel_id and want full details",
+      "This tool returns general hotel information, not room availability or pricing"
+    ],
+    "inputs": {
+      "country_code": "string – optional – Country code in ISO-2 format (e.g., 'LB' for Lebanon, 'FR' for France, 'US' for USA)",
+      "city_name": "string – optional – Name of the city (e.g., 'Beirut', 'Paris', 'New York')",
+      "hotel_name": "string – optional – Name or partial name of hotel for loose matching, case-insensitive (e.g., 'hilton', 'marriott')",
+      "offset": "integer – optional – Number of results to skip for pagination. Default: 0",
+      "limit": "integer – optional – Maximum number of results to return. Default: 100, Maximum: 5000",
+      "longitude": "float – optional – Longitude for geo-based search (must be used with latitude)",
+      "latitude": "float – optional – Latitude for geo-based search (must be used with longitude)",
+      "radius": "integer – optional – Search radius in meters (minimum 1000m). Use with longitude/latitude for geo-based search",
+      "min_rating": "float – optional – Minimum hotel rating (e.g., 8.0, 8.5, 9.0)",
+      "min_reviews_count": "integer – optional – Minimum number of reviews (e.g., 100, 500)",
+      "star_rating": "string – optional – Comma-separated list of star ratings (e.g., '4.0,5.0' for 4 and 5 star hotels)",
+      "hotel_ids": "string – optional – Comma-separated list of specific hotel IDs to fetch (e.g., 'lp1897,lp1343')",
+      "timeout": "float – optional – Request timeout in seconds. Default: 10.0"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "hotels": "array – list of hotel objects with comprehensive metadata (id, name, description, address, rating, stars, amenities, images, etc.)",
+      "hotel_ids": "array – list of hotel IDs returned in this search",
+      "total": "integer – total number of hotels matching the search criteria (may be more than returned due to limit)",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Browse hotels in a city (most common use case)",
+        "body": {
+          "city_name": "Beirut",
+          "country_code": "LB"
+        }
+      },
+      {
+        "title": "Search for hotels by name",
+        "body": {
+          "hotel_name": "hilton",
+          "city_name": "Paris",
+          "country_code": "FR"
+        }
+      },
+      {
+        "title": "Find high-rated hotels in a city",
+        "body": {
+          "city_name": "Paris",
+          "country_code": "FR",
+          "min_rating": 8.5,
+          "star_rating": "4.0,5.0",
+          "limit": 20
+        }
+      },
+      {
+        "title": "Geo-based search (hotels near coordinates)",
+        "body": {
+          "latitude": 33.8938,
+          "longitude": 35.5018,
+          "radius": 5000,
+          "limit": 50
+        }
+      },
+      {
+        "title": "Get specific hotels by IDs",
+        "body": {
+          "hotel_ids": "lp42fec,lp50f7f,lp51261"
+        }
+      },
+      {
+        "title": "Browse with pagination",
+        "body": {
+          "city_name": "London",
+          "country_code": "GB",
+          "offset": 0,
+          "limit": 50
+        }
+      }
+    ]
   }
 }
 

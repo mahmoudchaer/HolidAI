@@ -1,6 +1,7 @@
 """Utilities-related tools for the MCP server (weather, currency, date/time, eSIM)."""
 
 import os
+import re
 import httpx
 import json
 import requests
@@ -623,14 +624,17 @@ def register_utilities_tools(mcp):
     
     @mcp.tool(description=get_doc("get_esim_bundles", "utilities"))
     async def get_esim_bundles(country: str, limit: Optional[int] = 50) -> Dict:
-        """Get available eSIM bundles for a specific country from esimradar.com.
+        """Get available eSIM bundles for a specific country.
+        
+        Searches esimradar.com first, then Nomad (getnomad.app) as fallback for countries like UAE.
         
         Args:
-            country: Country name (e.g., "Qatar", "USA", "UAE", "Lebanon", "Japan")
+            country: Country name (e.g., "Qatar", "USA", "Lebanon", "Japan", "France", "UAE")
             limit: Maximum number of bundles to return (default: 50, max: 200)
             
         Returns:
-            Dictionary with list of eSIM bundles including provider, plan, validity, price, and link
+            Dictionary with list of eSIM bundles including provider, plan, validity, price, and link.
+            If data unavailable from both sources, returns recommended eSIM provider websites.
         """
         # Validate and enforce limit
         if limit is None:
@@ -776,13 +780,64 @@ def register_utilities_tools(mcp):
                         continue
                 
                 if not response or response.status_code != 200:
-                    return {
-                        "error": True,
-                        "error_message": f"Could not fetch eSIM data for '{country}'. Tried multiple URL formats but none worked.",
-                        "error_code": "HTTP_ERROR",
-                        "country": country,
-                        "urls_tried": urls_to_try
+                    # Try Nomad as fallback (simple structure, easy to parse)
+                    print("eSIM Tool: esimradar.com failed, trying Nomad (getnomad.app)...")
+                    nomad_country_slugs = {
+                        "uae": "uae",
+                        "united arab emirates": "uae",
+                        "emirates": "uae",
+                        "dubai": "uae",
+                        "saudi arabia": "saudi-arabia",
+                        "qatar": "qatar",
+                        "kuwait": "kuwait",
+                        "bahrain": "bahrain",
+                        "oman": "oman",
+                        "lebanon": "lebanon",
+                        "jordan": "jordan",
+                        "egypt": "egypt",
+                        "turkey": "turkey",
+                        "usa": "usa",
+                        "united states": "usa",
+                        "france": "france",
+                        "germany": "germany",
+                        "italy": "italy",
+                        "spain": "spain",
+                        "uk": "uk",
+                        "united kingdom": "uk",
+                        "japan": "japan",
+                        "singapore": "singapore",
+                        "thailand": "thailand",
+                        "australia": "australia"
                     }
+                    
+                    nomad_slug = nomad_country_slugs.get(country_lower)
+                    if nomad_slug:
+                        nomad_url = f"https://www.getnomad.app/en/{nomad_slug}"
+                        try:
+                            print(f"eSIM Tool: Trying Nomad URL: {nomad_url}")
+                            nomad_response = await client.get(nomad_url)
+                            if nomad_response.status_code == 200:
+                                response = nomad_response
+                                url = nomad_url
+                                print(f"eSIM Tool: Successfully fetched from Nomad {url}")
+                        except Exception as e:
+                            print(f"eSIM Tool: Nomad fetch failed: {str(e)}")
+                    
+                    # If still no response, provide helpful suggestions
+                    if not response or response.status_code != 200:
+                        return {
+                            "error": True,
+                            "error_message": f"eSIM data not available for '{country}' in our database.",
+                            "error_code": "DATA_UNAVAILABLE",
+                            "country": country,
+                            "suggestion": "Try checking these eSIM providers directly:",
+                            "recommended_providers": [
+                                {"name": "Airalo", "url": "https://www.airalo.com"},
+                                {"name": "Holafly", "url": "https://esim.holafly.com"},
+                                {"name": "Nomad", "url": "https://www.getnomad.app"},
+                                {"name": "Ubigi", "url": "https://www.ubigi.com"}
+                            ]
+                        }
                 
                 # Debug: Check response status and content length
                 print(f"eSIM Tool: Response status: {response.status_code}, Content length: {len(response.text)}")
@@ -820,16 +875,107 @@ def register_utilities_tools(mcp):
                             table = tables[0]  # Use first table found
                 
                 if not table:
-                    # Debug: Check what tables exist
-                    all_tables = soup.find_all("table")
-                    table_info = [{"id": t.get("id", "no-id"), "class": t.get("class", [])} for t in all_tables[:5]]
+                    # No table - check if this is Nomad (different structure)
+                    if "getnomad.app" in url:
+                        print("eSIM Tool: Parsing Nomad page structure...")
+                        bundles = []
+                        
+                        # Nomad structure (based on actual HTML):
+                        # Each plan is in an <li> with class "cursor-pointer border-2"
+                        # - Data: <span class="font-bold">1 GB</span>
+                        # - Validity: <p>For 7 DAYS</p>
+                        # - Price: <div class="text-lg font-extrabold whitespace-nowrap">USD4.50</div>
+                        
+                        # Find all li elements that look like plan cards
+                        plan_lis = soup.find_all("li", class_=lambda x: x and "cursor-pointer" in str(x) and "border-2" in str(x))
+                        print(f"eSIM Tool: Found {len(plan_lis)} plan <li> elements on Nomad")
+                        
+                        # Parse each plan <li>
+                        for idx, plan_li in enumerate(plan_lis[:limit]):
+                            try:
+                                # Extract data amount from <span class="font-bold">
+                                data_elem = plan_li.find("span", class_=lambda x: x and "font-bold" in str(x))
+                                data_match = data_elem.get_text().strip() if data_elem else None
+                                
+                                # Extract validity from text containing "For X DAYS"
+                                validity_match = ""
+                                for p_tag in plan_li.find_all("p"):
+                                    p_text = p_tag.get_text()
+                                    if "For" in p_text and "DAY" in p_text:
+                                        validity_pattern = r'For\s+(\d+)\s+DAYS?'
+                                        match = re.search(validity_pattern, p_text, re.IGNORECASE)
+                                        if match:
+                                            validity_match = f"{match.group(1)} days"
+                                        break
+                                
+                                # Extract price from <div class="text-lg font-extrabold whitespace-nowrap">
+                                price_match = None
+                                price_div = plan_li.find("div", class_=lambda x: x and "text-lg" in str(x) and "font-extrabold" in str(x) and "whitespace-nowrap" in str(x))
+                                if price_div:
+                                    price_text = price_div.get_text().strip()
+                                    # Clean up price (e.g., "USD4.50" or "USD 4.50")
+                                    if "USD" in price_text:
+                                        price_match = "USD " + price_text.replace("USD", "").strip()
+                                
+                                # Get purchase link (use main page URL)
+                                purchase_link = url
+                                
+                                # Debug first 3
+                                if idx < 3:
+                                    print(f"eSIM Tool: Plan {idx}: data={data_match}, validity={validity_match}, price={price_match}")
+                                
+                                # Only add if we have data and price
+                                if data_match and price_match:
+                                    plan_name = f"{data_match}"
+                                    if validity_match:
+                                        plan_name += f" - {validity_match}"
+                                    
+                                    bundle = {
+                                        "provider": "Nomad",
+                                        "plan": plan_name,
+                                        "validity": validity_match or "",
+                                        "price": price_match,
+                                        "link": purchase_link
+                                    }
+                                    bundles.append(bundle)
+                            except Exception as e:
+                                print(f"eSIM Tool: Error parsing plan {idx}: {str(e)}")
+                                continue
+                        
+                        # Remove duplicates based on plan+price
+                        unique_bundles = []
+                        seen = set()
+                        for bundle in bundles:
+                            key = (bundle["plan"], bundle["price"])
+                            if key not in seen:
+                                seen.add(key)
+                                unique_bundles.append(bundle)
+                        
+                        if unique_bundles:
+                            print(f"eSIM Tool: Successfully parsed {len(unique_bundles)} plans from Nomad")
+                            return {
+                                "error": False,
+                                "country": country,
+                                "bundles": unique_bundles[:limit],
+                                "total": len(unique_bundles),
+                                "source": url
+                            }
+                        else:
+                            print("eSIM Tool: Nomad page loaded but couldn't extract plan data")
+                    
+                    # No table and not Nomad, or Nomad parsing failed
                     return {
                         "error": True,
-                        "error_message": f"Could not find eSIM data table for {country}. The website structure may have changed.",
-                        "error_code": "PARSING_ERROR",
+                        "error_message": f"eSIM data not available for '{country}' in our database.",
+                        "error_code": "DATA_UNAVAILABLE",
                         "country": country,
-                        "url": url,
-                        "debug_info": f"Found {len(all_tables)} table(s) on page. First few: {table_info}"
+                        "suggestion": "Try checking these eSIM providers directly:",
+                        "recommended_providers": [
+                            {"name": "Airalo", "url": "https://www.airalo.com"},
+                            {"name": "Holafly", "url": "https://esim.holafly.com"},
+                            {"name": "Nomad", "url": "https://www.getnomad.app"},
+                            {"name": "Ubigi", "url": "https://www.ubigi.com"}
+                        ]
                     }
                 
                 rows = table.find_all("tr")

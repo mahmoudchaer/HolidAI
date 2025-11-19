@@ -100,22 +100,36 @@ IMPORTANT:
 
 - For visa_result: If it has a "result" field with content, that contains the visa requirement information - present it to the user. Preserve any markdown formatting (like **bold** markers) that may be present. Only report an error if the result has "error": true AND no result data.
 
-- For hotel_result: If it has a "hotels" array with items, those are real hotels you found - present them to the user. Only report an error if the result has "error": true AND no hotels data.
+- For hotel_result: If it has a "hotels" array with items, those are real hotels you found - present them to the user. 
+  ⚠️ CRITICAL: Hotels may or may not have price information depending on the search type:
+    * If hotels have "roomTypes" or "rates" fields with prices → show the actual prices
+    * If hotels DON'T have price fields → DO NOT make up prices! Just show hotel information (name, rating, location, amenities)
+    * NEVER hallucinate or invent prices - only show prices if they exist in the data
+  Only report an error if the result has "error": true AND no hotels data.
 
 - For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants you found - present them to the user. Only report an error if the result has "error": true AND no data.
 
 - For utilities_result: This contains utility information (weather, currency conversion, date/time, eSIM bundles, or holidays). Present the information naturally based on what tool was used:
-  * For weather: Show temperature, conditions, etc.
+  * MULTIPLE RESULTS: If utilities_result has "multiple_results": true, it contains a "results" array where each item has "tool", "args", and "result". Process each result and present all information together naturally.
+  * For weather: Show temperature, conditions, etc. If multiple weather results, show each location separately.
   * For currency: Show the conversion result.
   * For date/time: Show the current date and time.
   * For eSIM bundles: If utilities_result has a "bundles" array, present each bundle with provider name, plan details, validity, price, and MOST IMPORTANTLY - include the purchase link as a clickable markdown link. Format like: "[Provider Name - Plan]($link)" or "Provider: [Purchase here]($link)". ALWAYS include the links from the "link" field in each bundle.
-  * For holidays: If utilities_result has a "holidays" array, present each holiday with its name, date, type (e.g., "National holiday", "Observance"), and description. Format dates in a readable way (e.g., "January 1, 2024" instead of "2024-01-01"). Group holidays by month if there are many. Only report an error if the result has "error": true AND no actual data.
+    If eSIM data is unavailable (error with "recommended_providers"), present the recommended provider links as clickable options: "Try these eSIM providers: [Airalo](url), [Holafly](url), etc."
+  * For holidays: If utilities_result has a "holidays" array, present each holiday with its name, date, type (e.g., "National holiday", "Observance"), and description. Format dates in a readable way (e.g., "January 1, 2024" instead of "2024-01-01"). Group holidays by month if there are many.
+    ⚠️ CRITICAL: If the user asked to avoid holidays AND you're showing flights/hotels, you MUST explain which dates were holidays and why the selected dates avoid them. Example: "I found that January 1st is New Year's Day (national holiday) in France, so I selected dates from January 8-14 which avoid all holidays."
+    Only report an error if the result has "error": true AND no actual data.
 
 - Format dates in a natural, readable way (e.g., "December 12, 2025" instead of "2025-12-12")
 - Extract and present flight details (airline, times, prices) from the flight_result data
 - Extract and present visa requirements from the visa_result data
 - Extract and present hotel names, prices, addresses, and other relevant details from the hotel_result data
 - Extract and present restaurant/location names, addresses, and other relevant details from the tripadvisor_result data
+
+TRANSPARENCY IN REASONING:
+- When the user has specific constraints (avoid holidays, specific budget, dates, etc.), ALWAYS explain your thought process
+- Show what you checked, what you found, and WHY you selected the specific options you're recommending
+- Example: "You wanted to avoid holidays, so I checked January 2026 and found that January 1st is New Year's Day. I selected flights and hotels from January 8-14 which avoid all holidays."
 
 Your response should start directly with the information, like:
 "I've found some great options for your trip to Beirut! As a citizen of the United Arab Emirates, you do not require a visa..."
@@ -298,7 +312,7 @@ IMPORTANT INSTRUCTIONS:
     # Call LLM to generate response
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages,
             temperature=0.7
         )
@@ -332,7 +346,7 @@ The system has collected information from specialized agents. Please provide a h
             
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-4o",
                     messages=simplified_messages,
                     temperature=0.7
                 )
