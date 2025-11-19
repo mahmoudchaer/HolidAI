@@ -1,6 +1,6 @@
 {
   "agent_get_flights": {
-    "description": "Search for one-way or round-trip flights using SerpAPI Google Flights. This tool provides comprehensive flight search capabilities with extensive filtering and sorting options. Supports filtering by airline, price, duration, departure/arrival times, direct flights, stopovers, and more. Returns detailed flight information including prices, airlines, flight numbers, departure/arrival times, and booking details.",
+    "description": "Search for one-way or round-trip flights. This tool provides comprehensive flight search capabilities with extensive filtering and sorting options. Supports filtering by airline, price, duration, departure/arrival times, direct flights, stopovers, and more. Returns detailed flight information including prices, airlines, flight numbers, departure/arrival times, and booking details.",
     "inputs": {
       "trip_type": "string – required – Type of trip: 'one-way' or 'round-trip'",
       "departure": "string – required – Departure airport/city code (e.g., 'JFK', 'NYC', 'LAX', 'LHR')",

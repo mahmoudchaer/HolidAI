@@ -135,6 +135,29 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
     """
     user_message = state.get("user_message", "")
     
+    # Get current step context from execution plan
+    execution_plan = state.get("execution_plan", [])
+    current_step_index = state.get("current_step", 1) - 1  # current_step is 1-indexed
+    
+    # If we have an execution plan, use the step description as context
+    step_context = ""
+    if execution_plan and 0 <= current_step_index < len(execution_plan):
+        current_step = execution_plan[current_step_index]
+        step_context = current_step.get("description", "")
+        print(f"🔍 TRIPADVISOR DEBUG - Step context: {step_context}")
+    
+    # Build the message to send to LLM
+    if step_context:
+        # Use step description as primary instruction, with user message as background
+        agent_message = f"""Current task: {step_context}
+
+Background context from user: {user_message}
+
+Focus on the location/attraction/restaurant search described above."""
+    else:
+        # Fallback to user message if no step context
+        agent_message = user_message
+    
     # Always use LLM to extract parameters from user message
     # LLM has access to tool documentation and can intelligently extract parameters
     # Get tools available to tripadvisor agent
@@ -146,7 +169,7 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
     # Prepare messages for LLM
     messages = [
         {"role": "system", "content": prompt},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": agent_message}
     ]
     
     # Build function calling schema for tripadvisor tools
@@ -183,14 +206,14 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages
         )
     
@@ -221,15 +244,28 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
         try:
             tripadvisor_result = await TripAdvisorAgentClient.invoke(tool_name, **args)
             
-            # Format the response
-            if tripadvisor_result.get("error"):
-                response_text = f"I encountered an error while searching TripAdvisor: {tripadvisor_result.get('error_message', 'Unknown error')}"
-                if tripadvisor_result.get("suggestion"):
-                    response_text += f"\n\nSuggestion: {tripadvisor_result.get('suggestion')}"
-            else:
-                # Store the raw result directly in state for parallel execution
-                updated_state["tripadvisor_result"] = tripadvisor_result
-                # No need to set route - using add_edge means we automatically route to join_node
+            # ===== INTELLIGENT SUMMARIZATION =====
+            # Summarize TripAdvisor results before passing to conversational agent
+            if not tripadvisor_result.get("error"):
+                # Check if this is a location search with many results
+                if "data" in tripadvisor_result and isinstance(tripadvisor_result["data"], list):
+                    num_locations = len(tripadvisor_result["data"])
+                    if num_locations > 10:
+                        try:
+                            from utils.result_summarizer import summarize_tripadvisor_results
+                            print(f"🧠 TripAdvisor agent: Summarizing {num_locations} locations for conversational agent...")
+                            tripadvisor_result = await summarize_tripadvisor_results(
+                                tripadvisor_result,
+                                user_message,
+                                step_context
+                            )
+                            print(f"✅ TripAdvisor agent: Summarized from {num_locations} to {tripadvisor_result.get('summarized_count', num_locations)} locations")
+                        except Exception as e:
+                            print(f"⚠️ TripAdvisor summarization failed, using original data: {e}")
+            
+            # Store the result directly in state for parallel execution
+            updated_state["tripadvisor_result"] = tripadvisor_result
+            # No need to set route - using add_edge means we automatically route to join_node
             
         except Exception as e:
             # Store error in result

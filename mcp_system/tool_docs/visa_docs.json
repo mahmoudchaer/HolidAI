@@ -1,6 +1,6 @@
 {
   "get_traveldoc_requirement": {
-    "description": "Get visa requirements for travel between countries using TravelDoc.aero. This tool automates the visa requirement lookup and returns structured information about visa requirements, passport requirements, and other travel conditions. The tool uses browser automation to query the TravelDoc website and extracts comprehensive visa information.",
+    "description": "Get visa requirements for travel between countries. This tool returns structured information about visa requirements, passport requirements, and other travel conditions.",
     "inputs": {
       "nationality": "string – required – The traveler's nationality/passport country (e.g., 'Lebanon', 'United States', 'France')",
       "leaving_from": "string – required – The origin country where the traveler is departing from (e.g., 'Lebanon', 'United States', 'France')",

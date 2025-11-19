@@ -1,6 +1,6 @@
 {
   "search_locations": {
-    "description": "Search for locations on TripAdvisor. Returns up to 10 locations based on a text query. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, address, latitude/longitude, and radius. The function accepts minimal input and auto-fills defaults for language (en).",
+    "description": "Search for locations on TripAdvisor. Returns up to 10 locations based on a text query. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, address, latitude/longitude, and radius. The tool accepts minimal input and auto-fills defaults for language (en).",
     "inputs": {
       "search_query": "string – required – text to search for (e.g., 'Eiffel Tower', 'Paris hotels')",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
@@ -47,7 +47,7 @@
     ]
   },
   "get_location_reviews": {
-    "description": "Get reviews for a specific TripAdvisor location. Returns up to 5 recent reviews ordered by recency. Higher limits may be available for beta access. The function accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
+    "description": "Get reviews for a specific TripAdvisor location. Returns up to 5 recent reviews ordered by recency. The tool accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
     "inputs": {
       "location_id": "integer – required – TripAdvisor location ID (positive integer)",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
@@ -87,7 +87,7 @@
     ]
   },
   "get_location_photos": {
-    "description": "Get photos for a specific TripAdvisor location. Returns up to 5 high-quality photos ordered by recency. Photos are available in multiple sizes: Thumbnail (50x50), Small (150x150), Medium (max 250px), Large (max 550px), and Original (full resolution). The function accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
+    "description": "Get photos for a specific TripAdvisor location. Returns up to 5 high-quality photos ordered by recency. Photos are available in multiple sizes. The tool accepts minimal input and auto-fills defaults for language (en), limit (5), and offset (0).",
     "inputs": {
       "location_id": "integer – required – TripAdvisor location ID (positive integer)",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
@@ -128,7 +128,7 @@
     ]
   },
   "get_location_details": {
-    "description": "Get full details about a TripAdvisor location. Returns comprehensive information including name, address, category, rating, ranking, coordinates, contact information, TripAdvisor URLs, amenities (for hotels), cuisine (for restaurants), features (for attractions), and pricing information. The function accepts minimal input and auto-fills defaults for language (en) and currency (USD).",
+    "description": "Get full details about a TripAdvisor location. Returns comprehensive information including name, address, category, rating, ranking, coordinates, contact information, TripAdvisor URLs, amenities (for hotels), cuisine (for restaurants), features (for attractions), and pricing information. The tool accepts minimal input and auto-fills defaults for language (en) and currency (USD).",
     "inputs": {
       "location_id": "integer – required – TripAdvisor location ID (positive integer)",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
@@ -167,7 +167,7 @@
     ]
   },
   "search_nearby": {
-    "description": "Search for locations near a given latitude/longitude on TripAdvisor. Returns up to 10 locations within a specified radius. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, and address. The function accepts minimal input and auto-fills defaults for language (en).",
+    "description": "Search for locations near a given latitude/longitude on TripAdvisor. Returns up to 10 locations within a specified radius. Supports filtering by category (hotels, attractions, restaurants, geos), phone number, and address. The tool accepts minimal input and auto-fills defaults for language (en).",
     "inputs": {
       "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
@@ -216,7 +216,7 @@
     ]
   },
   "search_locations_by_rating": {
-    "description": "Search for locations on TripAdvisor and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. This is perfect for users who want to find the best-rated places. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
+    "description": "Search for locations on TripAdvisor and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. This is perfect for users who want to find the best-rated places. The tool accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
     "inputs": {
       "search_query": "string – required – text to search for (e.g., 'pizzeria Napoli', 'hotels Paris')",
       "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be returned (e.g., 4.0 for 4+ stars only)",
@@ -263,7 +263,7 @@
     ]
   },
   "search_nearby_by_rating": {
-    "description": "Search for locations near given coordinates and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. Perfect for finding the best-rated places near a specific location. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
+    "description": "Search for locations near given coordinates and return them sorted by rating (highest first). Optionally filter by minimum rating threshold. Perfect for finding the best-rated places near a specific location. The tool accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by rating in descending order.",
     "inputs": {
       "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "min_rating": "number – optional – minimum rating threshold (0-5). Only locations with rating >= min_rating will be returned (e.g., 4.0 for 4+ stars only)",
@@ -307,7 +307,7 @@
     ]
   },
   "get_top_rated_locations": {
-    "description": "Get the top k highest-rated locations matching a search query. This is the easiest way to find the best-rated places - just provide a search query and how many results you want. Perfect for queries like 'show me the top 5 restaurants in Paris' or 'find the 3 best hotels in Rome'. The function automatically sorts by rating (highest first) and optionally filters by minimum rating. The function accepts minimal input and auto-fills defaults for language (en).",
+    "description": "Get the top k highest-rated locations matching a search query. This is the easiest way to find the best-rated places - just provide a search query and how many results you want. Perfect for queries like 'show me the top 5 restaurants in Paris' or 'find the 3 best hotels in Rome'. The tool automatically sorts by rating (highest first) and optionally filters by minimum rating. The tool accepts minimal input and auto-fills defaults for language (en).",
     "inputs": {
       "search_query": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
       "k": "integer – required – number of top-rated locations to return (1-10, e.g., 5 for top 5)",
@@ -352,7 +352,7 @@
     ]
   },
   "search_locations_by_price": {
-    "description": "Search for locations on TripAdvisor and filter by maximum price level. Perfect for budget-conscious users who want to find affordable options. The function accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
+    "description": "Search for locations on TripAdvisor and filter by maximum price level. Perfect for budget-conscious users who want to find affordable options. The tool accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
     "inputs": {
       "search_query": "string – required – text to search for (e.g., 'restaurants Paris', 'hotels Rome')",
       "max_price_level": "integer – required – maximum price level (1-4, where 1=cheapest, 4=most expensive)",
@@ -387,7 +387,7 @@
     ]
   },
   "search_nearby_by_price": {
-    "description": "Search for locations near given coordinates and filter by maximum price level. Perfect for finding budget-friendly places nearby. The function accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
+    "description": "Search for locations near given coordinates and filter by maximum price level. Perfect for finding budget-friendly places nearby. The tool accepts minimal input and auto-fills defaults for language (en). Results are filtered to only include locations at or below the specified price level.",
     "inputs": {
       "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "max_price_level": "integer – required – maximum price level (1-4, where 1=cheapest, 4=most expensive)",
@@ -418,7 +418,7 @@
     ]
   },
   "search_nearby_by_distance": {
-    "description": "Search for locations near given coordinates and return them sorted by distance (closest first). Perfect for finding the nearest places. The function accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by distance in ascending order.",
+    "description": "Search for locations near given coordinates and return them sorted by distance (closest first). Perfect for finding the nearest places. The tool accepts minimal input and auto-fills defaults for language (en). Results are automatically sorted by distance in ascending order.",
     "inputs": {
       "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "sort_by_distance": "boolean – optional – if true, sort by distance ascending (closest first). Default: true",
@@ -448,7 +448,7 @@
     ]
   },
   "find_closest_location": {
-    "description": "Find the single closest location to given coordinates. Perfect for 'find nearest' queries. The function accepts minimal input and auto-fills defaults for language (en). Returns only the closest location.",
+    "description": "Find the single closest location to given coordinates. Perfect for 'find nearest' queries. The tool accepts minimal input and auto-fills defaults for language (en). Returns only the closest location.",
     "inputs": {
       "lat_long": "string – required – latitude and longitude in format 'lat,lon' (e.g., '40.7128,-74.0060')",
       "category": "string – optional – filter by category: hotels | attractions | restaurants | geos",
@@ -475,7 +475,7 @@
     ]
   },
   "search_restaurants_by_cuisine": {
-    "description": "Search for restaurants and filter by cuisine type(s). Perfect for finding specific types of food. The function accepts minimal input and auto-fills defaults for language (en). This function automatically gets location details for restaurants that don't have cuisine information in search results, ensuring accurate filtering. It intelligently limits API calls to maintain performance.",
+    "description": "Search for restaurants and filter by cuisine type(s). Perfect for finding specific types of food. The tool accepts minimal input and auto-fills defaults for language (en). Ensures accurate filtering by retrieving complete information when needed.",
     "inputs": {
       "search_query": "string – required – text to search for (e.g., 'restaurants Paris')",
       "cuisine_types": "array – required – list of cuisine types to filter by (e.g., ['Italian', 'French'])",
@@ -507,7 +507,7 @@
     ]
   },
   "get_multiple_location_details": {
-    "description": "Get details for multiple locations at once. More efficient than calling get_location_details multiple times. The function accepts minimal input and auto-fills defaults for language (en) and currency (USD). Maximum 10 location IDs can be requested at once.",
+    "description": "Get details for multiple locations at once. The tool accepts minimal input and auto-fills defaults for language (en) and currency (USD). Maximum 10 location IDs can be requested at once.",
     "inputs": {
       "location_ids": "array – required – list of TripAdvisor location IDs (max 10, e.g., [60763, 186338])",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",
@@ -532,7 +532,7 @@
     ]
   },
   "compare_locations": {
-    "description": "Compare 2-3 locations side by side. Returns a structured comparison of ratings, prices, distances, and other key attributes. Perfect for helping users make decisions between similar options. The function accepts minimal input and auto-fills defaults for language (en) and currency (USD). Uses robust data extraction to handle various API response formats and provides comprehensive comparison metrics including highest/lowest/average ratings and most expensive/affordable options.",
+    "description": "Compare 2-3 locations side by side. Returns a structured comparison of ratings, prices, distances, and other key attributes. Perfect for helping users make decisions between similar options. The tool accepts minimal input and auto-fills defaults for language (en) and currency (USD). Provides comprehensive comparison metrics including highest/lowest/average ratings and most expensive/affordable options.",
     "inputs": {
       "location_ids": "array – required – list of 2-3 TripAdvisor location IDs to compare (e.g., [60763, 186338])",
       "language": "string – optional – response language code (default: 'en'). Supported languages same as search_locations",

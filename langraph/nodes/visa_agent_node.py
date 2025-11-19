@@ -115,6 +115,30 @@ async def visa_agent_node(state: AgentState) -> AgentState:
         Updated agent state with response
     """
     user_message = state.get("user_message", "")
+    
+    # Get current step context from execution plan
+    execution_plan = state.get("execution_plan", [])
+    current_step_index = state.get("current_step", 1) - 1  # current_step is 1-indexed
+    
+    # If we have an execution plan, use the step description as context
+    step_context = ""
+    if execution_plan and 0 <= current_step_index < len(execution_plan):
+        current_step = execution_plan[current_step_index]
+        step_context = current_step.get("description", "")
+        print(f"🔍 VISA DEBUG - Step context: {step_context}")
+    
+    # Build the message to send to LLM
+    if step_context:
+        # Use step description as primary instruction, with user message as background
+        agent_message = f"""Current task: {step_context}
+
+Background context from user: {user_message}
+
+Focus on the visa requirement check described above."""
+    else:
+        # Fallback to user message if no step context
+        agent_message = user_message
+    
     updated_state = state.copy()
     
     # Always use LLM to extract parameters from user message
@@ -125,7 +149,7 @@ async def visa_agent_node(state: AgentState) -> AgentState:
     # Prepare messages for LLM
     messages = [
         {"role": "system", "content": get_visa_agent_prompt()},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": agent_message}
     ]
     
     # Build function calling schema for visa tool
@@ -163,14 +187,14 @@ async def visa_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages
         )
     

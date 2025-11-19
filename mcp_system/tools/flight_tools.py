@@ -660,6 +660,40 @@ def register_flight_tools(mcp):
                 "suggestion": "Please check your flight search parameters and try again."
             }
         
+        # Convert numeric parameters (might come as strings from JSON)
+        try:
+            adults = int(adults)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid adults value: {adults}. Must be an integer.",
+                "outbound": [],
+                "return": []
+            }
+        
+        try:
+            children = int(children)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid children value: {children}. Must be an integer.",
+                "outbound": [],
+                "return": []
+            }
+        
+        try:
+            infants = int(infants)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid infants value: {infants}. Must be an integer.",
+                "outbound": [],
+                "return": []
+            }
+        
         # Validate numeric inputs
         if adults < 0:
             return {
@@ -892,6 +926,37 @@ def register_flight_tools(mcp):
                 "error_message": f"Invalid days_flex: {days_flex}. Must be between 0 and 7.",
                 "flights": [],
                 "suggestion": "Please provide days_flex between 0 and 7."
+            }
+        
+        # Convert passenger counts (might come as strings from JSON)
+        try:
+            adults = int(adults)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid adults value: {adults}. Must be an integer.",
+                "flights": []
+            }
+        
+        try:
+            children = int(children)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid children value: {children}. Must be an integer.",
+                "flights": []
+            }
+        
+        try:
+            infants = int(infants)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid infants value: {infants}. Must be an integer.",
+                "flights": []
             }
         
         # Validate numeric inputs (same as agent_get_flights_tool)

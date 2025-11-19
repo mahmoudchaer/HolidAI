@@ -157,6 +157,29 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     print(f"[{start_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT STARTED")
     
     user_message = state.get("user_message", "")
+    
+    # Get current step context from execution plan
+    execution_plan = state.get("execution_plan", [])
+    current_step_index = state.get("current_step", 1) - 1  # current_step is 1-indexed
+    
+    # If we have an execution plan, use the step description as context
+    step_context = ""
+    if execution_plan and 0 <= current_step_index < len(execution_plan):
+        current_step = execution_plan[current_step_index]
+        step_context = current_step.get("description", "")
+        print(f"🔍 HOTEL DEBUG - Step context: {step_context}")
+    
+    # Build the message to send to LLM
+    if step_context:
+        # Use step description as primary instruction, with user message as background
+        agent_message = f"""Current task: {step_context}
+
+Background context from user: {user_message}
+
+Focus on the hotel search task described above."""
+    else:
+        # Fallback to user message if no step context
+        agent_message = user_message
     updated_state = state.copy()
     
     # Always use LLM to extract parameters from user message
@@ -167,7 +190,7 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     # Prepare messages for LLM
     messages = [
         {"role": "system", "content": get_hotel_agent_prompt()},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": agent_message}
     ]
     
     # Build function calling schema for hotel tools
@@ -220,14 +243,14 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages
         )
     
@@ -380,9 +403,9 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                 
                 elif hotels and tool_name == "get_list_of_hotels":
                     # get_list_of_hotels already returns complete hotel data, no enrichment needed
-                    # Just store the hotels as-is
                     hotel_result["hotels"] = hotels
                     print(f"Hotel agent: get_list_of_hotels returned {len(hotels)} hotel(s) (no enrichment needed)")
+                    # Note: Summarization will happen below in the common code path
                 
                 # Store the result directly in state for parallel execution
                 # Even if enrichment failed or no hotels found, store the result
@@ -400,6 +423,26 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
                 if hotels_count > 0:
                     hotel_names = [h.get("name", "Unknown") for h in hotel_result.get("hotels", [])[:3]]
                     print(f"Hotel agent: Hotel names: {hotel_names}")
+                
+                # ===== INTELLIGENT SUMMARIZATION =====
+                # Summarize results before passing to conversational agent
+                if hotels_count > 0 and not hotel_result.get("error"):
+                    try:
+                        from utils.result_summarizer import summarize_hotel_results
+                        print(f"🧠 Hotel agent: Summarizing {hotels_count} hotels for conversational agent...")
+                        summarized = await summarize_hotel_results(
+                            hotel_result.get("hotels", []),
+                            user_message,
+                            step_context
+                        )
+                        # Replace hotels with summarized version
+                        hotel_result["hotels"] = summarized.get("hotels", [])
+                        hotel_result["original_count"] = hotels_count
+                        hotel_result["summarized_count"] = len(summarized.get("hotels", []))
+                        hotel_result["summary"] = summarized.get("summary", "")
+                        print(f"✅ Hotel agent: Summarized from {hotels_count} to {hotel_result['summarized_count']} hotels")
+                    except Exception as e:
+                        print(f"⚠️ Hotel summarization failed, using original data: {e}")
                 
                 # Store the result directly in state for parallel execution
                 # Make sure we're storing a proper dict, not None

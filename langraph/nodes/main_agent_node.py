@@ -145,7 +145,7 @@ If no agents are needed, return an empty execution_plan array."""
     
     # Call LLM to create execution plan
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4.1-mini",
         messages=messages
     )
     

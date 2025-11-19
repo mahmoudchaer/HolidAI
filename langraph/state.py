@@ -56,8 +56,22 @@ class AgentState(TypedDict):
         join_retry_count: Counter for join_node retries to prevent infinite loops
         execution_plan: List of execution steps to run sequentially
         current_step: Current step number being executed (0-indexed into execution_plan)
-        feedback_message: Feedback message from validation nodes (for plan logic issues)
-        feedback_retry_count: Counter for feedback retries to prevent infinite loops
+        feedback_message: Feedback message from main agent validation (for plan logic issues)
+        feedback_retry_count: Counter for main agent feedback retries to prevent infinite loops
+        plan_executor_feedback_message: Feedback for plan executor validation
+        plan_executor_retry_count: Counter for plan executor feedback retries
+        flight_feedback_message: Feedback for flight agent validation
+        flight_feedback_retry_count: Counter for flight agent feedback retries
+        hotel_feedback_message: Feedback for hotel agent validation
+        hotel_feedback_retry_count: Counter for hotel agent feedback retries
+        visa_feedback_message: Feedback for visa agent validation
+        visa_feedback_retry_count: Counter for visa agent feedback retries
+        tripadvisor_feedback_message: Feedback for tripadvisor agent validation
+        tripadvisor_feedback_retry_count: Counter for tripadvisor agent feedback retries
+        utilities_feedback_message: Feedback for utilities agent validation
+        utilities_feedback_retry_count: Counter for utilities agent feedback retries
+        conversational_feedback_message: Feedback for conversational agent validation
+        conversational_feedback_retry_count: Counter for conversational agent feedback retries
     """
     user_message: Annotated[str, reducer]  # Read-only, but needs reducer for parallel execution
     context: Annotated[Dict[str, Any], reducer]
@@ -79,6 +93,20 @@ class AgentState(TypedDict):
     join_retry_count: Annotated[int, reducer]
     execution_plan: Annotated[List[Dict[str, Any]], reducer]  # List of ExecutionStep dicts
     current_step: Annotated[int, reducer]  # Current step being executed
-    feedback_message: Annotated[Optional[str], reducer]  # Feedback from validation
-    feedback_retry_count: Annotated[int, reducer]  # Counter for feedback retries
+    feedback_message: Annotated[Optional[str], reducer]  # Feedback from main agent validation
+    feedback_retry_count: Annotated[int, reducer]  # Counter for main agent feedback retries
+    plan_executor_feedback_message: Annotated[Optional[str], reducer]  # Feedback for plan executor
+    plan_executor_retry_count: Annotated[int, reducer]  # Counter for plan executor feedback retries
+    flight_feedback_message: Annotated[Optional[str], reducer]  # Feedback for flight agent
+    flight_feedback_retry_count: Annotated[int, reducer]  # Counter for flight agent feedback retries
+    hotel_feedback_message: Annotated[Optional[str], reducer]  # Feedback for hotel agent
+    hotel_feedback_retry_count: Annotated[int, reducer]  # Counter for hotel agent feedback retries
+    visa_feedback_message: Annotated[Optional[str], reducer]  # Feedback for visa agent
+    visa_feedback_retry_count: Annotated[int, reducer]  # Counter for visa agent feedback retries
+    tripadvisor_feedback_message: Annotated[Optional[str], reducer]  # Feedback for tripadvisor agent
+    tripadvisor_feedback_retry_count: Annotated[int, reducer]  # Counter for tripadvisor agent feedback retries
+    utilities_feedback_message: Annotated[Optional[str], reducer]  # Feedback for utilities agent
+    utilities_feedback_retry_count: Annotated[int, reducer]  # Counter for utilities agent feedback retries
+    conversational_feedback_message: Annotated[Optional[str], reducer]  # Feedback for conversational agent
+    conversational_feedback_retry_count: Annotated[int, reducer]  # Counter for conversational agent feedback retries
 

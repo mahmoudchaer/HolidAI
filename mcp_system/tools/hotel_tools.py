@@ -705,10 +705,30 @@ def register_hotel_tools(mcp):
         # Set defaults
         currency = currency or "USD"
         guest_nationality = guest_nationality or "US"
-        max_rates_per_hotel = max_rates_per_hotel if max_rates_per_hotel is not None else 1
+        
+        # Convert numeric parameters (might come as strings from JSON)
+        try:
+            max_rates_per_hotel = int(max_rates_per_hotel) if max_rates_per_hotel is not None else 1
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid max_rates_per_hotel value: {max_rates_per_hotel}. Must be an integer.",
+                "hotels": []
+            }
+        
+        try:
+            k = int(k) if k is not None else 10  # Default to 10 hotels
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid k value: {k}. Must be an integer.",
+                "hotels": []
+            }
+        
         refundable_rates_only = refundable_rates_only if refundable_rates_only is not None else False
         room_mapping = room_mapping if room_mapping is not None else True
-        k = k if k is not None else 10  # Default to 10 hotels
         
         # Validate k parameter first
         if k <= 0:
@@ -917,9 +937,81 @@ def register_hotel_tools(mcp):
             Dict with 'hotels' list containing hotel information, 'total' count, and error status
         """
         # Set defaults
-        offset = offset if offset is not None else 0
-        limit = limit if limit is not None else 100
-        timeout = timeout if timeout is not None else 10.0
+        # Convert string parameters to integers (JSON might pass them as strings)
+        try:
+            offset = int(offset) if offset is not None else 0
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid offset value: {offset}. Must be an integer.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        try:
+            limit = int(limit) if limit is not None else 100
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid limit value: {limit}. Must be an integer.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        # Convert other numeric parameters
+        try:
+            if radius is not None:
+                radius = int(radius)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid radius value: {radius}. Must be an integer.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        try:
+            if min_rating is not None:
+                min_rating = float(min_rating)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid min_rating value: {min_rating}. Must be a number.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        try:
+            if min_reviews_count is not None:
+                min_reviews_count = int(min_reviews_count)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid min_reviews_count value: {min_reviews_count}. Must be an integer.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        try:
+            if longitude is not None:
+                longitude = float(longitude)
+            if latitude is not None:
+                latitude = float(latitude)
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": "Invalid longitude/latitude values. Must be numbers.",
+                "hotels": [],
+                "total": 0
+            }
+        
+        timeout = float(timeout) if timeout is not None else 10.0
         
         # Validate inputs
         if offset < 0:

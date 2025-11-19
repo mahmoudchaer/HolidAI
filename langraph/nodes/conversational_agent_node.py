@@ -20,7 +20,6 @@ load_dotenv(dotenv_path=env_path)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-
 def truncate_large_results(collected_info: dict, max_items: int = 20) -> dict:
     """Truncate large result arrays to avoid context overflow.
     
@@ -152,6 +151,7 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     user_message = state.get("user_message", "")
     context = state.get("context", {})
     collected_info = state.get("collected_info", {})
+    conversational_feedback_message = state.get("conversational_feedback_message")
     
     # Also check context for results
     if context.get("flight_result"):
@@ -203,11 +203,7 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     # Truncate large results to avoid context overflow
     truncated_info = truncate_large_results(collected_info, max_items=20)
     
-    messages = [
-        {"role": "system", "content": get_conversational_agent_prompt()},
-        {
-            "role": "user", 
-            "content": f"""User's original message: {user_message}
+    user_content = f"""User's original message: {user_message}
 
 Below is the data collected from specialized agents (THIS IS FOR YOUR REFERENCE ONLY - DO NOT INCLUDE IT IN YOUR RESPONSE):
 {json.dumps(truncated_info, indent=2, ensure_ascii=False) if truncated_info else "No information was collected from specialized agents."}
@@ -221,7 +217,20 @@ IMPORTANT INSTRUCTIONS:
 - For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
 - If data was truncated (indicated by "truncated": true or "limited": true), mention that more options are available
 - Make sure all links are properly formatted as markdown links so they appear as clickable in the UI"""
-        }
+    
+    # If there's feedback from the feedback node, include it
+    if conversational_feedback_message:
+        user_content += f"""
+
+FEEDBACK FROM VALIDATOR:
+{conversational_feedback_message}
+
+Please revise your response based on this feedback to fix the issues mentioned."""
+        print(f"Conversational Agent: Received feedback - {conversational_feedback_message}")
+    
+    messages = [
+        {"role": "system", "content": get_conversational_agent_prompt()},
+        {"role": "user", "content": user_content}
     ]
     
     # Helper function to clean response and remove any JSON/Collected_info references
@@ -312,7 +321,7 @@ IMPORTANT INSTRUCTIONS:
     # Call LLM to generate response
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages,
             temperature=0.7
         )
@@ -346,7 +355,7 @@ The system has collected information from specialized agents. Please provide a h
             
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-4.1-mini",
                     messages=simplified_messages,
                     temperature=0.7
                 )

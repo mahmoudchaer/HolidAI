@@ -143,6 +143,30 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
     print(f"[{start_time.strftime('%H:%M:%S.%f')[:-3]}] 🛠️ UTILITIES AGENT STARTED")
     
     user_message = state.get("user_message", "")
+    
+    # Get current step context from execution plan
+    execution_plan = state.get("execution_plan", [])
+    current_step_index = state.get("current_step", 1) - 1  # current_step is 1-indexed
+    
+    # If we have an execution plan, use the step description as context
+    step_context = ""
+    if execution_plan and 0 <= current_step_index < len(execution_plan):
+        current_step = execution_plan[current_step_index]
+        step_context = current_step.get("description", "")
+        print(f"🔍 UTILITIES DEBUG - Step context: {step_context}")
+    
+    # Build the message to send to LLM
+    if step_context:
+        # Use step description as primary instruction, with user message as background
+        agent_message = f"""Current task: {step_context}
+
+Background context from user: {user_message}
+
+Focus ONLY on the current task described above. Do NOT add extra operations not mentioned in the current task."""
+    else:
+        # Fallback to user message if no step context
+        agent_message = user_message
+    
     updated_state = state.copy()
     
     # Always use LLM to extract parameters from user message
@@ -153,7 +177,7 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
     # Prepare messages for LLM
     messages = [
         {"role": "system", "content": get_utilities_agent_prompt()},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": agent_message}
     ]
     
     # Build function calling schema for utilities tools
@@ -191,7 +215,7 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages,
             tools=functions,
             tool_choice="required",  # Force tool call when tools are available
@@ -199,7 +223,7 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages
         )
     
@@ -254,9 +278,52 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
             # No valid tool calls
             updated_state["utilities_result"] = {"error": True, "error_message": "No valid utility operations performed"}
         elif len(all_results) == 1:
-            # Single tool call - return result directly (backward compatible)
-            updated_state["utilities_result"] = all_results[0]["result"]
+            # Single tool call - check if it's eSIM and summarize
+            single_result = all_results[0]["result"]
+            
+            # ===== INTELLIGENT SUMMARIZATION FOR ESIM =====
+            if all_results[0]["tool"] == "get_esim_bundles" and not single_result.get("error"):
+                bundles = single_result.get("bundles", [])
+                if bundles and len(bundles) > 15:
+                    try:
+                        from utils.result_summarizer import summarize_esim_results
+                        print(f"🧠 Utilities agent: Summarizing {len(bundles)} eSIM bundles for conversational agent...")
+                        summarized = await summarize_esim_results(
+                            bundles,
+                            user_message,
+                            step_context
+                        )
+                        single_result["bundles"] = summarized.get("bundles", [])
+                        single_result["original_count"] = len(bundles)
+                        single_result["summarized_count"] = len(summarized.get("bundles", []))
+                        single_result["summary"] = summarized.get("summary", "")
+                        print(f"✅ Utilities agent: Summarized from {len(bundles)} to {single_result['summarized_count']} bundles")
+                    except Exception as e:
+                        print(f"⚠️ eSIM summarization failed, using original data: {e}")
+            
+            updated_state["utilities_result"] = single_result
         else:
+            # Multiple tool calls - summarize eSIM if present
+            for result_obj in all_results:
+                if result_obj["tool"] == "get_esim_bundles" and not result_obj["result"].get("error"):
+                    bundles = result_obj["result"].get("bundles", [])
+                    if bundles and len(bundles) > 15:
+                        try:
+                            from utils.result_summarizer import summarize_esim_results
+                            print(f"🧠 Utilities agent: Summarizing {len(bundles)} eSIM bundles (multi-result)...")
+                            summarized = await summarize_esim_results(
+                                bundles,
+                                user_message,
+                                step_context
+                            )
+                            result_obj["result"]["bundles"] = summarized.get("bundles", [])
+                            result_obj["result"]["original_count"] = len(bundles)
+                            result_obj["result"]["summarized_count"] = len(summarized.get("bundles", []))
+                            result_obj["result"]["summary"] = summarized.get("summary", "")
+                            print(f"✅ Utilities agent: Summarized from {len(bundles)} to {result_obj['result']['summarized_count']} bundles")
+                        except Exception as e:
+                            print(f"⚠️ eSIM summarization failed, using original data: {e}")
+            
             # Multiple tool calls - return combined results
             updated_state["utilities_result"] = {
                 "error": False,

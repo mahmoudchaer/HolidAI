@@ -122,7 +122,7 @@ async def feedback_node(state: AgentState) -> AgentState:
     if feedback_retry_count >= MAX_FEEDBACK_RETRIES:
         print(f"Feedback: Max retries ({MAX_FEEDBACK_RETRIES}) reached, proceeding anyway")
         return {
-            "route": "plan_executor",
+            "route": "plan_executor_feedback",
             "validation_passed": True,
             "feedback_retry_count": feedback_retry_count + 1
         }
@@ -148,7 +148,7 @@ async def feedback_node(state: AgentState) -> AgentState:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages,
             temperature=0.3,
             response_format={"type": "json_object"}
@@ -163,9 +163,9 @@ async def feedback_node(state: AgentState) -> AgentState:
         
         # Route based on validation status
         if status == "pass":
-            # Plan logic is valid, proceed to plan executor
+            # Plan logic is valid, proceed to plan executor feedback for structure validation
             return {
-                "route": "plan_executor",
+                "route": "plan_executor_feedback",
                 "feedback_message": None,
                 "feedback_retry_count": 0
             }
@@ -182,18 +182,18 @@ async def feedback_node(state: AgentState) -> AgentState:
         
         else:
             # Unknown status, proceed with caution
-            print(f"Feedback: Unknown status '{status}', proceeding to plan executor")
+            print(f"Feedback: Unknown status '{status}', proceeding to plan executor feedback")
             return {
-                "route": "plan_executor",
+                "route": "plan_executor_feedback",
                 "feedback_message": None,
                 "feedback_retry_count": feedback_retry_count + 1
             }
             
     except Exception as e:
-        print(f"Feedback: Validation error - {e}, proceeding to plan executor")
+        print(f"Feedback: Validation error - {e}, proceeding to plan executor feedback")
         # On error, proceed to avoid blocking
         return {
-            "route": "plan_executor",
+            "route": "plan_executor_feedback",
             "validation_passed": True,
             "feedback_message": None,
             "feedback_retry_count": feedback_retry_count + 1

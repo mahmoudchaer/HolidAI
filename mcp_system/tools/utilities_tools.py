@@ -1340,12 +1340,24 @@ def register_utilities_tools(mcp):
             # Determine year (default to current year)
             if year is None:
                 year = datetime.now().year
-            elif year < 2000 or year > 2100:
-                return {
-                    "error": True,
-                    "error_message": f"Year must be between 2000 and 2100. Provided: {year}",
-                    "error_code": "INVALID_YEAR"
-                }
+            else:
+                # Convert year to integer if it's a string
+                try:
+                    year = int(year)
+                except (ValueError, TypeError):
+                    return {
+                        "error": True,
+                        "error_message": f"Year must be a valid integer. Provided: {year}",
+                        "error_code": "INVALID_YEAR"
+                    }
+                
+                # Validate year range
+                if year < 2000 or year > 2100:
+                    return {
+                        "error": True,
+                        "error_message": f"Year must be between 2000 and 2100. Provided: {year}",
+                        "error_code": "INVALID_YEAR"
+                    }
             
             # Build API request
             params = {

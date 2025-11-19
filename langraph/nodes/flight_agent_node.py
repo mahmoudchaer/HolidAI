@@ -121,6 +121,29 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     
     user_message = state.get("user_message", "")
     
+    # Get current step context from execution plan
+    execution_plan = state.get("execution_plan", [])
+    current_step_index = state.get("current_step", 1) - 1  # current_step is 1-indexed
+    
+    # If we have an execution plan, use the step description as context
+    step_context = ""
+    if execution_plan and 0 <= current_step_index < len(execution_plan):
+        current_step = execution_plan[current_step_index]
+        step_context = current_step.get("description", "")
+        print(f"🔍 FLIGHT DEBUG - Step context: {step_context}")
+    
+    # Build the message to send to LLM
+    if step_context:
+        # Use step description as primary instruction, with user message as background
+        agent_message = f"""Current task: {step_context}
+
+Background context from user: {user_message}
+
+Focus on the flight search task described above."""
+    else:
+        # Fallback to user message if no step context
+        agent_message = user_message
+    
     # Always use LLM to extract parameters from user message
     # LLM has access to tool documentation and can intelligently extract parameters
     # Get tools available to flight agent
@@ -129,7 +152,7 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     # Prepare messages for LLM
     messages = [
         {"role": "system", "content": get_flight_agent_prompt()},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": agent_message}
     ]
     
     # Build function calling schema for flight tools
@@ -167,14 +190,14 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages
         )
     
@@ -195,48 +218,26 @@ async def flight_agent_node(state: AgentState) -> AgentState:
                 # Convert args to keyword arguments
                 flight_result = await FlightAgentClient.invoke(tool_name, **args)
                 
-                # Format the response
-                if flight_result.get("error"):
-                    response_text = f"I encountered an error while searching for flights: {flight_result.get('error_message', 'Unknown error')}"
-                    if flight_result.get("suggestion"):
-                        response_text += f"\n\nSuggestion: {flight_result.get('suggestion')}"
-                else:
-                    # Format flight results nicely
-                    if tool_name == "agent_get_flights_flexible_tool":
-                        flights = flight_result.get("flights", [])
-                        if flights:
-                            response_text = f"Found {len(flights)} flight options across multiple dates:\n\n"
-                            # Show top 5 flights
-                            for i, flight in enumerate(flights[:5], 1):
-                                price = flight.get("price", "N/A")
-                                search_date = flight.get("search_date", "N/A")
-                                route = f"{flight_result.get('departure', '?')} → {flight_result.get('arrival', '?')}"
-                                response_text += f"{i}. {route} on {search_date}: {price} {flight_result.get('currency', 'USD')}\n"
-                            if len(flights) > 5:
-                                response_text += f"\n... and {len(flights) - 5} more options."
-                        else:
-                            response_text = "No flights found for the specified criteria. Try adjusting your search parameters or dates."
-                    else:
-                        # Regular flight search
-                        outbound = flight_result.get("outbound", [])
-                        return_flights = flight_result.get("return", [])
-                        
-                        if outbound:
-                            response_text = f"Found {len(outbound)} outbound flight option(s):\n\n"
-                            # Show top 3 outbound flights
-                            for i, flight in enumerate(outbound[:3], 1):
-                                price = flight.get("price", "N/A")
-                                route = f"{flight_result.get('departure', '?')} → {flight_result.get('arrival', '?')}"
-                                response_text += f"{i}. {route}: {price} {flight_result.get('currency', 'USD')}\n"
-                            
-                            if return_flights:
-                                response_text += f"\nFound {len(return_flights)} return flight option(s):\n\n"
-                                for i, flight in enumerate(return_flights[:3], 1):
-                                    price = flight.get("price", "N/A")
-                                    route = f"{flight_result.get('arrival', '?')} → {flight_result.get('departure', '?')}"
-                                    response_text += f"{i}. {route}: {price} {flight_result.get('currency', 'USD')}\n"
-                        else:
-                            response_text = "No flights found for the specified criteria. Try adjusting your search parameters or dates."
+                # ===== INTELLIGENT SUMMARIZATION =====
+                # Summarize flight results before passing to conversational agent
+                if not flight_result.get("error"):
+                    flights = flight_result.get("flights", [])
+                    if flights and len(flights) > 0:
+                        try:
+                            from utils.result_summarizer import summarize_flight_results
+                            print(f"🧠 Flight agent: Summarizing {len(flights)} flights for conversational agent...")
+                            summarized = await summarize_flight_results(
+                                flights,
+                                user_message,
+                                step_context
+                            )
+                            flight_result["flights"] = summarized.get("flights", [])
+                            flight_result["original_count"] = len(flights)
+                            flight_result["summarized_count"] = len(summarized.get("flights", []))
+                            flight_result["summary"] = summarized.get("summary", "")
+                            print(f"✅ Flight agent: Summarized from {len(flights)} to {flight_result['summarized_count']} flights")
+                        except Exception as e:
+                            print(f"⚠️ Flight summarization failed, using original data: {e}")
                 
                 # Store result directly in state for parallel execution
                 updated_state["flight_result"] = flight_result

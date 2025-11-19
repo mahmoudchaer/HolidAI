@@ -6,12 +6,19 @@ from state import AgentState
 from nodes.main_agent_node import main_agent_node
 from nodes.feedback_node import feedback_node
 from nodes.plan_executor_node import plan_executor_node
+from nodes.plan_executor_feedback_node import plan_executor_feedback_node
 from nodes.visa_agent_node import visa_agent_node
+from nodes.visa_agent_feedback_node import visa_agent_feedback_node
 from nodes.flight_agent_node import flight_agent_node
+from nodes.flight_agent_feedback_node import flight_agent_feedback_node
 from nodes.hotel_agent_node import hotel_agent_node
+from nodes.hotel_agent_feedback_node import hotel_agent_feedback_node
 from nodes.tripadvisor_agent_node import tripadvisor_agent_node
+from nodes.tripadvisor_agent_feedback_node import tripadvisor_agent_feedback_node
 from nodes.utilities_agent_node import utilities_agent_node
+from nodes.utilities_agent_feedback_node import utilities_agent_feedback_node
 from nodes.conversational_agent_node import conversational_agent_node
+from nodes.conversational_agent_feedback_node import conversational_agent_feedback_node
 from nodes.join_node import join_node
 
 
@@ -33,6 +40,8 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
     # Handle string routes
     if route == "feedback":
         return "feedback"
+    elif route == "plan_executor_feedback":
+        return "plan_executor_feedback"
     elif route == "plan_executor":
         return "plan_executor"
     elif route == "hotel_agent":
@@ -64,17 +73,24 @@ def create_graph() -> StateGraph:
     # Create the graph
     graph = StateGraph(AgentState)
     
-    # Add nodes
+    # Add nodes - main workflow nodes
     graph.add_node("main_agent", main_agent_node)
     graph.add_node("feedback", feedback_node)
     graph.add_node("plan_executor", plan_executor_node)
+    graph.add_node("plan_executor_feedback", plan_executor_feedback_node)
     graph.add_node("visa_agent", visa_agent_node)
+    graph.add_node("visa_agent_feedback", visa_agent_feedback_node)
     graph.add_node("flight_agent", flight_agent_node)
+    graph.add_node("flight_agent_feedback", flight_agent_feedback_node)
     graph.add_node("hotel_agent", hotel_agent_node)
+    graph.add_node("hotel_agent_feedback", hotel_agent_feedback_node)
     graph.add_node("tripadvisor_agent", tripadvisor_agent_node)
+    graph.add_node("tripadvisor_agent_feedback", tripadvisor_agent_feedback_node)
     graph.add_node("utilities_agent", utilities_agent_node)
+    graph.add_node("utilities_agent_feedback", utilities_agent_feedback_node)
     graph.add_node("join_node", join_node)
     graph.add_node("conversational_agent", conversational_agent_node)
+    graph.add_node("conversational_agent_feedback", conversational_agent_feedback_node)
     
     # Set entry point
     graph.set_entry_point("main_agent")
@@ -91,13 +107,24 @@ def create_graph() -> StateGraph:
         }
     )
     
-    # Feedback node routes based on validation result
+    # Main agent feedback node routes based on validation result
     graph.add_conditional_edges(
         "feedback",
         route_decision,
         {
-            "plan_executor": "plan_executor",  # validation passed
+            "plan_executor_feedback": "plan_executor_feedback",  # validation passed, check plan executor next
             "main_agent": "main_agent",  # plan needs fixing
+            "end": END
+        }
+    )
+    
+    # Plan executor feedback validates the execution plan structure before execution
+    graph.add_conditional_edges(
+        "plan_executor_feedback",
+        route_decision,
+        {
+            "plan_executor": "plan_executor",  # structure valid, execute
+            "main_agent": "main_agent",  # structure invalid, regenerate plan
             "end": END
         }
     )
@@ -118,14 +145,61 @@ def create_graph() -> StateGraph:
         }
     )
     
-    # All specialized agents return to plan_executor to continue to next step
-    # When multiple nodes use add_edge to route to the same target,
-    # LangGraph automatically waits for all of them to complete and merges their state
-    graph.add_edge("visa_agent", "plan_executor")
-    graph.add_edge("flight_agent", "plan_executor")
-    graph.add_edge("hotel_agent", "plan_executor")
-    graph.add_edge("tripadvisor_agent", "plan_executor")
-    graph.add_edge("utilities_agent", "plan_executor")
+    # Each specialized agent routes to its feedback node for validation
+    # Flight agent → flight feedback
+    graph.add_edge("flight_agent", "flight_agent_feedback")
+    graph.add_conditional_edges(
+        "flight_agent_feedback",
+        lambda state: "flight_agent" if state.get("flight_feedback_message") and state.get("flight_feedback_retry_count", 0) < 2 else "plan_executor",
+        {
+            "flight_agent": "flight_agent",  # retry if feedback says so
+            "plan_executor": "plan_executor"  # continue if passed
+        }
+    )
+    
+    # Hotel agent → hotel feedback
+    graph.add_edge("hotel_agent", "hotel_agent_feedback")
+    graph.add_conditional_edges(
+        "hotel_agent_feedback",
+        lambda state: "hotel_agent" if state.get("hotel_feedback_message") and state.get("hotel_feedback_retry_count", 0) < 2 else "plan_executor",
+        {
+            "hotel_agent": "hotel_agent",  # retry if feedback says so
+            "plan_executor": "plan_executor"  # continue if passed
+        }
+    )
+    
+    # Visa agent → visa feedback
+    graph.add_edge("visa_agent", "visa_agent_feedback")
+    graph.add_conditional_edges(
+        "visa_agent_feedback",
+        lambda state: "visa_agent" if state.get("visa_feedback_message") and state.get("visa_feedback_retry_count", 0) < 2 else "plan_executor",
+        {
+            "visa_agent": "visa_agent",  # retry if feedback says so
+            "plan_executor": "plan_executor"  # continue if passed
+        }
+    )
+    
+    # TripAdvisor agent → tripadvisor feedback
+    graph.add_edge("tripadvisor_agent", "tripadvisor_agent_feedback")
+    graph.add_conditional_edges(
+        "tripadvisor_agent_feedback",
+        lambda state: "tripadvisor_agent" if state.get("tripadvisor_feedback_message") and state.get("tripadvisor_feedback_retry_count", 0) < 2 else "plan_executor",
+        {
+            "tripadvisor_agent": "tripadvisor_agent",  # retry if feedback says so
+            "plan_executor": "plan_executor"  # continue if passed
+        }
+    )
+    
+    # Utilities agent → utilities feedback
+    graph.add_edge("utilities_agent", "utilities_agent_feedback")
+    graph.add_conditional_edges(
+        "utilities_agent_feedback",
+        lambda state: "utilities_agent" if state.get("utilities_feedback_message") and state.get("utilities_feedback_retry_count", 0) < 2 else "plan_executor",
+        {
+            "utilities_agent": "utilities_agent",  # retry if feedback says so
+            "plan_executor": "plan_executor"  # continue if passed
+        }
+    )
     
     # Join node routes to conversational agent when ready, or back to itself if waiting
     graph.add_conditional_edges(
@@ -138,12 +212,16 @@ def create_graph() -> StateGraph:
         }
     )
     
-    # Conversational agent ends the workflow
+    # Conversational agent routes to its feedback for validation
+    graph.add_edge("conversational_agent", "conversational_agent_feedback")
+    
+    # Conversational feedback validates the final response
     graph.add_conditional_edges(
-        "conversational_agent",
+        "conversational_agent_feedback",
         route_decision,
         {
-            "end": END
+            "conversational_agent": "conversational_agent",  # regenerate if needed
+            "end": END  # end if passed
         }
     )
     
@@ -181,9 +259,23 @@ async def run(user_message: str, config: dict = None) -> dict:
         "hotel_result": None,
         "visa_result": None,
         "tripadvisor_result": None,
+        "utilities_result": None,
         "feedback_message": None,
         "feedback_retry_count": 0,
-        "utilities_result": None,
+        "plan_executor_feedback_message": None,
+        "plan_executor_retry_count": 0,
+        "flight_feedback_message": None,
+        "flight_feedback_retry_count": 0,
+        "hotel_feedback_message": None,
+        "hotel_feedback_retry_count": 0,
+        "visa_feedback_message": None,
+        "visa_feedback_retry_count": 0,
+        "tripadvisor_feedback_message": None,
+        "tripadvisor_feedback_retry_count": 0,
+        "utilities_feedback_message": None,
+        "utilities_feedback_retry_count": 0,
+        "conversational_feedback_message": None,
+        "conversational_feedback_retry_count": 0,
         "join_retry_count": 0,
         "execution_plan": [],
         "current_step": 0

@@ -1,6 +1,6 @@
 {
   "delegate": {
-    "description": "Delegate a task to a specialized agent. This tool routes control to the specified agent node in the LangGraph workflow. The orchestrator uses this tool to coordinate between specialized agents (flight_agent, hotel_agent, visa_agent, tripadvisor_agent) based on the user's query. After delegation, the specified agent will execute the task and return results to the orchestrator.",
+    "description": "Delegate a task to a specialized agent. Routes the task to the appropriate specialized agent (flight_agent, hotel_agent, visa_agent, tripadvisor_agent) based on the user's query. The specified agent will execute the task and return results.",
     "inputs": {
       "agent": "string – required – The target agent name. Must be one of: 'flight_agent', 'hotel_agent', 'visa_agent', 'tripadvisor_agent'",
       "task": "string – required – The task to perform. Examples: 'agent_get_flights', 'agent_get_flights_flexible' (for flight_agent), 'get_hotel_rates', 'get_hotel_rates_by_price', 'get_hotel_details' (for hotel_agent), 'get_traveldoc_requirement' (for visa_agent), or any TripAdvisor tool name (for tripadvisor_agent)",

@@ -1,6 +1,6 @@
 {
   "get_hotel_rates": {
-    "description": "Retrieve detailed rate information for hotels. Supports multi-room bookings and flexible location search (by hotel IDs, city/country, or IATA code). The function accepts minimal input and auto-fills defaults for currency (USD), guest nationality (US), max rates per hotel (1), refundable rates only (false), and room mapping (true). Returns an array of hotel offers with comprehensive rate details including pricing and room specifications.",
+    "description": "Retrieve detailed rate information for hotels. Supports multi-room bookings and flexible location search (by hotel IDs, city/country, or IATA code). The tool accepts minimal input and auto-fills defaults for currency (USD), guest nationality (US), max rates per hotel (1), refundable rates only (false), and room mapping (true). Returns an array of hotel offers with comprehensive rate details including pricing and room specifications.",
     "inputs": {
       "checkin": "string – required – check-in date in YYYY-MM-DD format (ISO 8601)",
       "checkout": "string – required – check-out date in YYYY-MM-DD format (ISO 8601)",
@@ -85,7 +85,7 @@
   },
 
   "get_hotel_rates_by_price": {
-    "description": "Retrieve detailed rate information for hotels sorted by price (lowest first) and return the top k cheapest hotels. Supports multi-room bookings and flexible location search (by hotel IDs, city/country, or IATA code). The function accepts minimal input and auto-fills defaults for currency (USD), guest nationality (US), max rates per hotel (1), refundable rates only (false), and room mapping (true). Returns an array of hotel offers sorted by price in ascending order with comprehensive rate details including pricing and room specifications.",
+    "description": "Retrieve detailed rate information for hotels sorted by price (lowest first) and return the top k cheapest hotels. Supports multi-room bookings and flexible location search (by hotel IDs, city/country, or IATA code). The tool accepts minimal input and auto-fills defaults for currency (USD), guest nationality (US), max rates per hotel (1), refundable rates only (false), and room mapping (true). Returns an array of hotel offers sorted by price in ascending order with comprehensive rate details including pricing and room specifications.",
     "inputs": {
       "checkin": "string – required – check-in date in YYYY-MM-DD format (ISO 8601)",
       "checkout": "string – required – check-out date in YYYY-MM-DD format (ISO 8601)",
@@ -146,13 +146,10 @@
   },
 
   "get_hotel_details": {
-    "description": "Retrieve detailed information about a specific hotel using its unique identifier. Returns comprehensive hotel data including name, address, rating, amenities, images, description, room types, facilities, policies, and sentiment analysis. The function accepts minimal input and auto-fills defaults for language (API default) and timeout (4.0 seconds).",
-    "method": "GET",
-    "url": "https://api.liteapi.travel/v3.0/data/hotel",
+    "description": "Retrieve detailed information about a specific hotel using its unique identifier. Returns comprehensive hotel data including name, address, rating, amenities, images, description, room types, facilities, policies, and sentiment analysis. The tool accepts minimal input and auto-fills defaults for language.",
     "inputs": {
       "hotel_id": "string – required – unique ID of the hotel",
-      "language": "string – optional – language code for results (e.g., 'en', 'fr'). Default: None (uses API default)",
-      "timeout": "float – optional – request timeout in seconds. Default: 4.0"
+      "language": "string – optional – language code for results (e.g., 'en', 'fr'). Default: system default"
     },
     "outputs": {
       "error": "boolean – indicates if an error occurred",
@@ -176,10 +173,10 @@
         }
       },
       {
-        "title": "Get hotel details with custom timeout",
+        "title": "Get hotel details with language preference",
         "body": {
           "hotel_id": "lp1897",
-          "timeout": 6.0
+          "language": "es"
         }
       }
     ]
@@ -187,8 +184,6 @@
 
   "get_list_of_hotels": {
     "description": "Search and retrieve a list of hotels based on various criteria WITHOUT requiring specific dates. This is the PRIMARY tool for general hotel browsing, finding hotels in a city, or searching by name. Use this when users want to browse hotels or get hotel information without booking specific rooms. Returns hotel metadata including names, addresses, ratings, amenities, images, and more. NO dates required – perfect for general browsing.",
-    "method": "GET",
-    "url": "https://api.liteapi.travel/v3.0/data/hotels",
     "use_cases": [
       "User wants to browse hotels in a city (e.g., 'Find hotels in Beirut', 'Show me hotels in Paris')",
       "User wants to search hotels by name (e.g., 'Find Hilton hotels in London')",
@@ -214,8 +209,7 @@
       "min_rating": "float – optional – Minimum hotel rating (e.g., 8.0, 8.5, 9.0)",
       "min_reviews_count": "integer – optional – Minimum number of reviews (e.g., 100, 500)",
       "star_rating": "string – optional – Comma-separated list of star ratings (e.g., '4.0,5.0' for 4 and 5 star hotels)",
-      "hotel_ids": "string – optional – Comma-separated list of specific hotel IDs to fetch (e.g., 'lp1897,lp1343')",
-      "timeout": "float – optional – Request timeout in seconds. Default: 10.0"
+      "hotel_ids": "string – optional – Comma-separated list of specific hotel IDs to fetch (e.g., 'lp1897,lp1343')"
     },
     "outputs": {
       "error": "boolean – indicates if an error occurred",
