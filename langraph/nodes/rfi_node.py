@@ -370,7 +370,8 @@ async def rfi_node(state: AgentState) -> AgentState:
             if not is_safe:
                 print("RFI: Query is UNSAFE - rejecting")
                 return {
-                    "route": "conversational_agent",
+                    "route": "memory_node",
+                    "rfi_next_route": "conversational_agent",  # Store where to go after memory
                     "rfi_status": "unsafe",
                     "last_response": message_to_user or "I cannot help with that request. I'm a travel assistant and can only help with travel-related queries.",
                     "needs_user_input": True
@@ -380,7 +381,8 @@ async def rfi_node(state: AgentState) -> AgentState:
             if not is_in_scope or not should_proceed:
                 print("RFI: Query is OUT OF SCOPE - redirecting")
                 return {
-                    "route": "conversational_agent",
+                    "route": "memory_node",
+                    "rfi_next_route": "conversational_agent",  # Store where to go after memory
                     "rfi_status": "out_of_scope",
                     "last_response": message_to_user or "I'm a travel assistant and can only help with travel-related queries like flights, hotels, visas, restaurants, weather, currency, and eSIM bundles. What would you like help with?",
                     "needs_user_input": True
@@ -400,7 +402,8 @@ async def rfi_node(state: AgentState) -> AgentState:
             if not filtered_query and ignored_parts:
                 print("RFI: Query filtered but no travel-related content remains")
                 return {
-                    "route": "conversational_agent",
+                    "route": "memory_node",
+                    "rfi_next_route": "conversational_agent",  # Store where to go after memory
                     "rfi_status": "out_of_scope",
                     "last_response": message_to_user or "I'm a travel assistant and can only help with travel-related queries. Could you please ask me something related to travel?",
                     "needs_user_input": True
@@ -463,10 +466,11 @@ Check if this message contains enough logical information to understand the trav
         
         # Route based on validation status
         if status == "complete":
-            # User provided enough info, proceed to main agent
-            print("RFI: Information complete, routing to Main Agent")
+            # User provided enough info, proceed to memory node (which will route to main agent)
+            print("RFI: Information complete, routing to Memory Node")
             result = {
-                "route": "main_agent",
+                "route": "memory_node",
+                "rfi_next_route": "main_agent",  # Store where to go after memory
                 "rfi_status": "complete",
                 "rfi_context": ""
             }
@@ -483,11 +487,12 @@ Check if this message contains enough logical information to understand the trav
             return result
             
         elif status == "missing_info":
-            # Critical info missing, ask user through conversational agent
+            # Critical info missing, ask user through conversational agent (via memory node)
             print(f"RFI: Missing info - {missing_fields}")
             print(f"RFI: Asking user: {question}")
             result = {
-                "route": "conversational_agent",
+                "route": "memory_node",
+                "rfi_next_route": "conversational_agent",  # Store where to go after memory
                 "rfi_status": "missing_info",
                 "rfi_missing_fields": missing_fields,
                 "rfi_question": question,
@@ -501,9 +506,10 @@ Check if this message contains enough logical information to understand the trav
         
         else:
             # Unknown status, proceed with caution
-            print(f"RFI: Unknown status '{status}', proceeding to Main Agent")
+            print(f"RFI: Unknown status '{status}', proceeding to Memory Node")
             result = {
-                "route": "main_agent",
+                "route": "memory_node",
+                "rfi_next_route": "main_agent",  # Store where to go after memory
                 "rfi_status": "complete"
             }
             if final_filtered_message:
@@ -511,10 +517,11 @@ Check if this message contains enough logical information to understand the trav
             return result
             
     except Exception as e:
-        print(f"RFI: Validation error - {e}, proceeding to Main Agent")
+        print(f"RFI: Validation error - {e}, proceeding to Memory Node")
         # On error, proceed to avoid blocking
         result = {
-            "route": "main_agent",
+            "route": "memory_node",
+            "rfi_next_route": "main_agent",  # Store where to go after memory
             "rfi_status": "error"
         }
         error_filtered_message = filtered_message_to_store or state.get("rfi_filtered_message", "")

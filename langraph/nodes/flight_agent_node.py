@@ -13,6 +13,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
 from clients.flight_agent_client import FlightAgentClient
+# Import memory_filter from the same directory
+import sys
+import os
+_nodes_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _nodes_dir)
+from memory_filter import filter_memories_for_agent
 
 # Load environment variables from .env file in main directory
 # Get the project root directory (2 levels up from langraph/nodes/)
@@ -73,10 +79,14 @@ def _format_tool_docs(docs: dict) -> str:
     return formatted
 
 
-def get_flight_agent_prompt() -> str:
+def get_flight_agent_prompt(memories: list = None) -> str:
     """Get the system prompt for the Flight Agent."""
     docs = _load_tool_docs()
     docs_text = _format_tool_docs(docs)
+    
+    memory_section = ""
+    if memories and len(memories) > 0:
+        memory_section = "\n\n⚠️ CRITICAL - USER PREFERENCES (MUST USE WHEN CALLING TOOLS):\n" + "\n".join([f"- {mem}" for mem in memories]) + "\n\nWhen calling flight search tools, you MUST:\n- If user prefers morning flights: Filter or prioritize flights with departure times in the morning (before 12:00 PM)\n- If user prefers specific airlines: Include airline preferences in search parameters\n- If user has budget constraints: Apply price filters in tool calls\n- If user prefers direct flights: Filter out flights with layovers/stopovers\n- ALWAYS apply these preferences to your tool call parameters - do NOT just mention them in the response\n- These preferences are about THIS USER - they override generic defaults\n- Example: If memory says 'User prefers morning flights', your tool call should prioritize/filter for morning departure times\n"
     
     base_prompt = """You are the Flight Agent, a specialized agent that helps users search for flights.
 
@@ -103,7 +113,7 @@ IMPORTANT:
 
 You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
     
-    return base_prompt + docs_text
+    return base_prompt + memory_section + docs_text
 
 
 async def flight_agent_node(state: AgentState) -> AgentState:
@@ -120,6 +130,14 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     print(f"[{start_time.strftime('%H:%M:%S.%f')[:-3]}] 🛫 FLIGHT AGENT STARTED")
     
     user_message = state.get("user_message", "")
+    all_memories = state.get("relevant_memories", [])
+    
+    # Filter memories to only include flight-related ones
+    relevant_memories = filter_memories_for_agent(all_memories, "flight")
+    if all_memories and not relevant_memories:
+        print(f"[MEMORY] Flight agent: {len(all_memories)} total memories, 0 flight-related (filtered out non-flight memories)")
+    elif relevant_memories:
+        print(f"[MEMORY] Flight agent: {len(all_memories)} total memories, {len(relevant_memories)} flight-related")
     
     # Get current step context from execution plan
     execution_plan = state.get("execution_plan", [])
@@ -150,8 +168,17 @@ Focus on the flight search task described above."""
     tools = await FlightAgentClient.list_tools()
     
     # Prepare messages for LLM
+    prompt = get_flight_agent_prompt(memories=relevant_memories)
+    
+    # Enhance user message with flight-related memories if available
+    if relevant_memories:
+        print(f"[MEMORY] Flight agent using {len(relevant_memories)} flight-related memories: {relevant_memories}")
+        # Add memories to user message to ensure they're considered in tool calls
+        memory_context = "\n\nIMPORTANT USER PREFERENCES (MUST APPLY TO TOOL CALLS):\n" + "\n".join([f"- {mem}" for mem in relevant_memories])
+        agent_message = agent_message + memory_context
+    
     messages = [
-        {"role": "system", "content": get_flight_agent_prompt()},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": agent_message}
     ]
     

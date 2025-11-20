@@ -13,6 +13,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
 from clients.tripadvisor_agent_client import TripAdvisorAgentClient
+# Import memory_filter from the same directory
+import sys
+import os
+_nodes_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _nodes_dir)
+from memory_filter import filter_memories_for_agent
 
 # Load environment variables from .env file in main directory
 project_root = Path(__file__).parent.parent.parent
@@ -69,10 +75,14 @@ def _format_tool_docs(docs: dict) -> str:
     return formatted
 
 
-def get_tripadvisor_agent_prompt() -> str:
+def get_tripadvisor_agent_prompt(memories: list = None) -> str:
     """Get the system prompt for the TripAdvisor Agent."""
     docs = _load_tool_docs()
     docs_text = _format_tool_docs(docs)
+    
+    memory_section = ""
+    if memories and len(memories) > 0:
+        memory_section = "\n\n⚠️ CRITICAL - USER PREFERENCES (MUST USE WHEN CALLING TOOLS):\n" + "\n".join([f"- {mem}" for mem in memories]) + "\n\nWhen calling tools, you MUST:\n- Filter search results based on these preferences (e.g., if user prefers vegetarian restaurants, use search_restaurants_by_cuisine with cuisine='vegetarian' or filter results)\n- Include preference-related parameters in your tool calls (e.g., price_level, cuisine type, dietary restrictions)\n- These preferences are about THIS USER - always apply them to tool parameters\n"
     
     base_prompt = """You are the TripAdvisor Agent, a specialized agent that helps users find attractions, restaurants, and reviews.
 
@@ -121,7 +131,7 @@ IMPORTANT:
 
 You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
     
-    return base_prompt + docs_text
+    return base_prompt + memory_section + docs_text
 
 
 async def tripadvisor_agent_node(state: AgentState) -> AgentState:
@@ -134,6 +144,14 @@ async def tripadvisor_agent_node(state: AgentState) -> AgentState:
         Updated agent state with response
     """
     user_message = state.get("user_message", "")
+    all_memories = state.get("relevant_memories", [])
+    
+    # Filter memories to only include restaurant/attraction-related ones
+    relevant_memories = filter_memories_for_agent(all_memories, "tripadvisor")
+    if all_memories and not relevant_memories:
+        print(f"[MEMORY] TripAdvisor agent: {len(all_memories)} total memories, 0 restaurant/attraction-related (filtered out non-relevant memories)")
+    elif relevant_memories:
+        print(f"[MEMORY] TripAdvisor agent: {len(all_memories)} total memories, {len(relevant_memories)} restaurant/attraction-related")
     
     # Get current step context from execution plan
     execution_plan = state.get("execution_plan", [])
@@ -164,7 +182,14 @@ Focus on the location/attraction/restaurant search described above."""
     tools = await TripAdvisorAgentClient.list_tools()
     
     # Use the standard prompt - LLM will extract parameters from user message
-    prompt = get_tripadvisor_agent_prompt()
+    prompt = get_tripadvisor_agent_prompt(memories=relevant_memories)
+    
+    # Enhance user message with restaurant/attraction-related memories if available
+    if relevant_memories:
+        print(f"[MEMORY] TripAdvisor agent using {len(relevant_memories)} restaurant/attraction-related memories: {relevant_memories}")
+        # Add memories to user message to ensure they're considered in tool calls
+        memory_context = "\n\nIMPORTANT USER PREFERENCES (MUST APPLY TO TOOL CALLS):\n" + "\n".join([f"- {mem}" for mem in relevant_memories])
+        agent_message = agent_message + memory_context
     
     # Prepare messages for LLM
     messages = [

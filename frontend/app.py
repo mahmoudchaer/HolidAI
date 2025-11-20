@@ -66,6 +66,23 @@ def init_database():
 # Try to initialize database on startup (non-blocking)
 init_database()
 
+# Pre-load embedding model to avoid Flask reloader issues
+def preload_embedding_model():
+    """Pre-load the sentence-transformers model at startup to avoid reloader issues."""
+    try:
+        print("[STARTUP] Pre-loading embedding model...")
+        from memory.embeddings import get_model
+        model = get_model()
+        # Test encode to ensure model is fully loaded
+        _ = model.encode("test", convert_to_numpy=True)
+        print("[STARTUP] ✓ Embedding model loaded successfully")
+    except Exception as e:
+        print(f"[STARTUP] ⚠ Warning: Could not pre-load embedding model: {e}")
+        print("  Memory features may be slower on first use")
+
+# Pre-load model at startup
+preload_embedding_model()
+
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)  # Generate a secret key for sessions
 CORS(app)
@@ -312,16 +329,25 @@ def login():
 @app.route("/api/chat", methods=["POST"])
 @require_login
 def chat():
-    """Handle chat requests."""
+    """Handle chat requests - memory is now handled by the memory node in LangGraph."""
     try:
         data = request.json
         user_message = data.get("message", "")
+        user_email = session.get("user_email")
         
         if not user_message:
             return jsonify({"error": "Message is required"}), 400
         
-        # Run the LangGraph in a properly managed event loop
-        result = run_async(run(user_message))
+        if not user_email:
+            return jsonify({"error": "User not authenticated"}), 401
+        
+        # Memory operations are now handled by the memory_node in LangGraph
+        # Just pass user_email - the memory node will handle retrieval and storage
+        print(f"[FLASK] Running LangGraph with user_email: {user_email}")
+        result = run_async(run(
+            user_message=user_message,
+            user_email=user_email
+        ))
         
         response = result.get("last_response", "No response generated")
         agents_called = result.get("agents_called", [])
@@ -335,9 +361,12 @@ def chat():
         import traceback
         error_msg = str(e)
         traceback.print_exc()
-        return jsonify({"error": error_msg}), 500
+        # Make sure we always return JSON, not HTML
+        return jsonify({"error": error_msg, "details": "An error occurred processing your request"}), 500
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # Disable reloader to prevent issues with ML model loading
+    # The model is pre-loaded at startup, so reloader isn't needed
+    app.run(debug=True, port=5000, use_reloader=False)
 

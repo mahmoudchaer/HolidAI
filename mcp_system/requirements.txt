@@ -13,9 +13,8 @@ lxml>=4.9.0  # Parser for BeautifulSoup (faster)
 # Dependencies for visa tools
 playwright>=1.48.0
 
-# Dependencies for flight tools
-google-search-results>=2.4.0
-
 # Dependencies for utilities tools
 pytz>=2023.3  # Timezone support for date/time tool
+
+# Note: Flight tools use SerpAPI via direct HTTP requests (requests library), no separate package needed
 

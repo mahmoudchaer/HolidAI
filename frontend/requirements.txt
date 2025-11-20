@@ -12,3 +12,20 @@ bcrypt>=4.1.0
 # Environment variables
 python-dotenv>=1.0.0
 
+# Qdrant vector database for long-term memory
+qdrant-client>=1.9.0
+
+# Sentence transformers for embeddings (384-dim vectors)
+sentence-transformers>=2.7.0
+
+# NumPy for vector operations
+numpy>=1.26.0
+
+# OpenAI for memory extraction and LLM calls
+openai>=1.0.0
+
+# LangGraph dependencies (for running the agent)
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-openai>=0.2.0
+

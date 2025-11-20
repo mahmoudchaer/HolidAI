@@ -438,6 +438,14 @@
                     body: JSON.stringify({ message }),
                 });
 
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text.substring(0, 200));
+                    throw new Error('Server returned an invalid response. Please check the server logs.');
+                }
+
                 const data = await response.json();
                 removeLoadingMessage();
 
@@ -448,7 +456,11 @@
                 }
             } catch (error) {
                 removeLoadingMessage();
-                addMessage(`Error: ${error.message}`, false);
+                if (error.message.includes('JSON')) {
+                    addMessage(`Error: Server error. Please check the terminal for details.`, false);
+                } else {
+                    addMessage(`Error: ${error.message}`, false);
+                }
             } finally {
                 // Re-enable input
                 messageInput.disabled = false;

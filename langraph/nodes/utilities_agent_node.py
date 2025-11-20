@@ -13,6 +13,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from state import AgentState
 from clients.utilities_agent_client import UtilitiesAgentClient
+# Import memory_filter from the same directory
+import sys
+import os
+_nodes_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _nodes_dir)
+from memory_filter import filter_memories_for_agent
 
 # Load environment variables from .env file in main directory
 project_root = Path(__file__).parent.parent.parent
@@ -69,10 +75,14 @@ def _format_tool_docs(docs: dict) -> str:
     return formatted
 
 
-def get_utilities_agent_prompt() -> str:
+def get_utilities_agent_prompt(memories: list = None) -> str:
     """Get the system prompt for the Utilities Agent."""
     docs = _load_tool_docs()
     docs_text = _format_tool_docs(docs)
+    
+    memory_section = ""
+    if memories and len(memories) > 0:
+        memory_section = "\n\n⚠️ CRITICAL - USER PREFERENCES (MUST USE WHEN CALLING TOOLS):\n" + "\n".join([f"- {mem}" for mem in memories]) + "\n\nWhen calling tools, you MUST:\n- Use these preferences to inform your tool calls (e.g., preferred currency, location preferences)\n- These preferences are about THIS USER - always apply them to tool parameters\n"
     
     base_prompt = """You are the Utilities Agent, a specialized agent that helps users with utility functions like weather, currency conversion, and date/time information.
 
@@ -126,7 +136,7 @@ IMPORTANT:
 
 You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
     
-    return base_prompt + docs_text
+    return base_prompt + memory_section + docs_text
 
 
 async def utilities_agent_node(state: AgentState) -> AgentState:
@@ -143,6 +153,14 @@ async def utilities_agent_node(state: AgentState) -> AgentState:
     print(f"[{start_time.strftime('%H:%M:%S.%f')[:-3]}] 🛠️ UTILITIES AGENT STARTED")
     
     user_message = state.get("user_message", "")
+    all_memories = state.get("relevant_memories", [])
+    
+    # Filter memories to only include utilities-related ones
+    relevant_memories = filter_memories_for_agent(all_memories, "utilities")
+    if all_memories and not relevant_memories:
+        print(f"[MEMORY] Utilities agent: {len(all_memories)} total memories, 0 utilities-related (filtered out non-utilities memories)")
+    elif relevant_memories:
+        print(f"[MEMORY] Utilities agent: {len(all_memories)} total memories, {len(relevant_memories)} utilities-related")
     
     # Get current step context from execution plan
     execution_plan = state.get("execution_plan", [])
@@ -175,8 +193,17 @@ Focus ONLY on the current task described above. Do NOT add extra operations not 
     tools = await UtilitiesAgentClient.list_tools()
     
     # Prepare messages for LLM
+    prompt = get_utilities_agent_prompt(memories=relevant_memories)
+    
+    # Enhance user message with utilities-related memories if available
+    if relevant_memories:
+        print(f"[MEMORY] Utilities agent using {len(relevant_memories)} utilities-related memories: {relevant_memories}")
+        # Add memories to user message to ensure they're considered in tool calls
+        memory_context = "\n\nIMPORTANT USER PREFERENCES (MUST APPLY TO TOOL CALLS):\n" + "\n".join([f"- {mem}" for mem in relevant_memories])
+        agent_message = agent_message + memory_context
+    
     messages = [
-        {"role": "system", "content": get_utilities_agent_prompt()},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": agent_message}
     ]
     

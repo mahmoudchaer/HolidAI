@@ -1513,6 +1513,64 @@ def register_utilities_tools(mcp):
                         "error_code": "INVALID_YEAR"
                     }
             
+            # Convert month to integer if provided (handle string month names)
+            if month is not None:
+                try:
+                    # If month is a string like "December", "Dec", "12", convert it
+                    if isinstance(month, str):
+                        month_lower = month.lower().strip()
+                        month_map = {
+                            "january": 1, "jan": 1,
+                            "february": 2, "feb": 2,
+                            "march": 3, "mar": 3,
+                            "april": 4, "apr": 4,
+                            "may": 5,
+                            "june": 6, "jun": 6,
+                            "july": 7, "jul": 7,
+                            "august": 8, "aug": 8,
+                            "september": 9, "sep": 9, "sept": 9,
+                            "october": 10, "oct": 10,
+                            "november": 11, "nov": 11,
+                            "december": 12, "dec": 12
+                        }
+                        if month_lower in month_map:
+                            month = month_map[month_lower]
+                        else:
+                            month = int(month)
+                    else:
+                        month = int(month)
+                    
+                    # Validate month range
+                    if month < 1 or month > 12:
+                        return {
+                            "error": True,
+                            "error_message": f"Month must be between 1 and 12. Provided: {month}",
+                            "error_code": "INVALID_MONTH"
+                        }
+                except (ValueError, TypeError):
+                    return {
+                        "error": True,
+                        "error_message": f"Month must be a valid integer (1-12) or month name. Provided: {month}",
+                        "error_code": "INVALID_MONTH"
+                    }
+            
+            # Convert day to integer if provided
+            if day is not None:
+                try:
+                    day = int(day)
+                    if day < 1 or day > 31:
+                        return {
+                            "error": True,
+                            "error_message": f"Day must be between 1 and 31. Provided: {day}",
+                            "error_code": "INVALID_DAY"
+                        }
+                except (ValueError, TypeError):
+                    return {
+                        "error": True,
+                        "error_message": f"Day must be a valid integer (1-31). Provided: {day}",
+                        "error_code": "INVALID_DAY"
+                    }
+            
             # Build API request
             params = {
                 "api_key": CALENDARIFIC_API_KEY,
@@ -1565,6 +1623,15 @@ def register_utilities_tools(mcp):
             # Extract holidays
             holidays = data.get("response", {}).get("holidays", [])
             
+            # Debug logging
+            print(f"[HOLIDAYS] API returned {len(holidays)} holidays for {country_code} in {year}")
+            if month is not None:
+                print(f"[HOLIDAYS] Filtering for month: {month} (type: {type(month)})")
+            if len(holidays) > 0:
+                # Show first holiday structure for debugging
+                first_holiday = holidays[0]
+                print(f"[HOLIDAYS] Sample holiday structure: date={first_holiday.get('date', {})}, name={first_holiday.get('name', 'N/A')[:50]}")
+            
             if not holidays:
                 return {
                     "error": False,
@@ -1578,45 +1645,96 @@ def register_utilities_tools(mcp):
             
             # Filter by month and/or day if provided
             filtered_holidays = []
+            skipped_count = 0
+            parse_errors = []
+            
             for holiday in holidays:
-                holiday_date = holiday.get("date", {}).get("iso", "")
-                if not holiday_date:
+                # Try multiple date field formats
+                holiday_date = holiday.get("date", {})
+                if isinstance(holiday_date, dict):
+                    # Try "iso" field first
+                    date_str = holiday_date.get("iso", "")
+                    if not date_str:
+                        # Try "datetime" field
+                        date_str = holiday_date.get("datetime", {}).get("iso", "")
+                    if not date_str:
+                        # Try direct date fields
+                        date_str = holiday_date.get("date", "")
+                elif isinstance(holiday_date, str):
+                    date_str = holiday_date
+                else:
+                    skipped_count += 1
                     continue
                 
-                # Parse date
+                if not date_str:
+                    skipped_count += 1
+                    continue
+                
+                # Parse date - handle multiple formats
                 try:
-                    holiday_datetime = datetime.fromisoformat(holiday_date.replace("Z", "+00:00"))
+                    # Remove timezone info for parsing if present
+                    date_str_clean = date_str.replace("Z", "").split("+")[0].split("-")[0] if "+" in date_str or "Z" in date_str else date_str
+                    
+                    # Try parsing with different formats
+                    try:
+                        holiday_datetime = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    except ValueError:
+                        # Try parsing just the date part (YYYY-MM-DD)
+                        date_part = date_str.split("T")[0] if "T" in date_str else date_str.split(" ")[0]
+                        holiday_datetime = datetime.strptime(date_part, "%Y-%m-%d")
+                    
                     holiday_year = holiday_datetime.year
                     holiday_month = holiday_datetime.month
                     holiday_day = holiday_datetime.day
                     
-                    # Apply filters
+                    # Apply filters (ensure month and day are integers)
                     if month is not None:
-                        if holiday_month != month:
+                        month_int = int(month)
+                        if holiday_month != month_int:
+                            if len(filtered_holidays) == 0 and skipped_count == 0:  # First holiday being checked
+                                print(f"[HOLIDAYS DEBUG] Holiday '{holiday.get('name', 'Unknown')}' has month {holiday_month}, filtering for month {month_int} - SKIPPING")
                             continue
                         if day is not None:
-                            if holiday_day != day:
+                            day_int = int(day)
+                            if holiday_day != day_int:
                                 continue
+                    
+                    # Log first successful match
+                    if len(filtered_holidays) == 0:
+                        print(f"[HOLIDAYS DEBUG] First matching holiday: '{holiday.get('name', 'Unknown')}' on {holiday_datetime.strftime('%Y-%m-%d')} (month: {holiday_month})")
                     
                     # Format holiday data
                     holiday_info = {
                         "name": holiday.get("name", "Unknown Holiday"),
-                        "date": holiday_date.split("T")[0],  # Just the date part
-                        "datetime": holiday_date,
+                        "date": date_str.split("T")[0] if "T" in date_str else date_str.split(" ")[0],  # Just the date part
+                        "datetime": date_str,
                         "type": holiday.get("type", []),  # Array of types like ["National holiday", "Observance"]
                         "description": holiday.get("description", ""),
-                        "country": holiday.get("country", {}).get("name", country),
+                        "country": holiday.get("country", {}).get("name", country) if isinstance(holiday.get("country"), dict) else holiday.get("country", country),
                         "locations": holiday.get("locations", ""),  # Where it's observed
                     }
                     
                     filtered_holidays.append(holiday_info)
                     
-                except (ValueError, AttributeError) as e:
-                    # Skip holidays with invalid date format
+                except (ValueError, AttributeError, TypeError) as e:
+                    # Skip holidays with invalid date format, but log for debugging
+                    skipped_count += 1
+                    parse_errors.append(f"Holiday '{holiday.get('name', 'Unknown')}': {str(e)[:50]}")
                     continue
+            
+            # Log if we skipped holidays
+            if skipped_count > 0:
+                print(f"[WARNING] Skipped {skipped_count} holidays due to date parsing issues")
+                if parse_errors:
+                    print(f"[DEBUG] Parse errors: {parse_errors[:3]}")  # Show first 3 errors
             
             # Sort by date
             filtered_holidays.sort(key=lambda x: x["date"])
+            
+            # Debug logging
+            print(f"[HOLIDAYS] After filtering: {len(filtered_holidays)} holidays found")
+            if skipped_count > 0:
+                print(f"[HOLIDAYS] Skipped {skipped_count} holidays due to parsing issues")
             
             return {
                 "error": False,
@@ -1627,7 +1745,9 @@ def register_utilities_tools(mcp):
                 "day": day,
                 "holidays": filtered_holidays,
                 "count": len(filtered_holidays),
-                "source": "calendarific.com"
+                "source": "calendarific.com",
+                "total_holidays_in_year": len(holidays),  # Include total for debugging
+                "skipped_count": skipped_count  # Include skipped count for debugging
             }
             
         except Exception as e:

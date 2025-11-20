@@ -6,7 +6,12 @@ langchain-openai>=0.2.0
 # OpenAI API
 openai>=1.0.0
 
-# Environment and HTTP
+# Environment variables
 python-dotenv>=1.0.0
+
+# HTTP client for MCP communication
 httpx>=0.25.0
+
+# NumPy for vector operations (used in memory filtering)
+numpy>=1.26.0
 

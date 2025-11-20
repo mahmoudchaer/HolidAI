@@ -72,8 +72,19 @@ def truncate_large_results(collected_info: dict, max_items: int = 20) -> dict:
     return truncated
 
 
-def get_conversational_agent_prompt() -> str:
-    """Get the system prompt for the Conversational Agent."""
+def get_conversational_agent_prompt(memories: list = None) -> str:
+    """Get the system prompt for the Conversational Agent.
+    
+    Args:
+        memories: List of relevant memories about the user
+    """
+    memory_section = ""
+    if memories and len(memories) > 0:
+        memory_section = "\n\nIMPORTANT - Relevant memories about this user (USE THESE IN YOUR RESPONSE):\n" + "\n".join([f"- {mem}" for mem in memories]) + "\n\nWhen providing recommendations:\n- ALWAYS consider and apply these user preferences/constraints\n- NATURALLY mention in your response that the results are based on their preferences\n- For example: 'Based on your preference for morning flights, here are some great options...' or 'I've filtered these restaurants based on your vegetarian preference...'\n- Make it clear that you're using their stored preferences to personalize the results\n- Be natural and conversational - don't make it sound robotic"
+        print(f"[MEMORY] Including {len(memories)} memories in conversational agent prompt")
+    else:
+        print(f"[MEMORY] No memories to include in conversational agent prompt")
+    
     return """You are a helpful travel assistant that provides friendly, natural, and conversational responses to users about their travel queries.
 
 Your role:
@@ -136,7 +147,7 @@ Your response should start directly with the information, like:
 NOT like:
 "Collected_info: { ... } Based on the information gathered..."
 
-Remember: The JSON is invisible to the user - only show the extracted information in a natural, conversational format."""
+Remember: The JSON is invisible to the user - only show the extracted information in a natural, conversational format.""" + memory_section
 
 
 async def conversational_agent_node(state: AgentState) -> AgentState:
@@ -155,6 +166,7 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     rfi_filtered_message = state.get("rfi_filtered_message")  # Message about filtered non-travel parts
     rfi_status = state.get("rfi_status")  # Check if query was rejected (unsafe/out_of_scope)
     last_response = state.get("last_response", "")  # May contain rejection message from RFI
+    relevant_memories = state.get("relevant_memories") or []  # Relevant memories for this user
     
     # Also check context for results
     if context.get("flight_result"):
@@ -249,7 +261,7 @@ Please revise your response based on this feedback to fix the issues mentioned."
         print(f"Conversational Agent: Received feedback - {conversational_feedback_message}")
     
     messages = [
-        {"role": "system", "content": get_conversational_agent_prompt()},
+        {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories)},
         {"role": "user", "content": user_content}
     ]
     
@@ -364,7 +376,7 @@ Please revise your response based on this feedback to fix the issues mentioned."
         if "context_length" in error_msg.lower() or "maximum context length" in error_msg.lower():
             # Try with simplified messages - just pass a summary
             simplified_messages = [
-                {"role": "system", "content": get_conversational_agent_prompt()},
+                {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories)},
                 {
                     "role": "user",
                     "content": f"""User's original message: {user_message}

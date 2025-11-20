@@ -123,4 +123,6 @@ class AgentState(TypedDict):
     rfi_filtered_message: Annotated[Optional[str], reducer]  # Message about filtered non-travel parts
     rfi_ignored_parts: Annotated[Optional[List[str]], reducer]  # Non-travel parts that were filtered out
     needs_user_input: Annotated[bool, reducer]  # Flag indicating we're waiting for user input
+    user_email: Annotated[Optional[str], reducer]  # User's email for memory storage
+    relevant_memories: Annotated[Optional[List[str]], reducer]  # Relevant memories retrieved for this query
 
