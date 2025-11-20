@@ -208,6 +208,15 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
         updated_state["route"] = "end"
         return updated_state
     
+    # If RFI is asking for missing info, return the pre-prepared question without calling LLM
+    # This prevents the LLM from seeing the original user message and answering filtered parts
+    if rfi_status == "missing_info" and last_response:
+        print("Conversational Agent: RFI asking for missing info, returning pre-prepared question")
+        updated_state = state.copy()
+        updated_state["last_response"] = last_response
+        updated_state["route"] = "end"
+        return updated_state
+    
     # Prepare messages for LLM
     import json
     
