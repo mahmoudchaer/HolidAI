@@ -309,8 +309,16 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>✈️ HolidAI</h1>
-            <p>Your Intelligent Travel Assistant</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                    <h1>✈️ HolidAI</h1>
+                    <p>Your Intelligent Travel Assistant</p>
+                </div>
+                <div style="text-align: right; flex-shrink: 0;">
+                    <p style="margin-bottom: 10px; font-size: 14px; opacity: 0.9; word-break: break-all;">{{ user_email }}</p>
+                    <button onclick="logout()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s;">Logout</button>
+                </div>
+            </div>
         </div>
         
         <div class="chat-container" id="chatContainer">
@@ -447,6 +455,26 @@
                 sendButton.disabled = false;
                 sendButton.textContent = 'Send';
                 messageInput.focus();
+            }
+        }
+
+        async function logout() {
+            try {
+                const response = await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Still redirect to login even if API call fails
+                window.location.href = '/login';
             }
         }
     </script>

@@ -19,17 +19,25 @@ pip install -r frontend/requirements.txt
 
 2. Set up `.env` file with `OPENAI_API_KEY`
 
-3. Start MCP server (if not running):
+3. Start PostgreSQL database (for authentication):
+```bash
+docker-compose up -d
+```
+
+4. Start MCP server (in one terminal):
 ```bash
 cd mcp_system/server
 python main_server.py
 ```
 
-4. Start UI:
+5. Start UI (in another terminal):
 ```bash
 cd frontend
 python app.py
 ```
 
-5. Open browser to `http://localhost:5000`
+6. Open browser to `http://localhost:5000`
+   - Main app: `http://localhost:5000`
+   - Sign up: `http://localhost:5000/signup`
+   - Log in: `http://localhost:5000/login`
 
