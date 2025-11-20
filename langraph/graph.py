@@ -260,7 +260,7 @@ async def run(user_message: str, config: dict = None) -> dict:
     initial_state = {
         "user_message": user_message,
         "context": {},
-        "route": "main_agent",
+        "route": "rfi_node",  # Start with RFI node for safety/scope/completeness validation
         "last_response": "",
         "collected_info": {},
         "agents_called": [],
@@ -293,7 +293,14 @@ async def run(user_message: str, config: dict = None) -> dict:
         "conversational_feedback_retry_count": 0,
         "join_retry_count": 0,
         "execution_plan": [],
-        "current_step": 0
+        "current_step": 0,
+        "rfi_status": None,
+        "rfi_context": "",
+        "rfi_missing_fields": None,
+        "rfi_question": None,
+        "rfi_filtered_message": None,
+        "rfi_ignored_parts": None,
+        "needs_user_input": False
     }
     
     if config is None:

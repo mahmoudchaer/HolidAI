@@ -152,6 +152,9 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     context = state.get("context", {})
     collected_info = state.get("collected_info", {})
     conversational_feedback_message = state.get("conversational_feedback_message")
+    rfi_filtered_message = state.get("rfi_filtered_message")  # Message about filtered non-travel parts
+    rfi_status = state.get("rfi_status")  # Check if query was rejected (unsafe/out_of_scope)
+    last_response = state.get("last_response", "")  # May contain rejection message from RFI
     
     # Also check context for results
     if context.get("flight_result"):
@@ -196,6 +199,14 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
         if isinstance(utilities_result, dict):
             has_error = utilities_result.get("error", False)
             print(f"Conversational agent: Received utilities_result, error: {has_error}")
+    
+    # If query was rejected by RFI (unsafe or out of scope), just return the rejection message
+    if rfi_status in ["unsafe", "out_of_scope"] and last_response:
+        print(f"Conversational Agent: Query was {rfi_status}, returning rejection message")
+        updated_state = state.copy()
+        updated_state["last_response"] = last_response
+        updated_state["route"] = "end"
+        return updated_state
     
     # Prepare messages for LLM
     import json
@@ -367,6 +378,12 @@ The system has collected information from specialized agents. Please provide a h
         else:
             # Other errors
             final_response = f"I encountered an error while generating the response: {error_msg}. Please try again."
+    
+    # Prepend filtered message if any non-travel parts were filtered
+    if rfi_filtered_message and final_response:
+        # Only add if the filtered message isn't already in the response
+        if rfi_filtered_message not in final_response:
+            final_response = f"{rfi_filtered_message}\n\n{final_response}"
     
     updated_state = state.copy()
     updated_state["last_response"] = final_response

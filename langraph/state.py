@@ -72,6 +72,13 @@ class AgentState(TypedDict):
         utilities_feedback_retry_count: Counter for utilities agent feedback retries
         conversational_feedback_message: Feedback for conversational agent validation
         conversational_feedback_retry_count: Counter for conversational agent feedback retries
+        rfi_status: RFI validation status (complete, missing_info, unsafe, out_of_scope, error)
+        rfi_context: Context for RFI follow-up questions
+        rfi_missing_fields: List of missing fields identified by RFI
+        rfi_question: Question to ask user when info is missing
+        rfi_filtered_message: Message about filtered non-travel parts (if any)
+        rfi_ignored_parts: List of non-travel parts that were filtered out
+        needs_user_input: Flag indicating we're waiting for user input
     """
     user_message: Annotated[str, reducer]  # Read-only, but needs reducer for parallel execution
     context: Annotated[Dict[str, Any], reducer]
@@ -109,4 +116,11 @@ class AgentState(TypedDict):
     utilities_feedback_retry_count: Annotated[int, reducer]  # Counter for utilities agent feedback retries
     conversational_feedback_message: Annotated[Optional[str], reducer]  # Feedback for conversational agent
     conversational_feedback_retry_count: Annotated[int, reducer]  # Counter for conversational agent feedback retries
+    rfi_status: Annotated[Optional[str], reducer]  # RFI validation status
+    rfi_context: Annotated[Optional[str], reducer]  # Context for RFI follow-up questions
+    rfi_missing_fields: Annotated[Optional[List[str]], reducer]  # Missing fields identified by RFI
+    rfi_question: Annotated[Optional[str], reducer]  # Question to ask user when info is missing
+    rfi_filtered_message: Annotated[Optional[str], reducer]  # Message about filtered non-travel parts
+    rfi_ignored_parts: Annotated[Optional[List[str]], reducer]  # Non-travel parts that were filtered out
+    needs_user_input: Annotated[bool, reducer]  # Flag indicating we're waiting for user input
 
