@@ -125,4 +125,5 @@ class AgentState(TypedDict):
     needs_user_input: Annotated[bool, reducer]  # Flag indicating we're waiting for user input
     user_email: Annotated[Optional[str], reducer]  # User's email for memory storage
     relevant_memories: Annotated[Optional[List[str]], reducer]  # Relevant memories retrieved for this query
+    session_id: Annotated[Optional[str], reducer]  # Session ID for STM access
 

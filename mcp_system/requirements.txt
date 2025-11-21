@@ -17,4 +17,5 @@ playwright>=1.48.0
 pytz>=2023.3  # Timezone support for date/time tool
 
 # Note: Flight tools use SerpAPI via direct HTTP requests (requests library), no separate package needed
+# Note: Hotel tools use LiteAPI via direct HTTP requests (httpx library)
 

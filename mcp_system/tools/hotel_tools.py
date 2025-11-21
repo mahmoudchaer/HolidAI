@@ -107,6 +107,19 @@ def _build_request_payload(
     room_mapping: bool = True
 ) -> Dict:
     """Build the API request payload with defaults."""
+    # Ensure boolean values are actual booleans, not strings (safety check)
+    if isinstance(refundable_rates_only, str):
+        refundable_rates_only = refundable_rates_only.lower() in ("true", "1", "yes")
+    if isinstance(room_mapping, str):
+        room_mapping = room_mapping.lower() in ("true", "1", "yes")
+    
+    # Ensure max_rates_per_hotel is an integer
+    if isinstance(max_rates_per_hotel, str):
+        try:
+            max_rates_per_hotel = int(max_rates_per_hotel)
+        except (ValueError, TypeError):
+            max_rates_per_hotel = 1
+    
     payload = {
         "checkin": checkin,
         "checkout": checkout,
@@ -114,8 +127,8 @@ def _build_request_payload(
         "currency": currency,
         "guestNationality": guest_nationality,
         "maxRatesPerHotel": max_rates_per_hotel,
-        "refundableRatesOnly": refundable_rates_only,
-        "roomMapping": room_mapping
+        "refundableRatesOnly": bool(refundable_rates_only),  # Explicit bool conversion
+        "roomMapping": bool(room_mapping)  # Explicit bool conversion
     }
     
     # Add location identifier (at least one must be provided)
@@ -230,6 +243,20 @@ def _make_api_call(request_payload: Dict, top_k: Optional[int] = None, sort_by: 
         Dict with error status and results
     """
     try:
+        # Ensure required fields are present (safety check)
+        if "guestNationality" not in request_payload:
+            request_payload["guestNationality"] = "US"  # Default fallback
+            print("[HOTEL API] WARNING: guestNationality was missing, using default 'US'")
+        if "currency" not in request_payload:
+            request_payload["currency"] = "USD"  # Default fallback
+            print("[HOTEL API] WARNING: currency was missing, using default 'USD'")
+        
+        # Log the request for debugging
+        print(f"[HOTEL API] Making request to {API_ENDPOINT}")
+        print(f"[HOTEL API] Payload keys: {list(request_payload.keys())}")
+        print(f"[HOTEL API] guestNationality: {request_payload.get('guestNationality')}")
+        print(f"[HOTEL API] currency: {request_payload.get('currency')}")
+        
         # Make API request
         with httpx.Client(timeout=12.0) as client:
             response = client.post(
@@ -256,13 +283,17 @@ def _make_api_call(request_payload: Dict, top_k: Optional[int] = None, sort_by: 
                     error_message = error_data.get("message", "Bad request: Invalid parameters sent to hotel API.")
                     if isinstance(error_message, dict):
                         error_message = str(error_message)
-                except Exception:
-                    error_message = "Bad request: Invalid parameters sent to hotel API. Please check your input data."
+                    print(f"[HOTEL API] 400 Bad Request - API Error: {error_message}")
+                    print(f"[HOTEL API] Full error response: {error_data}")
+                except Exception as parse_err:
+                    error_message = f"Bad request: Invalid parameters sent to hotel API. Response parsing error: {parse_err}"
+                    print(f"[HOTEL API] 400 Bad Request - Could not parse error response: {response.text[:500]}")
                 
                 return {
                     "error": True,
                     "error_code": "BAD_REQUEST",
-                    "error_message": "Invalid search parameters provided. Please check your dates, location, and occupancy details.",
+                    "error_message": f"Invalid search parameters: {error_message}",
+                    "api_error_details": error_message,
                     "hotels": [],
                     "suggestion": "Please verify your search parameters (dates, location, occupancies) and try again."
                 }
@@ -333,27 +364,42 @@ def _make_api_call(request_payload: Dict, top_k: Optional[int] = None, sort_by: 
             
     except httpx.HTTPStatusError as e:
         status_code = e.response.status_code
+        # Try to get detailed error information from response
+        try:
+            error_response = e.response.json()
+            api_error_message = error_response.get("message") or error_response.get("error") or str(error_response)
+        except Exception:
+            api_error_message = e.response.text[:500] if hasattr(e.response, 'text') else "No error details available"
+        
+        # Log detailed error information
+        print(f"[HOTEL API ERROR] Status Code: {status_code}")
+        print(f"[HOTEL API ERROR] Response: {api_error_message}")
+        print(f"[HOTEL API ERROR] Request URL: {API_ENDPOINT}")
+        print(f"[HOTEL API ERROR] Request Payload: {request_payload}")
+        
         if status_code == 400:
-            error_msg = "Invalid search parameters. Please check your input data and try again."
+            error_msg = f"Invalid search parameters: {api_error_message}"
         elif status_code == 401:
-            error_msg = "Authentication failed. Please contact support."
+            error_msg = f"Authentication failed: {api_error_message}"
         elif status_code == 403:
-            error_msg = "Access denied. Please contact support."
+            error_msg = f"Access denied: {api_error_message}"
         elif status_code == 404:
-            error_msg = "Service endpoint not found. The service may be temporarily unavailable."
+            error_msg = f"Service endpoint not found: {api_error_message}"
         elif status_code == 429:
-            error_msg = "Too many requests. Please wait a moment and try again."
+            error_msg = f"Too many requests: {api_error_message}"
         elif status_code == 500:
-            error_msg = "Internal server error. Please try again later."
+            error_msg = f"Internal server error from LiteAPI: {api_error_message}"
         elif status_code == 503:
-            error_msg = "Service temporarily unavailable. Please try again later."
+            error_msg = f"Service temporarily unavailable: {api_error_message}"
         else:
-            error_msg = "The hotel search service returned an error. Please try again."
+            error_msg = f"HTTP {status_code} error: {api_error_message}"
         
         return {
             "error": True,
             "error_code": "HTTP_ERROR",
             "error_message": error_msg,
+            "http_status_code": status_code,
+            "api_error_details": api_error_message,
             "hotels": [],
             "suggestion": "Please verify your search parameters and try again. If the problem persists, contact support."
         }
@@ -706,9 +752,18 @@ def register_hotel_tools(mcp):
         currency = currency or "USD"
         guest_nationality = guest_nationality or "US"
         
+        # Convert string booleans to actual booleans (MCP may pass strings)
+        if isinstance(refundable_rates_only, str):
+            refundable_rates_only = refundable_rates_only.lower() in ("true", "1", "yes")
+        if isinstance(room_mapping, str):
+            room_mapping = room_mapping.lower() in ("true", "1", "yes")
+        
         # Convert numeric parameters (might come as strings from JSON)
         try:
-            max_rates_per_hotel = int(max_rates_per_hotel) if max_rates_per_hotel is not None else 1
+            if max_rates_per_hotel is not None:
+                max_rates_per_hotel = int(max_rates_per_hotel) if not isinstance(max_rates_per_hotel, int) else max_rates_per_hotel
+            else:
+                max_rates_per_hotel = 1
         except (ValueError, TypeError):
             return {
                 "error": True,
@@ -718,7 +773,10 @@ def register_hotel_tools(mcp):
             }
         
         try:
-            k = int(k) if k is not None else 10  # Default to 10 hotels
+            if k is not None:
+                k = int(k) if not isinstance(k, int) else k
+            else:
+                k = 10  # Default to 10 hotels
         except (ValueError, TypeError):
             return {
                 "error": True,
@@ -822,7 +880,28 @@ def register_hotel_tools(mcp):
         # Set defaults
         currency = currency or "USD"
         guest_nationality = guest_nationality or "US"
-        max_rates_per_hotel = max_rates_per_hotel if max_rates_per_hotel is not None else 1
+        
+        # Convert string booleans to actual booleans (MCP may pass strings)
+        if isinstance(refundable_rates_only, str):
+            refundable_rates_only = refundable_rates_only.lower() in ("true", "1", "yes")
+        if isinstance(room_mapping, str):
+            room_mapping = room_mapping.lower() in ("true", "1", "yes")
+        
+        # Convert numeric parameters (might come as strings from JSON)
+        try:
+            if max_rates_per_hotel is not None:
+                max_rates_per_hotel = int(max_rates_per_hotel) if not isinstance(max_rates_per_hotel, int) else max_rates_per_hotel
+            else:
+                max_rates_per_hotel = 1
+        except (ValueError, TypeError):
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": f"Invalid max_rates_per_hotel value: {max_rates_per_hotel}. Must be an integer.",
+                "hotels": [],
+                "suggestion": "Please provide a valid integer for max_rates_per_hotel."
+            }
+        
         refundable_rates_only = refundable_rates_only if refundable_rates_only is not None else False
         room_mapping = room_mapping if room_mapping is not None else True
         

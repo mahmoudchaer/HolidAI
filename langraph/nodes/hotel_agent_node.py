@@ -129,6 +129,8 @@ LOCATION HANDLING (for all tools):
   * When a city name is mentioned, use your knowledge to infer the country code:
     - Beirut → LB (Lebanon)
     - Dubai → AE (United Arab Emirates)
+    - Doha → QA (Qatar)
+    - Qatar → QA (Qatar)
     - Paris → FR (France)
     - Rome → IT (Italy)
     - London → GB (United Kingdom)
@@ -145,6 +147,11 @@ DATE HANDLING (only for get_hotel_rates tools):
 
 OTHER PARAMETERS:
 - Infer parameters from user message using your understanding
+- **CRITICAL: guest_nationality parameter is REQUIRED for get_hotel_rates and get_hotel_rates_by_price**
+  - If user mentions nationality (e.g., "Lebanese", "UAE citizen", "I am from Lebanon"), use it
+  - If nationality is in STM context from previous messages, use it
+  - If not available, use "US" as default (but prefer extracting from context)
+  - Nationality should be a 2-letter country code (e.g., "LB" for Lebanon, "AE" for UAE, "US" for United States)
 - Use the tool schemas to understand required vs optional parameters
 - ALWAYS call a tool - do not ask for clarification unless absolutely critical information is missing
 
@@ -307,8 +314,17 @@ Focus on the hotel search task described above."""
                 
                 # Check if the tool call itself had an error
                 if hotel_result.get("error"):
-                    # Store error result and return
-                    updated_state["hotel_result"] = hotel_result
+                    # Store error result with full error details (error_code, error_message, suggestion)
+                    # Preserve all error information for better user feedback
+                    error_result = {
+                        "error": True,
+                        "error_code": hotel_result.get("error_code", "UNKNOWN_ERROR"),
+                        "error_message": hotel_result.get("error_message", "An error occurred during hotel search"),
+                        "suggestion": hotel_result.get("suggestion", "Please try again or contact support"),
+                        "hotels": []
+                    }
+                    updated_state["hotel_result"] = error_result
+                    print(f"Hotel agent: Error occurred - {error_result.get('error_code')}: {error_result.get('error_message')}")
                     # No need to set route - using add_edge means we automatically route to join_node
                     end_time = datetime.now()
                     duration = (end_time - start_time).total_seconds()
@@ -488,10 +504,17 @@ Focus on the hotel search task described above."""
             except Exception as e:
                 # Log the exception for debugging
                 import traceback
+                error_trace = traceback.format_exc()
                 print(f"Error in hotel_agent_node: {e}")
-                print(f"Traceback: {traceback.format_exc()}")
-                # Store error in result
-                updated_state["hotel_result"] = {"error": True, "error_message": str(e)}
+                print(f"Traceback: {error_trace}")
+                # Store error in result with full error structure
+                updated_state["hotel_result"] = {
+                    "error": True,
+                    "error_code": "AGENT_ERROR",
+                    "error_message": str(e),
+                    "suggestion": "An unexpected error occurred. Please try again or contact support if the problem persists.",
+                    "hotels": []
+                }
                 # No need to set route - using add_edge means we automatically route to join_node
                 end_time = datetime.now()
                 duration = (end_time - start_time).total_seconds()

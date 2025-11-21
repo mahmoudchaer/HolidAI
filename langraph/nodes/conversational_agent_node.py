@@ -246,6 +246,7 @@ IMPORTANT INSTRUCTIONS:
 - DO NOT include "Collected_info:", "Based on the information gathered", or any JSON structure in your response
 - Start your response directly with the information (e.g., "I've found some great options..." or "Here's what I found...")
 - The user should never see the JSON data - only the formatted information
+- **If there are errors in the collected data (error: true), explain the specific error to the user in a helpful way, including the error_message and suggestion if available**
 - For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
 - If data was truncated (indicated by "truncated": true or "limited": true), mention that more options are available
 - Make sure all links are properly formatted as markdown links so they appear as clickable in the UI"""

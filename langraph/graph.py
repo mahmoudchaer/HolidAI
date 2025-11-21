@@ -254,13 +254,14 @@ def create_graph() -> StateGraph:
 app = create_graph()
 
 
-async def run(user_message: str, config: dict = None, user_email: str = None) -> dict:
+async def run(user_message: str, config: dict = None, user_email: str = None, session_id: str = None) -> dict:
     """Run the LangGraph with a user message.
     
     Args:
         user_message: The user's message/query
         config: Optional runtime configuration
         user_email: User's email for memory operations (handled by memory_agent)
+        session_id: Session ID for STM access
         
     Returns:
         Final state dictionary
@@ -310,7 +311,8 @@ async def run(user_message: str, config: dict = None, user_email: str = None) ->
         "rfi_ignored_parts": None,
         "needs_user_input": False,
         "user_email": user_email,
-        "relevant_memories": []  # Will be populated by memory_agent
+        "relevant_memories": [],  # Will be populated by memory_agent
+        "session_id": session_id  # Session ID for STM access
     }
     
     if config is None:

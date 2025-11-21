@@ -9,8 +9,17 @@ from dotenv import load_dotenv
 
 # Add paths for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from state import AgentState
+
+# Import STM module
+try:
+    from stm.short_term_memory import get_stm, get_summary
+except ImportError:
+    print("[WARNING] STM module not found, STM features will be unavailable")
+    get_stm = None
+    get_summary = None
 
 # Load environment variables
 project_root = Path(__file__).parent.parent.parent
@@ -196,7 +205,9 @@ Your role:
 - Check if user provided enough basic information to understand their intent
 - You do NOT know about specific tools or technical requirements
 - You only check LOGICAL requirements (what a human would need to know)
-- If critical information is missing, identify what needs to be asked
+- If critical information is missing, check the SHORT-TERM MEMORY CONTEXT provided - it may contain relevant information from previous messages
+- Use information from short-term memory to fill in missing details (e.g., if user previously mentioned a destination or date, use it)
+- If information is available in short-term memory context, mark the request as "complete" even if the current message alone is incomplete
 
 WHAT YOU CHECK (Logical Requirements Only):
 
@@ -216,6 +227,7 @@ WHAT YOU CHECK (Logical Requirements Only):
    - Need: Nationality/citizenship AND destination country
    - Examples of INCOMPLETE: "Do I need a visa?" (no nationality or destination)
    - Examples of COMPLETE: "UAE citizen traveling to Lebanon, need visa?"
+   - **If STM context contains nationality/citizenship or destination, USE IT**
 
 4. **Restaurants/Attractions (TripAdvisor):**
    - Need: Location (city/area)
@@ -224,6 +236,7 @@ WHAT YOU CHECK (Logical Requirements Only):
 
 5. **Utilities (weather, currency, etc):**
    - Weather: Need location (can be multiple: "weather in Paris and London")
+   - **If user asks about weather using pronouns like "there", "that place", "the destination", check STM context for the location**
    - Currency: Need from/to currencies
    - eSIM: Need country/countries (can be multiple: "eSIM for Lebanon and UAE" is COMPLETE)
    - Holidays: Need country
@@ -236,19 +249,45 @@ IMPORTANT RULES:
 - Multiple countries/locations are acceptable (e.g., "eSIM for Lebanon and UAE" is COMPLETE - don't ask which one)
 - Check EACH request type separately
 - If user mentions multiple countries/locations, they want ALL of them - don't ask for clarification
+- **CRITICAL: If SHORT-TERM MEMORY CONTEXT is provided, you MUST use it to fill in missing information for ALL request types**
+  - **ALWAYS assume information from STM context applies to the current request if it's relevant**
+  - **For FLIGHTS**: If STM has destination/date, use them
+    * Example: Previous "holidays in Qatar on December 24, 2025" + current "find flights from Lebanon" → enriched: "find flights from Lebanon to Qatar on December 24, 2025"
+  - **For HOTELS**: If STM has location/date, use them
+  - **For VISA**: If STM has nationality/citizenship or destination, USE THEM
+    * Example: Previous "UAE citizen" or "traveling to Lebanon" + current "visa requirements" → enriched: "visa requirements for UAE citizen traveling to Lebanon"
+  - **For TRIPADVISOR**: If STM has location, use it
+  - **For UTILITIES**: If STM has location/country, use it
+    * Example: Previous "flights to Qatar on December 24, 2025" + current "how will the weather be like there?" → enriched: "weather in Qatar on December 24, 2025"
+  - **If user uses pronouns like "there", "that place", "the destination", "it", check STM for the location**
+  - Extract locations, dates, nationality/citizenship, preferences, and other relevant details from the context
+  - **If all required information can be found in context + current message, mark as "complete" and provide enriched_message**
+  - **The enriched_message should be the complete request with all information filled in**
 
 MISSING INFO HANDLING:
-- If critical info missing: ask ONLY for that specific missing piece
+- **FIRST**: ALWAYS check if missing information is available in SHORT-TERM MEMORY CONTEXT
+- **For ANY missing field (origin, destination, date, nationality, location, etc.), check STM context FIRST**
+- **If information is in context, you MUST use it, mark as "complete", and provide enriched_message with all details filled in**
+- **Do NOT ask the user for information that is available in STM context - use the context instead**
+- **This applies to ALL request types: flights, hotels, visa, tripadvisor, utilities**
+- If critical info is still missing after checking context: ask ONLY for that specific missing piece
 - Be natural and conversational
 - Don't overwhelm user with all possible details
 - Ask for ONE thing at a time if multiple things missing
+
+ENRICHED MESSAGE REQUIREMENT:
+- **If you use STM context to fill in missing information, you MUST provide an enriched_message**
+- The enriched_message should be a complete, natural request with all information filled in
+- Example: If current message is "find flights from Lebanon" and STM has "Qatar" and "December 24, 2025", enriched_message should be: "find flights from Lebanon to Qatar on December 24, 2025"
+- If no enrichment is needed (all info in current message), enriched_message should be the same as the original user message
 
 Respond with JSON:
 {
   "status": "complete" | "missing_info",
   "missing_fields": ["list of what's missing"],
   "question_to_user": "natural question to ask user (if missing_info)",
-  "analysis": "brief explanation of what you checked"
+  "analysis": "brief explanation of what you checked",
+  "enriched_message": "if status is complete and you used STM context, provide the enriched user message with extracted information (e.g., 'find flights from Lebanon to Qatar on December 24, 2025'). If no enrichment needed, use the original user message."
 }
 
 Examples:
@@ -268,7 +307,21 @@ Response: {
   "status": "missing_info",
   "missing_fields": ["origin_city", "travel_dates"],
   "question_to_user": "I'd be happy to help you find flights to Paris! Where will you be flying from, and what are your travel dates?",
-  "analysis": "Destination (Paris) provided but missing origin city and travel dates."
+  "analysis": "Destination (Paris) provided but missing origin city and travel dates.",
+  "enriched_message": "Find flights to Paris"
+}
+
+Example 2b - Using STM context to complete request:
+User: "can u find me flights from Lebanon ?"
+STM Context: 
+  USER: "what are the public holidays in Qatar on december 24 2025"
+  AGENT: [response about holidays]
+Response: {
+  "status": "complete",
+  "missing_fields": [],
+  "question_to_user": "",
+  "analysis": "Origin (Lebanon) provided in current message. Destination (Qatar) and date (December 24, 2025) found in STM context from previous message about holidays in Qatar. All required information available.",
+  "enriched_message": "find flights from Lebanon to Qatar on December 24, 2025"
 }
 
 Example 3 - Hotels OK without dates:
@@ -313,7 +366,19 @@ Response: {
   "status": "complete",
   "missing_fields": [],
   "question_to_user": "",
-  "analysis": "User provided country (Japan) for eSIM bundles. This is sufficient."
+  "analysis": "User provided country (Japan) for eSIM bundles. This is sufficient.",
+  "enriched_message": "eSIM bundles for Japan"
+}
+
+Example 8 - Weather using STM context (pronoun reference):
+User: "how will the weather be like there?"
+STM Context: Previous messages mention "Qatar" and "December 24, 2025"
+Response: {
+  "status": "complete",
+  "missing_fields": [],
+  "question_to_user": "",
+  "analysis": "User asked about weather using pronoun 'there'. Location (Qatar) and date (December 24, 2025) found in STM context from previous messages. All required information available.",
+  "enriched_message": "weather in Qatar on December 24, 2025"
 }"""
 
 
@@ -332,11 +397,23 @@ async def rfi_node(state: AgentState) -> AgentState:
         Updated agent state with routing decision
     """
     user_message = state.get("user_message", "")
-    rfi_context = state.get("rfi_context", "")  # For follow-up questions
+    rfi_context = state.get("rfi_context", "")  # For follow-up questions - contains original request
+    rfi_status = state.get("rfi_status", "")
+    needs_user_input = state.get("needs_user_input", False)
     filtered_message_to_store = None  # Store filtered message from safety check
     
     print(f"\n=== RFI Validator ===")
     print(f"User message: {user_message}")
+    print(f"RFI context (original request): {rfi_context}")
+    print(f"RFI status: {rfi_status}, needs_user_input: {needs_user_input}")
+    
+    # If this is a follow-up response after asking for missing info, combine original request with new response
+    if rfi_status == "missing_info" and needs_user_input and rfi_context:
+        print(f"[RFI] Follow-up detected: Original request was '{rfi_context}', user now says '{user_message}'")
+        # Combine original request with the new information provided
+        combined_message = f"{rfi_context}. Additional information: {user_message}"
+        user_message = combined_message
+        print(f"[RFI] Combined message: '{user_message}'")
     
     # STEP 1: Safety and Scope Validation (only on first check, not follow-ups)
     if not rfi_context:
@@ -415,19 +492,170 @@ async def rfi_node(state: AgentState) -> AgentState:
     # STEP 2: RFI Validation (logical completeness check)
     print("\n--- Step 2: RFI Completeness Check ---")
     
+    # Retrieve STM context if available
+    stm_context = ""
+    stm_data = None
+    session_id = state.get("session_id")
+    if session_id and get_stm:
+        try:
+            stm_data = get_stm(session_id)
+            if stm_data:
+                last_messages = stm_data.get("last_messages", [])
+                summary = stm_data.get("summary", "")
+                
+                if last_messages:
+                    # Format recent messages for context
+                    recent_messages_text = "\n".join([
+                        f"{msg['role'].upper()}: {msg['text']}"
+                        for msg in last_messages[-10:]  # Last 10 messages
+                    ])
+                    
+                    # Extract key information from STM for easier reference
+                    import re
+                    extracted_info = []
+                    locations_found = set()
+                    dates_found = set()
+                    nationalities_found = set()
+                    
+                    for msg in last_messages[-10:]:
+                        text = msg['text']
+                        text_lower = text.lower()
+                        
+                        # Extract countries/locations (more comprehensive list)
+                        countries = {
+                            "qatar": "Qatar", "doha": "Qatar",
+                            "uae": "UAE", "united arab emirates": "UAE", "dubai": "UAE", "abu dhabi": "UAE",
+                            "lebanon": "Lebanon", "beirut": "Lebanon",
+                            "paris": "France", "france": "France",
+                            "london": "UK", "uk": "UK", "united kingdom": "UK",
+                            "tokyo": "Japan", "japan": "Japan",
+                            "new york": "USA", "usa": "USA", "united states": "USA"
+                        }
+                        
+                        for keyword, country_name in countries.items():
+                            if keyword in text_lower and country_name not in locations_found:
+                                locations_found.add(country_name)
+                                extracted_info.append(f"Location: {country_name}")
+                        
+                        # Extract dates (more patterns)
+                        date_patterns = [
+                            (r'december\s+24[,\s]+2025', "December 24, 2025"),
+                            (r'dec\s+24[,\s]+2025', "December 24, 2025"),
+                            (r'24[-\s/]+12[-\s/]+2025', "December 24, 2025"),
+                            (r'(\w+\s+\d{1,2}[,\s]+\d{4})', None),  # General date pattern
+                        ]
+                        for pattern, default_date in date_patterns:
+                            matches = re.findall(pattern, text_lower)
+                            if matches:
+                                date_str = default_date if default_date else (matches[0] if isinstance(matches[0], str) else str(matches[0]))
+                                if date_str not in dates_found:
+                                    dates_found.add(date_str)
+                                    extracted_info.append(f"Date: {date_str}")
+                                    break  # Only add one date per message
+                        
+                        # Extract nationality/citizenship
+                        if "citizen" in text_lower or "nationality" in text_lower:
+                            for keyword, country_name in countries.items():
+                                if keyword in text_lower and country_name not in nationalities_found:
+                                    nationalities_found.add(country_name)
+                                    extracted_info.append(f"Nationality: {country_name}")
+                    
+                    extracted_info_text = "\n".join(extracted_info) if extracted_info else "No specific locations, dates, or nationality found in recent messages."
+                    print(f"[RFI] Extracted from STM: {extracted_info_text}")
+                    
+                    if summary:
+                        stm_context = f"""SHORT-TERM MEMORY CONTEXT (from previous messages in this conversation):
+
+Summary of conversation so far:
+{summary}
+
+Recent messages:
+{recent_messages_text}
+
+EXTRACTED INFORMATION FROM STM (use these if missing in current request):
+{extracted_info_text}
+
+CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE FOR ALL REQUEST TYPES:
+1. **ALWAYS check STM context FIRST for ANY missing information** (destination, origin, date, nationality, location, etc.)
+2. **USE THE EXTRACTED INFORMATION SECTION ABOVE** - If "Location:" is shown, use it as destination/location. If "Date:" is shown, use it as travel date. If "Nationality:" is shown, use it for visa requests.
+3. **For FLIGHTS**: If missing destination/date, check EXTRACTED INFORMATION and STM - use location/destination and date from context
+4. **For HOTELS**: If missing location/date, check EXTRACTED INFORMATION and STM - use location and date from context
+5. **For VISA**: If missing nationality/citizenship OR destination, check EXTRACTED INFORMATION and STM - use nationality and destination from context
+6. **For TRIPADVISOR**: If missing location, check EXTRACTED INFORMATION and STM - use location from context
+7. **For UTILITIES**: If missing location/country, check EXTRACTED INFORMATION and STM - use location/country from context
+8. **If user uses pronouns like "there", "that place", "the destination", "it" when asking about weather/location, check STM for the location**
+9. If STM context mentions a location/destination (e.g., "Qatar", "Beirut", "Paris", "Lebanon", "UAE"), USE IT for the current request
+9. If STM context mentions a date (e.g., "December 24, 2025", "January 15"), USE IT for the current request
+10. If STM context mentions nationality/citizenship (e.g., "UAE citizen", "Lebanese", "from UAE"), USE IT for visa requests
+11. DO NOT ask the user for information that is clearly available in the STM context above or in the EXTRACTED INFORMATION section
+12. If all required information can be found (current message + STM context + extracted information), mark status as "complete" and provide enriched_message with all details filled in
+
+Examples:
+- Flights: Current "find flights from Lebanon" + STM "Qatar on December 24, 2025" → enriched: "find flights from Lebanon to Qatar on December 24, 2025"
+- Visa: Current "visa requirements" + STM "UAE citizen" and "Lebanon" → enriched: "visa requirements for UAE citizen traveling to Lebanon"
+"""
+                    else:
+                        stm_context = f"""SHORT-TERM MEMORY CONTEXT (from previous messages in this conversation):
+
+Recent messages:
+{recent_messages_text}
+
+EXTRACTED INFORMATION FROM STM (use these if missing in current request):
+{extracted_info_text}
+
+CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE FOR ALL REQUEST TYPES:
+1. **ALWAYS check STM context FIRST for ANY missing information** (destination, origin, date, nationality, location, etc.)
+2. **USE THE EXTRACTED INFORMATION SECTION ABOVE** - If "Location:" is shown, use it as destination/location. If "Date:" is shown, use it as travel date. If "Nationality:" is shown, use it for visa requests.
+3. **For FLIGHTS**: If missing destination/date, check EXTRACTED INFORMATION and STM - use location/destination and date from context
+4. **For HOTELS**: If missing location/date, check EXTRACTED INFORMATION and STM - use location and date from context
+5. **For VISA**: If missing nationality/citizenship OR destination, check EXTRACTED INFORMATION and STM - use nationality and destination from context
+6. **For TRIPADVISOR**: If missing location, check EXTRACTED INFORMATION and STM - use location from context
+7. **For UTILITIES**: If missing location/country, check EXTRACTED INFORMATION and STM - use location/country from context
+8. **If user uses pronouns like "there", "that place", "the destination", "it" when asking about weather/location, check STM for the location**
+9. If STM context mentions a location/destination (e.g., "Qatar", "Beirut", "Paris", "Lebanon", "UAE"), USE IT for the current request
+9. If STM context mentions a date (e.g., "December 24, 2025", "January 15"), USE IT for the current request
+10. If STM context mentions nationality/citizenship (e.g., "UAE citizen", "Lebanese", "from UAE"), USE IT for visa requests
+11. DO NOT ask the user for information that is clearly available in the STM context above or in the EXTRACTED INFORMATION section
+12. If all required information can be found (current message + STM context + extracted information), mark status as "complete" and provide enriched_message with all details filled in
+
+Examples:
+- Flights: Current "find flights from Lebanon" + STM "Qatar on December 24, 2025" → enriched: "find flights from Lebanon to Qatar on December 24, 2025"
+- Visa: Current "visa requirements" + STM "UAE citizen" and "Lebanon" → enriched: "visa requirements for UAE citizen traveling to Lebanon"
+"""
+                    print(f"[RFI] Retrieved STM context: {len(last_messages)} messages, summary: {'yes' if summary else 'no'}")
+        except Exception as e:
+            print(f"[WARNING] Could not retrieve STM context: {e}")
+    
     # Build the validation message
-    if rfi_context:
+    if rfi_status == "missing_info" and needs_user_input and rfi_context:
         # This is a follow-up after asking user for missing info
-        validation_message = f"""Original user message: {user_message}
+        # user_message already contains the combined request + new info
+        validation_message = f"""This is a follow-up response. The user previously asked: "{rfi_context}"
+The user has now provided additional information: "{state.get('user_message', '')}"
 
-Follow-up context: {rfi_context}
+Combined request: {user_message}
 
-Check if the user now provided the missing information."""
+{stm_context}
+
+Check if the user now provided ALL the missing information. If yes, mark as "complete" and provide enriched_message with the complete request. If still missing info, mark as "missing_info"."""
     else:
         # First time checking (may have been filtered)
         validation_message = f"""User message: {user_message}
 
-Check if this message contains enough logical information to understand the travel request."""
+{stm_context}
+
+Check if this message contains enough logical information to understand the travel request. 
+
+CRITICAL: Before marking as "missing_info", you MUST check the short-term memory context above for:
+- Missing destinations/locations (for flights, hotels, visa, tripadvisor, utilities)
+  **If user uses pronouns like "there", "that place", "the destination", "it", check STM for the location**
+- Missing dates (for flights, hotels)
+- Missing nationality/citizenship (for visa)
+- Missing origins (for flights)
+
+If any missing information is found in the STM context or EXTRACTED INFORMATION section, use it, mark as "complete", and provide enriched_message with all details filled in.
+
+Example: If user asks "how will the weather be like there?" and STM has "Qatar", mark as "complete" with enriched_message: "weather in Qatar"."""
     
     # Call LLM for validation
     messages = [
@@ -448,9 +676,12 @@ Check if this message contains enough logical information to understand the trav
         missing_fields = validation_result.get("missing_fields", [])
         question = validation_result.get("question_to_user", "")
         analysis = validation_result.get("analysis", "")
+        enriched_message = validation_result.get("enriched_message", user_message)  # LLM-provided enriched message
         
         print(f"RFI: Status = {status}")
         print(f"RFI: {analysis}")
+        if enriched_message != user_message:
+            print(f"RFI: Message enriched with STM context: '{enriched_message}'")
         
         # Get filtered message (from safety check or state for follow-ups)
         final_filtered_message = filtered_message_to_store or state.get("rfi_filtered_message", "")
@@ -464,31 +695,55 @@ Check if this message contains enough logical information to understand the trav
         # Route based on validation status
         if status == "complete":
             # User provided enough info, proceed to memory node (which will route to main agent)
-            print("RFI: Information complete, routing to Memory Node")
+            print("RFI: Information complete, routing to Main Agent")
             result = {
                 "route": "main_agent",
                 "rfi_status": "complete",
-                "rfi_context": ""
+                "rfi_context": "",  # Clear context
+                "needs_user_input": False,  # Clear flag
+                "rfi_missing_fields": None,  # Clear missing fields
+                "rfi_question": None  # Clear question
             }
             # Include filtered message if any
             if final_filtered_message:
                 result["rfi_filtered_message"] = final_filtered_message
-            # IMPORTANT: Update user_message in state with filtered query if it was filtered
-            # This ensures Main Agent receives only the travel-related part
+            # IMPORTANT: Update user_message in state with filtered/enriched query
+            # This ensures Main Agent receives the complete context
             original_message = state.get("user_message", "")
-            # If we filtered the query (user_message was changed), always update state
-            if user_message != original_message:
-                result["user_message"] = user_message
-                print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
+            # For follow-ups, use enriched_message if provided, otherwise use the combined message
+            if rfi_status == "missing_info" and needs_user_input:
+                # This was a follow-up - use enriched_message which should contain the complete request
+                if enriched_message and enriched_message != original_message:
+                    result["user_message"] = enriched_message
+                    print(f"RFI: Using enriched_message from follow-up: '{enriched_message}'")
+                else:
+                    # Fallback to combined message
+                    result["user_message"] = user_message
+                    print(f"RFI: Using combined message from follow-up: '{user_message}'")
+            else:
+                # Regular flow - update if message was filtered or enriched
+                if enriched_message != original_message:
+                    result["user_message"] = enriched_message
+                    if user_message != original_message:
+                        print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
+                    if enriched_message != user_message:
+                        print(f"RFI: Enriched user_message with STM context: '{enriched_message}'")
+                elif user_message != original_message:
+                    # Only filtered, not enriched
+                    result["user_message"] = user_message
+                    print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
             return result
             
         elif status == "missing_info":
             # Critical info missing, ask user through conversational agent (via memory node)
             print(f"RFI: Missing info - {missing_fields}")
             print(f"RFI: Asking user: {question}")
+            # Store the original request in rfi_context so we can combine it with the follow-up response
+            original_request = enriched_message if enriched_message != user_message else user_message
             result = {
                 "route": "conversational_agent",
                 "rfi_status": "missing_info",
+                "rfi_context": original_request,  # Store original request for follow-up
                 "rfi_missing_fields": missing_fields,
                 "rfi_question": question,
                 "last_response": question,  # Set the question as response
