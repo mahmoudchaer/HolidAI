@@ -23,6 +23,10 @@ sys.path.insert(0, str(project_root))
 
 from graph import run
 
+# Import STM module (use alias to avoid conflict with route function)
+# STM is in project root, which is already in sys.path
+from stm.short_term_memory import add_message as stm_add_message, clear_stm as stm_clear_stm
+
 load_dotenv()
 
 # Database setup
@@ -579,6 +583,12 @@ def delete_conversation(session_id):
             db.delete(chat)
             db.commit()
             
+            # Clear STM for this session
+            try:
+                stm_clear_stm(session_id)
+            except Exception as e:
+                print(f"[WARNING] Could not clear STM for deleted conversation: {e}")
+            
             return jsonify({
                 "success": True,
                 "message": "Conversation deleted successfully"
@@ -753,6 +763,12 @@ def chat():
                 
                 db.commit()
                 print(f"[DEBUG] Saved user message to conversation {session_id}, total messages: {len(messages)}")
+                
+                # Add to STM
+                try:
+                    stm_add_message(session_id, user_email, "user", user_message)
+                except Exception as e:
+                    print(f"[WARNING] Could not add user message to STM: {e}")
         except Exception as e:
             print(f"[WARNING] Could not save user message: {e}")
         finally:
@@ -763,7 +779,8 @@ def chat():
         print(f"[FLASK] Running LangGraph with user_email: {user_email}, session_id: {session_id}")
         result = run_async(run(
             user_message=user_message,
-            user_email=user_email
+            user_email=user_email,
+            session_id=session_id
         ))
         
         response = result.get("last_response", "No response generated")
@@ -791,6 +808,12 @@ def chat():
                 chat.updated_at = datetime.utcnow()
                 db.commit()
                 print(f"[DEBUG] Saved assistant message to conversation {session_id}, total messages: {len(messages)}")
+                
+                # Add to STM
+                try:
+                    stm_add_message(session_id, user_email, "agent", response)
+                except Exception as e:
+                    print(f"[WARNING] Could not add agent message to STM: {e}")
         except Exception as e:
             print(f"[WARNING] Could not save agent response: {e}")
         finally:

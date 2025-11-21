@@ -29,3 +29,6 @@ langgraph>=0.2.0
 langchain>=0.3.0
 langchain-openai>=0.2.0
 
+# Redis for short-term memory
+redis>=5.0.0
+
