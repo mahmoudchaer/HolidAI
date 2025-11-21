@@ -21,7 +21,7 @@ from nodes.utilities_agent_feedback_node import utilities_agent_feedback_node
 from nodes.conversational_agent_node import conversational_agent_node
 from nodes.conversational_agent_feedback_node import conversational_agent_feedback_node
 from nodes.join_node import join_node
-from nodes.memory_node import memory_node
+from nodes.memory_agent_node import memory_agent_node
 
 
 def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
@@ -40,10 +40,10 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return route
     
     # Handle string routes
-    if route == "rfi_node":
+    if route == "memory_agent":
+        return "memory_agent"
+    elif route == "rfi_node":
         return "rfi_node"
-    elif route == "memory_node":
-        return "memory_node"
     elif route == "feedback":
         return "feedback"
     elif route == "plan_executor_feedback":
@@ -80,8 +80,8 @@ def create_graph() -> StateGraph:
     graph = StateGraph(AgentState)
     
     # Add nodes - main workflow nodes
-    graph.add_node("rfi_node", rfi_node)  # RFI node - validates logical completeness FIRST
-    graph.add_node("memory_node", memory_node)  # Memory node - handles memory retrieval and storage
+    graph.add_node("memory_agent", memory_agent_node)  # Memory agent - handles memory retrieval and storage FIRST
+    graph.add_node("rfi_node", rfi_node)  # RFI node - validates logical completeness
     graph.add_node("main_agent", main_agent_node)
     graph.add_node("feedback", feedback_node)
     graph.add_node("plan_executor", plan_executor_node)
@@ -100,23 +100,16 @@ def create_graph() -> StateGraph:
     graph.add_node("conversational_agent", conversational_agent_node)
     graph.add_node("conversational_agent_feedback", conversational_agent_feedback_node)
     
-    # Set entry point - RFI node validates first!
-    graph.set_entry_point("rfi_node")
+    # Set entry point - Memory agent runs first!
+    graph.set_entry_point("memory_agent")
     
-    # RFI node routes to memory node first (to retrieve/store memories)
+    # Memory agent always routes to RFI node
+    graph.add_edge("memory_agent", "rfi_node")
+    
+    # RFI node routes based on validation result
     graph.add_conditional_edges(
         "rfi_node",
         route_decision,
-        {
-            "memory_node": "memory_node",         # Always go to memory node first
-            "end": END
-        }
-    )
-    
-    # Memory node routes based on state.route (which memory_node sets based on rfi_next_route)
-    graph.add_conditional_edges(
-        "memory_node",
-        route_decision,  # Use route_decision to handle the route that memory_node set
         {
             "main_agent": "main_agent",
             "conversational_agent": "conversational_agent",
@@ -267,7 +260,7 @@ async def run(user_message: str, config: dict = None, user_email: str = None) ->
     Args:
         user_message: The user's message/query
         config: Optional runtime configuration
-        user_email: User's email for memory operations (handled by memory_node)
+        user_email: User's email for memory operations (handled by memory_agent)
         
     Returns:
         Final state dictionary
@@ -275,7 +268,7 @@ async def run(user_message: str, config: dict = None, user_email: str = None) ->
     initial_state = {
         "user_message": user_message,
         "context": {},
-        "route": "rfi_node",  # Start with RFI node for safety/scope/completeness validation
+        "route": "memory_agent",  # Start with Memory agent to retrieve/store memories
         "last_response": "",
         "collected_info": {},
         "agents_called": [],
@@ -317,7 +310,7 @@ async def run(user_message: str, config: dict = None, user_email: str = None) ->
         "rfi_ignored_parts": None,
         "needs_user_input": False,
         "user_email": user_email,
-        "relevant_memories": []  # Will be populated by memory_node
+        "relevant_memories": []  # Will be populated by memory_agent
     }
     
     if config is None:

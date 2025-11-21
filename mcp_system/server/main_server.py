@@ -20,6 +20,7 @@ from tools.tripadvisor_tools import register_tripadvisor_tools
 from tools.visa_tools import register_visa_tools
 from tools.flight_tools import register_flight_tools
 from tools.utilities_tools import register_utilities_tools
+from tools.memory_tools import register_memory_tools
 
 
 class FastMCP:
@@ -303,6 +304,7 @@ register_tripadvisor_tools(mcp)
 register_visa_tools(mcp)
 register_flight_tools(mcp)
 register_utilities_tools(mcp)
+register_memory_tools(mcp)
 
 
 if __name__ == "__main__":
