@@ -1,0 +1,85 @@
+# Image Display Implementation
+
+## Changes Made
+
+### 1. Frontend Components
+
+#### Created `imageUtils.js` utility:
+- `getAirlineLogo(airlineCode)` - Fetches airline logos from Kiwi.com API
+- `getPlaceholderImage(type)` - Returns gradient placeholders for missing images
+- Supports: flight, restaurant, hotel, attraction types
+
+#### Enhanced `ChatMessage.jsx`:
+- Added `FlightCard` component:
+  * Displays airline logo (with fallback to airplane emoji)
+  * Shows flight details: airline, price, route, duration
+  * Handles image loading errors gracefully
+  
+- Added `LocationCard` component:
+  * Displays location/restaurant photos
+  * Shows rating with star icon
+  * Displays address with pin icon
+  * Shows description with line-clamp
+  * Handles missing images with gradient placeholders
+
+- Added structured data parsing:
+  * Looks for `[FLIGHT_DATA]...[/FLIGHT_DATA]` tags
+  * Looks for `[LOCATION_DATA]...[/LOCATION_DATA]` tags
+  * Renders special UI cards for structured data
+  * Falls back to regular markdown for text content
+
+### 2. Backend Agent Updates
+
+#### TripAdvisor Agent (`tripadvisor_agent_node.py`):
+- Updated prompt to automatically fetch photos
+- Agent will now call `get_location_photos` for each location
+- Photos will be included in the response data
+
+#### Conversational Agent (`conversational_agent_node.py`):
+- Updated prompt to handle image URLs
+- Can include markdown images in responses
+- Suggests photo viewing when applicable
+
+## How It Works
+
+### For Airlines:
+1. Flight agent returns airline data with airline codes
+2. Frontend extracts airline code/name
+3. Calls Kiwi.com airline logo API: `https://images.kiwi.com/airlines/64/{CODE}.png`
+4. Displays logo next to flight details
+5. Falls back to airplane emoji if logo fails
+
+### For TripAdvisor Locations:
+1. TripAdvisor agent searches for locations/restaurants
+2. Agent automatically calls `get_location_photos` for each location
+3. Photos are included in the agent's response
+4. Conversational agent can:
+   - Include photo URLs using markdown: `![alt](url)`
+   - Or wrap data in `[LOCATION_DATA]` tags for special rendering
+5. Frontend displays photos in LocationCard components
+
+## Image Sources
+
+- **Airline Logos**: Kiwi.com public API (free, no auth required)
+- **TripAdvisor Photos**: TripAdvisor API (via MCP tools)
+- **Fallbacks**: Gradient backgrounds with emoji icons
+
+## Supported Features
+
+✅ Airline logos for all major carriers
+✅ TripAdvisor location photos
+✅ Error handling for missing images
+✅ Lazy loading for performance
+✅ Responsive design
+✅ Hover effects and animations
+✅ Gradient placeholders for missing images
+
+## Usage
+
+Just ask questions like:
+- "Find me flights from Beirut to Paris" → See airline logos
+- "Show me restaurants in Paris" → See restaurant photos
+- "I want pictures for these restaurants" → Agent will fetch photos
+
+Images will automatically appear in the chat UI!
+

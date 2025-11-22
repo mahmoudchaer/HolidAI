@@ -96,6 +96,13 @@ Your role:
 - Use your understanding to determine what search parameters are needed
 - Use the appropriate TripAdvisor tool with parameters you determine from the user's message
 - The tool schemas will show you exactly what parameters are needed
+- ⚠️ IMPORTANT: Photos are OPTIONAL but RECOMMENDED for better user experience
+  * If user explicitly requests photos → ALWAYS fetch photos using get_location_photos tool
+  * If user does NOT mention photos → You can still fetch photos (recommended) OR skip them
+  * Photos enhance the user experience, but locations should be returned even without photos
+  * After searching for locations, you MAY call get_location_photos for each location_id
+  * If you fetch photos, include photo URLs in your final response so the conversational agent can display them
+  * CRITICAL: Even if you don't fetch photos, you MUST still return the location search results
 
 CRITICAL - STRICT DOMAIN RULES:
 - If query mentions "restaurants" → search ONLY for restaurants (category: "restaurants")
@@ -269,12 +276,59 @@ Focus on the location/attraction/restaurant search described above."""
         try:
             tripadvisor_result = await TripAdvisorAgentClient.invoke(tool_name, **args)
             
+            # ===== FETCH PHOTOS FOR LOCATIONS =====
+            # If we got location results and user asked for pictures, fetch photos
+            if not tripadvisor_result.get("error") and "data" in tripadvisor_result:
+                locations = tripadvisor_result.get("data", [])
+                print(f"[TRIPADVISOR] Found {len(locations)} locations in search results")
+                
+                # Check both user_message AND step_context for picture/photo/image keywords
+                needs_photos = any(keyword in (user_message + " " + step_context).lower() 
+                                 for keyword in ["picture", "photo", "image", "pic"])
+                
+                print(f"[TRIPADVISOR] Photos requested: {needs_photos} (user_message contains photo keywords: {needs_photos})")
+                
+                if locations and needs_photos:
+                    # Extract number of photos requested (default to 1)
+                    import re
+                    photo_count = 1
+                    # Look for patterns like "2 photos", "3 pictures", "five images"
+                    count_match = re.search(r'(\d+)\s*(?:photo|picture|image|pic)', user_message + " " + step_context, re.IGNORECASE)
+                    if count_match:
+                        photo_count = int(count_match.group(1))
+                    
+                    print(f"📸 Fetching {photo_count} photos for {len(locations)} locations...")
+                    for location in locations[:10]:  # Limit to first 10 to avoid rate limits
+                        location_id = location.get("location_id")
+                        if location_id:
+                            try:
+                                photos_result = await TripAdvisorAgentClient.invoke("get_location_photos", location_id=int(location_id), limit=photo_count)
+                                if not photos_result.get("error") and photos_result.get("data"):
+                                    # Add all photos to location as a list
+                                    photos = []
+                                    for photo_data in photos_result["data"]:
+                                        photo_url = photo_data.get("images", {}).get("large", {}).get("url")
+                                        if not photo_url:
+                                            photo_url = photo_data.get("images", {}).get("medium", {}).get("url")
+                                        if not photo_url:
+                                            photo_url = photo_data.get("images", {}).get("small", {}).get("url")
+                                        if photo_url:
+                                            photos.append(photo_url)
+                                    
+                                    if photos:
+                                        location["photos"] = photos
+                                        location["photo"] = photos[0]  # Keep first photo for backward compatibility
+                                        print(f"  ✓ Got {len(photos)} photo(s) for {location.get('name')}")
+                            except Exception as e:
+                                print(f"  ⚠️ Failed to get photos for {location.get('name')}: {e}")
+            
             # ===== INTELLIGENT SUMMARIZATION =====
             # Summarize TripAdvisor results before passing to conversational agent
             if not tripadvisor_result.get("error"):
                 # Check if this is a location search with many results
                 if "data" in tripadvisor_result and isinstance(tripadvisor_result["data"], list):
                     num_locations = len(tripadvisor_result["data"])
+                    print(f"[TRIPADVISOR] Final result: {num_locations} locations (before summarization)")
                     if num_locations > 10:
                         try:
                             from utils.result_summarizer import summarize_tripadvisor_results
@@ -287,6 +341,14 @@ Focus on the location/attraction/restaurant search described above."""
                             print(f"✅ TripAdvisor agent: Summarized from {num_locations} to {tripadvisor_result.get('summarized_count', num_locations)} locations")
                         except Exception as e:
                             print(f"⚠️ TripAdvisor summarization failed, using original data: {e}")
+            
+            # CRITICAL: Always store results, even if photos weren't fetched
+            # Log what we're storing
+            if not tripadvisor_result.get("error"):
+                locations_count = len(tripadvisor_result.get("data", []))
+                print(f"[TRIPADVISOR] ✅ Storing {locations_count} locations in tripadvisor_result (photos: {any(loc.get('photos') or loc.get('photo') for loc in tripadvisor_result.get('data', []))})")
+            else:
+                print(f"[TRIPADVISOR] ⚠️ ERROR in tripadvisor_result: {tripadvisor_result.get('error_message')}")
             
             # Store the result directly in state for parallel execution
             updated_state["tripadvisor_result"] = tripadvisor_result

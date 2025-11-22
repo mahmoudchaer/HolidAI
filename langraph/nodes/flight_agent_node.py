@@ -240,31 +240,215 @@ Focus on the flight search task described above."""
             import json
             args = json.loads(tool_call.function.arguments)
             
+            # Debug: Log all args
+            print(f"[FLIGHT AGENT] Tool call args: {json.dumps(args, indent=2)}")
+            
+            # Check if this is a round-trip request
+            trip_type = args.get("trip_type", "").lower() if args.get("trip_type") else ""
+            
+            # Also check user message for round-trip keywords if trip_type is not clear
+            if not trip_type or trip_type not in ["round-trip", "roundtrip", "round trip"]:
+                user_msg_lower = user_message.lower()
+                if any(keyword in user_msg_lower for keyword in ["round-trip", "roundtrip", "round trip", "return flight", "return ticket"]):
+                    if args.get("arrival_date") or args.get("arr_date"):
+                        trip_type = "round-trip"
+                        args["trip_type"] = "round-trip"
+                        print(f"[FLIGHT AGENT] Inferred round-trip from user message and arrival_date")
+            
+            is_round_trip = trip_type in ["round-trip", "roundtrip", "round trip"]
+            print(f"[FLIGHT AGENT] trip_type='{trip_type}', is_round_trip={is_round_trip}")
+            
             # Call the flight tool via MCP
             try:
-                # Convert args to keyword arguments
-                flight_result = await FlightAgentClient.invoke(tool_name, **args)
+                if is_round_trip:
+                    # For round-trip, make TWO independent one-way calls
+                    print(f"[FLIGHT AGENT] Round-trip detected - making 2 independent one-way calls")
+                    
+                    # Extract dates - check both parameter name variations
+                    departure_date = args.get("departure_date", "") or args.get("dep_date", "")
+                    arrival_date = args.get("arrival_date", "") or args.get("arr_date", "")
+                    departure = args.get("departure", "") or args.get("dep", "")
+                    arrival = args.get("arrival", "") or args.get("arr", "")
+                    
+                    print(f"[FLIGHT AGENT] Extracted: dep={departure}, arr={arrival}, dep_date={departure_date}, arr_date={arrival_date}")
+                    
+                    # Make first call: Outbound (departure → arrival)
+                    print(f"[FLIGHT AGENT] Call 1: Outbound {departure} → {arrival} on {departure_date}")
+                    outbound_args = args.copy()
+                    outbound_args["trip_type"] = "one-way"
+                    outbound_args.pop("arrival_date", None)  # Remove arrival_date for one-way
+                    outbound_args.pop("arr_date", None)
+                    outbound_result = await FlightAgentClient.invoke(tool_name, **outbound_args)
+                    
+                    # Make second call: Return (arrival → departure)
+                    # For flexible flights, calculate return date from outbound results + trip duration
+                    if arrival and departure:
+                        # Calculate return date: if we have days_flex or trip duration, use that
+                        # Otherwise use provided arrival_date
+                        return_date = arrival_date
+                        days_flex = args.get("days_flex") or args.get("trip_duration") or args.get("duration")
+                        
+                        # If using flexible tool and we got outbound results, calculate return date from first outbound flight
+                        if tool_name == "agent_get_flights_flexible_tool" and not outbound_result.get("error"):
+                            outbound_flights_temp = outbound_result.get("outbound", []) or outbound_result.get("flights", [])
+                            if outbound_flights_temp and len(outbound_flights_temp) > 0:
+                                # Get the search_date from first flight (flexible tool returns this)
+                                first_flight = outbound_flights_temp[0]
+                                outbound_search_date = first_flight.get("search_date") or first_flight.get("flights", [{}])[0].get("departure_airport", {}).get("time", "")
+                                
+                                if outbound_search_date and days_flex:
+                                    # Parse date and add days
+                                    from datetime import datetime, timedelta
+                                    try:
+                                        if isinstance(outbound_search_date, str):
+                                            # Extract date part (YYYY-MM-DD)
+                                            date_str = outbound_search_date.split()[0] if " " in outbound_search_date else outbound_search_date
+                                            outbound_dt = datetime.strptime(date_str, "%Y-%m-%d")
+                                            return_dt = outbound_dt + timedelta(days=int(days_flex))
+                                            return_date = return_dt.strftime("%Y-%m-%d")
+                                            print(f"[FLIGHT AGENT] Calculated return date: {outbound_search_date} + {days_flex} days = {return_date}")
+                                    except Exception as e:
+                                        print(f"[FLIGHT AGENT] Could not calculate return date from outbound: {e}, using provided arrival_date={arrival_date}")
+                                        return_date = arrival_date
+                        
+                        if return_date:
+                            print(f"[FLIGHT AGENT] Call 2: Return {arrival} → {departure} on {return_date}")
+                            return_args = args.copy()
+                            return_args["trip_type"] = "one-way"
+                            return_args["departure"] = arrival  # Reverse: destination becomes origin
+                            return_args["arrival"] = departure  # Reverse: origin becomes destination
+                            return_args["departure_date"] = return_date  # Use calculated return date
+                            
+                            # Preserve flexible parameters for return flight if using flexible tool
+                            if tool_name == "agent_get_flights_flexible_tool":
+                                # Keep flexible parameters but adjust for return
+                                if "days_flex" in return_args:
+                                    # For return, we want flights around the calculated return date
+                                    return_args["days_flex"] = min(return_args.get("days_flex", 3), 3)  # Limit to 3 days for return
+                                # Keep time preferences if present
+                                # dep_after and dep_before can stay the same
+                            else:
+                                # Remove flexible parameters for non-flexible tool
+                                return_args.pop("days_flex", None)
+                                return_args.pop("trip_duration", None)
+                                return_args.pop("duration", None)
+                                return_args.pop("dep_after", None)
+                                return_args.pop("dep_before", None)
+                            
+                            # Remove all date-related fields that aren't needed
+                            return_args.pop("arrival_date", None)
+                            return_args.pop("arr_date", None)
+                            # Also handle dep/dep_date aliases
+                            if "dep" in return_args:
+                                return_args["dep"] = arrival
+                            if "arr" in return_args:
+                                return_args["arr"] = departure
+                            if "dep_date" in return_args:
+                                return_args["dep_date"] = return_date
+                            print(f"[FLIGHT AGENT] Return call args: {json.dumps(return_args, indent=2)}")
+                            return_result = await FlightAgentClient.invoke(tool_name, **return_args)
+                            print(f"[FLIGHT AGENT] Return call result: error={return_result.get('error')}, flights={len(return_result.get('outbound', []) or return_result.get('flights', []))}")
+                        else:
+                            print(f"[FLIGHT AGENT] ERROR: No return date available - arrival_date={arrival_date}, days_flex={days_flex}")
+                            return_result = {"error": True, "error_message": f"No return date provided. arrival_date={arrival_date}, days_flex={days_flex}"}
+                    else:
+                        print(f"[FLIGHT AGENT] ERROR: Missing data for return flight - arrival={arrival}, departure={departure}")
+                        return_result = {"error": True, "error_message": f"Missing origin/destination for return flight. arrival={arrival}, departure={departure}"}
+                    
+                    # Combine results - handle both flexible and regular tool response formats
+                    if not outbound_result.get("error"):
+                        outbound_flights = outbound_result.get("outbound", []) or outbound_result.get("flights", [])
+                    else:
+                        outbound_flights = []
+                    
+                    if not return_result.get("error"):
+                        return_flights = return_result.get("outbound", []) or return_result.get("flights", [])
+                    else:
+                        return_flights = []
+                    
+                    # Log detailed results
+                    print(f"[FLIGHT AGENT] Outbound result: error={outbound_result.get('error')}, flights={len(outbound_flights)}")
+                    print(f"[FLIGHT AGENT] Return result: error={return_result.get('error')}, error_msg={return_result.get('error_message')}, flights={len(return_flights)}")
+                    
+                    flight_result = {
+                        "error": False,
+                        "outbound": outbound_flights,
+                        "return": return_flights,
+                        "trip_type": "round-trip"
+                    }
+                    
+                    # Mark flights with direction
+                    for flight in flight_result["outbound"]:
+                        flight["type"] = "Outbound flight"
+                        flight["direction"] = "outbound"
+                    for flight in flight_result["return"]:
+                        flight["type"] = "Return flight"
+                        flight["direction"] = "return"
+                    
+                    print(f"[FLIGHT AGENT] Combined results: {len(flight_result['outbound'])} outbound, {len(flight_result['return'])} return")
+                    
+                    # Warn if return flights are missing
+                    if len(flight_result["return"]) == 0 and arrival_date:
+                        print(f"[FLIGHT AGENT] ⚠️ WARNING: No return flights found despite having arrival_date={arrival_date}")
+                        print(f"[FLIGHT AGENT] Return result details: {json.dumps(return_result, indent=2, default=str)}")
+                else:
+                    # Single one-way call
+                    flight_result = await FlightAgentClient.invoke(tool_name, **args)
                 
                 # ===== INTELLIGENT SUMMARIZATION =====
                 # Summarize flight results before passing to conversational agent
                 if not flight_result.get("error"):
-                    flights = flight_result.get("flights", [])
-                    if flights and len(flights) > 0:
-                        try:
-                            from utils.result_summarizer import summarize_flight_results
-                            print(f"🧠 Flight agent: Summarizing {len(flights)} flights for conversational agent...")
-                            summarized = await summarize_flight_results(
-                                flights,
-                                user_message,
-                                step_context
-                            )
-                            flight_result["flights"] = summarized.get("flights", [])
-                            flight_result["original_count"] = len(flights)
-                            flight_result["summarized_count"] = len(summarized.get("flights", []))
-                            flight_result["summary"] = summarized.get("summary", "")
-                            print(f"✅ Flight agent: Summarized from {len(flights)} to {flight_result['summarized_count']} flights")
-                        except Exception as e:
-                            print(f"⚠️ Flight summarization failed, using original data: {e}")
+                    # Handle both old format (flights array) and new format (outbound/return arrays)
+                    if "outbound" in flight_result or "return" in flight_result:
+                        # New format: round-trip with separate outbound/return
+                        outbound_flights = flight_result.get("outbound", [])
+                        return_flights = flight_result.get("return", [])
+                        if outbound_flights or return_flights:
+                            try:
+                                from utils.result_summarizer import summarize_flight_results
+                                if outbound_flights:
+                                    print(f"🧠 Flight agent: Summarizing {len(outbound_flights)} outbound flights...")
+                                    summarized_outbound = await summarize_flight_results(
+                                        outbound_flights,
+                                        user_message,
+                                        step_context
+                                    )
+                                    flight_result["outbound"] = summarized_outbound.get("flights", [])
+                                    flight_result["outbound_original_count"] = len(outbound_flights)
+                                    flight_result["outbound_summarized_count"] = len(summarized_outbound.get("flights", []))
+                                    print(f"✅ Flight agent: Summarized outbound from {len(outbound_flights)} to {flight_result['outbound_summarized_count']} flights")
+                                if return_flights:
+                                    print(f"🧠 Flight agent: Summarizing {len(return_flights)} return flights...")
+                                    summarized_return = await summarize_flight_results(
+                                        return_flights,
+                                        user_message,
+                                        step_context
+                                    )
+                                    flight_result["return"] = summarized_return.get("flights", [])
+                                    flight_result["return_original_count"] = len(return_flights)
+                                    flight_result["return_summarized_count"] = len(summarized_return.get("flights", []))
+                                    print(f"✅ Flight agent: Summarized return from {len(return_flights)} to {flight_result['return_summarized_count']} flights")
+                            except Exception as e:
+                                print(f"⚠️ Flight summarization failed, using original data: {e}")
+                    else:
+                        # Old format: single flights array
+                        flights = flight_result.get("flights", [])
+                        if flights and len(flights) > 0:
+                            try:
+                                from utils.result_summarizer import summarize_flight_results
+                                print(f"🧠 Flight agent: Summarizing {len(flights)} flights for conversational agent...")
+                                summarized = await summarize_flight_results(
+                                    flights,
+                                    user_message,
+                                    step_context
+                                )
+                                flight_result["flights"] = summarized.get("flights", [])
+                                flight_result["original_count"] = len(flights)
+                                flight_result["summarized_count"] = len(summarized.get("flights", []))
+                                flight_result["summary"] = summarized.get("summary", "")
+                                print(f"✅ Flight agent: Summarized from {len(flights)} to {flight_result['summarized_count']} flights")
+                            except Exception as e:
+                                print(f"⚠️ Flight summarization failed, using original data: {e}")
                 
                 # Store result directly in state for parallel execution
                 updated_state["flight_result"] = flight_result

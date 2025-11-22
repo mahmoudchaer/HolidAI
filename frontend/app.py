@@ -5,8 +5,9 @@ import sys
 import os
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_from_directory
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 import secrets
 from sqlalchemy import create_engine, Column, String, DateTime, func, JSON
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
@@ -15,6 +16,8 @@ from dotenv import load_dotenv
 import bcrypt
 import json
 import uuid
+import io
+import contextlib
 
 # Add langraph and project root to path
 project_root = Path(__file__).parent.parent
@@ -102,9 +105,10 @@ def preload_embedding_model():
 # Pre-load model at startup
 preload_embedding_model()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='dist', static_url_path='')
 app.secret_key = secrets.token_hex(16)  # Generate a secret key for sessions
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 def run_async(coro):
@@ -152,28 +156,33 @@ def require_login(f):
 
 
 @app.route("/")
-@require_login
 def index():
-    """Serve the main UI page (requires login)."""
-    return render_template("index.html", user_email=session.get('user_email'))
+    """Serve the React app."""
+    return send_from_directory(app.static_folder, 'index.html')
 
 
-@app.route("/signup")
-def signup_page():
-    """Serve the signup page."""
-    # If already logged in, redirect to main page
-    if 'user_email' in session:
-        return redirect(url_for('index'))
-    return render_template("signup.html")
+@app.route("/<path:path>")
+def serve_static(path):
+    """Serve static files or React app for client-side routing."""
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
 
 
-@app.route("/login")
-def login_page():
-    """Serve the login page."""
-    # If already logged in, redirect to main page
-    if 'user_email' in session:
-        return redirect(url_for('index'))
-    return render_template("login.html")
+@app.route("/api/user", methods=["GET"])
+def get_current_user():
+    """Get current user info."""
+    user_email = session.get('user_email')
+    if not user_email:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    return jsonify({
+        "success": True,
+        "user": {
+            "email": user_email
+        }
+    })
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -708,6 +717,9 @@ def chat():
         if not user_email:
             return jsonify({"error": "User not authenticated"}), 401
         
+        # Emit start of processing
+        emit_agent_activity("search", "Processing your request...", "Analyzing your query")
+        
         # If no session_id provided, create a new conversation
         db = SessionLocal()
         try:
@@ -777,14 +789,26 @@ def chat():
         # Memory operations are now handled by the memory_agent in LangGraph
         # Just pass user_email - the memory node will handle retrieval and storage
         print(f"[FLASK] Running LangGraph with user_email: {user_email}, session_id: {session_id}")
-        result = run_async(run(
-            user_message=user_message,
-            user_email=user_email,
-            session_id=session_id
-        ))
+        
+        # Capture stdout to emit agent activities
+        log_capture = LogCapture()
+        old_stdout = sys.stdout
+        sys.stdout = log_capture
+        
+        try:
+            result = run_async(run(
+                user_message=user_message,
+                user_email=user_email,
+                session_id=session_id
+            ))
+        finally:
+            sys.stdout = old_stdout
         
         response = result.get("last_response", "No response generated")
         agents_called = result.get("agents_called", [])
+        
+        # Emit completion
+        emit_agent_activity("success", "Response ready!", "All agents completed")
         
         # Save agent response to conversation
         db = SessionLocal()
@@ -819,6 +843,8 @@ def chat():
         finally:
             db.close()
         
+        emit_agent_activity("success", "Response ready!", "Processing complete")
+        
         return jsonify({
             "response": response,
             "agents_called": agents_called,
@@ -829,12 +855,133 @@ def chat():
         import traceback
         error_msg = str(e)
         traceback.print_exc()
+        emit_agent_activity("error", "An error occurred", str(e)[:100])
         # Make sure we always return JSON, not HTML
         return jsonify({"error": error_msg, "details": "An error occurred processing your request"}), 500
+
+
+@socketio.on('connect')
+def handle_connect():
+    """Handle WebSocket connection."""
+    print(f"[WEBSOCKET] Client connected")
+    
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnection."""
+    print(f"[WEBSOCKET] Client disconnected")
+
+
+def emit_agent_activity(activity_type, message, details=None):
+    """Emit agent activity to connected clients."""
+    try:
+        # Only emit if we're in a request context and during chat endpoint
+        from flask import has_request_context, request
+        if has_request_context() and request and hasattr(request, 'endpoint'):
+            # Only emit during /api/chat requests to avoid WSGI conflicts
+            if request.endpoint == 'chat':
+                socketio.emit('agent_activity', {
+                    'type': activity_type,
+                    'message': message,
+                    'details': details
+                }, namespace='/')
+    except Exception:
+        # Silently fail to avoid WSGI errors
+        pass
+
+
+class LogCapture:
+    """Capture print statements and convert them to WebSocket emissions."""
+    
+    def __init__(self):
+        self.logs = []
+        
+    def write(self, text):
+        if text.strip():
+            self.logs.append(text)
+            # Parse and emit agent activities (only if in request context and not during error handling)
+            try:
+                from flask import has_request_context, request
+                if has_request_context() and request and hasattr(request, 'endpoint'):
+                    # Only emit during /api/chat requests, not during other endpoints
+                    if request.endpoint == 'chat':
+                        self._parse_and_emit(text)
+            except:
+                pass  # Silently fail to avoid WSGI errors
+        sys.__stdout__.write(text)
+    
+    def flush(self):
+        sys.__stdout__.flush()
+    
+    def _parse_and_emit(self, text):
+        """Parse log text and emit relevant activities."""
+        text = text.strip()
+        
+        # Memory agent
+        if "MEMORY AGENT STARTED" in text:
+            emit_agent_activity("analyzing", "Checking your memory...", "Retrieving relevant context")
+        elif "memories retrieved" in text.lower():
+            count = self._extract_number(text, "memories retrieved")
+            if count:
+                emit_agent_activity("analyzing", f"Found {count} relevant memories", "Using your past preferences")
+        
+        # Flight agent
+        elif "FLIGHT AGENT STARTED" in text:
+            emit_agent_activity("flight", "Searching for flights...", "Checking available airlines")
+        elif "FLIGHT AGENT COMPLETED" in text:
+            duration = self._extract_duration(text)
+            emit_agent_activity("flight", "Flight search completed", f"Found options in {duration}")
+        
+        # Hotel agent
+        elif "HOTEL AGENT STARTED" in text:
+            emit_agent_activity("hotel", "Searching for hotels...", "Finding accommodations")
+        elif "HOTEL AGENT COMPLETED" in text:
+            emit_agent_activity("hotel", "Hotel search completed", "Found accommodation options")
+        
+        # Visa agent
+        elif "VISA AGENT STARTED" in text:
+            emit_agent_activity("visa", "Checking visa requirements...", "Getting documentation info")
+        elif "VISA AGENT COMPLETED" in text:
+            emit_agent_activity("visa", "Visa information retrieved", "Requirements ready")
+        
+        # TripAdvisor agent
+        elif "TRIPADVISOR AGENT STARTED" in text:
+            emit_agent_activity("attractions", "Finding attractions...", "Searching local recommendations")
+        elif "TRIPADVISOR AGENT COMPLETED" in text:
+            emit_agent_activity("attractions", "Attractions found", "Got recommendations")
+        
+        # Main agent
+        elif "Main Agent: Created Execution Plan" in text:
+            emit_agent_activity("analyzing", "Creating execution plan...", "Planning which agents to use")
+        
+        # Plan executor
+        elif "Plan Executor: Executing step" in text and "/1" in text:
+            emit_agent_activity("search", "Starting agent execution...", "Processing your request")
+    
+    def _extract_number(self, text, keyword):
+        """Extract number before keyword."""
+        try:
+            idx = text.lower().find(keyword.lower())
+            if idx > 0:
+                # Look backwards for number
+                for i in range(idx-1, max(0, idx-20), -1):
+                    if text[i:idx].strip().split()[-1].isdigit():
+                        return text[i:idx].strip().split()[-1]
+        except:
+            pass
+        return None
+    
+    def _extract_duration(self, text):
+        """Extract duration from text like '(3.95s)' or '(Duration: 3.872s)'."""
+        import re
+        match = re.search(r'\((?:Duration: )?(\d+\.\d+)s\)', text)
+        if match:
+            return f"{match.group(1)}s"
+        return "a moment"
 
 
 if __name__ == "__main__":
     # Disable reloader to prevent issues with ML model loading
     # The model is pre-loaded at startup, so reloader isn't needed
-    app.run(debug=True, port=5000, use_reloader=False)
+    socketio.run(app, debug=True, port=5000, use_reloader=False, allow_unsafe_werkzeug=True)
 

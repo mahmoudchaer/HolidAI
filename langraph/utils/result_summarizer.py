@@ -57,11 +57,12 @@ def remove_flight_redundant_fields(flights: list) -> list:
                 "arrival_airport": segment.get("arrival_airport", {}),
                 "duration": segment.get("duration"),
                 "airline": segment.get("airline"),
+                "airline_logo": segment.get("airline_logo"),  # Keep airline logo for UI
                 "airplane": segment.get("airplane"),
                 "travel_class": segment.get("travel_class"),
                 "flight_number": segment.get("flight_number"),
                 "legroom": segment.get("legroom"),
-                # Skip: airline_logo, extensions (too verbose)
+                # Skip: extensions (too verbose)
             }
             cleaned_flight["flights"].append(cleaned_segment)
         

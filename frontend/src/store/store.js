@@ -1,0 +1,77 @@
+import { create } from 'zustand'
+
+export const useAuthStore = create((set) => ({
+  user: null,
+  isAuthenticated: false,
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
+  logout: () => set({ user: null, isAuthenticated: false }),
+}))
+
+export const useChatStore = create((set, get) => ({
+  conversations: [],
+  currentConversation: null,
+  messages: [],
+  isLoading: false,
+  
+  setConversations: (conversations) => set({ conversations }),
+  setCurrentConversation: (conversation) => {
+    // Only update messages if the conversation object has messages
+    // Otherwise, keep the existing messages in state
+    if (conversation?.messages !== undefined) {
+      set({ 
+        currentConversation: conversation,
+        messages: conversation.messages
+      })
+    } else {
+      set({ currentConversation: conversation })
+    }
+  },
+  addMessage: (message) => set((state) => ({
+    messages: [...state.messages, message]
+  })),
+  setMessages: (messages) => set({ messages }),
+  setLoading: (isLoading) => set({ isLoading }),
+  
+  clearMessages: () => set({ messages: [] }),
+}))
+
+export const useActivityStore = create((set) => ({
+  // Current agent status for the indicator
+  currentStatus: null,
+  isAgentActive: false,
+  
+  // Set the current agent status
+  setCurrentStatus: (status) => set({ 
+    currentStatus: status,
+    isAgentActive: true
+  }),
+  
+  // Clear the current status (when agent completes)
+  clearCurrentStatus: () => set({ 
+    currentStatus: null,
+    isAgentActive: false
+  }),
+  
+  // Legacy support (deprecated but kept for backwards compatibility)
+  activities: [],
+  addActivity: (activity) => set((state) => ({
+    activities: [...state.activities, { 
+      ...activity, 
+      id: Date.now(),
+      timestamp: new Date().toISOString()
+    }]
+  })),
+  clearActivities: () => set({ activities: [] }),
+}))
+
+export const useSidebarStore = create((set) => ({
+  leftSidebarOpen: true,
+  toggleLeftSidebar: () => set((state) => ({ 
+    leftSidebarOpen: !state.leftSidebarOpen 
+  })),
+  
+  // Deprecated: Right sidebar removed in favor of AgentStatusIndicator
+  rightSidebarOpen: false,
+  toggleRightSidebar: () => {}, // No-op for backwards compatibility
+}))
+

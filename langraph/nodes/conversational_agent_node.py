@@ -106,7 +106,19 @@ IMPORTANT:
 - If visa_result, flight_result, hotel_result, or tripadvisor_result are present, they contain real information you need to share
 - Do NOT say you don't have information if it's provided in the collected_info section - ALWAYS check the collected_info JSON before saying information is unavailable
 
-- For flight_result: If it has an "outbound" array with items, those are real flight options you found - present them to the user with details like airline, departure/arrival times, prices, etc. Only report an error if the result has "error": true AND no outbound flights data.
+- For flight_result: If it has an "outbound" array with items, those are outbound flight options. If it has a "return" array, those are return flight options.
+  ⚠️ IMPORTANT FOR ROUND-TRIP FLIGHTS: 
+    * For round-trip flights, the system makes TWO separate one-way calls
+    * "outbound" array contains flights from origin to destination (e.g., Beirut → Paris)
+    * "return" array contains flights from destination back to origin (e.g., Paris → Beirut)
+    * Each array is independent - they are NOT combined packages
+    * The frontend will display them in separate sections: "Outbound Flights" and "Return Flights"
+    * DO NOT combine them or say "round-trip package" - they are separate one-way flights
+  ⚠️ IMPORTANT FOR AIRLINE LOGOS: Each flight segment may have an "airline_logo" field with an image URL
+    * If a segment has "airline_logo", include it in markdown format BEFORE the airline name
+    * Format like: "![Airline](logo_url) **Airline Name** Flight XX"
+    * This will display the airline logo in the chat
+  Only report an error if the result has "error": true AND no outbound flights data.
 
 - For visa_result: If it has a "result" field with content, that contains the visa requirement information - present it to the user. Preserve any markdown formatting (like **bold** markers) that may be present. Only report an error if the result has "error": true AND no result data.
 
@@ -117,7 +129,21 @@ IMPORTANT:
     * NEVER hallucinate or invent prices - only show prices if they exist in the data
   Only report an error if the result has "error": true AND no hotels data.
 
-- For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants you found - present them to the user. Only report an error if the result has "error": true AND no data.
+- For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants you found.
+  ⚠️ CRITICAL - READ CAREFULLY: 
+    * Your response MUST be VERY SHORT - just 1 sentence maximum
+    * Example: "Here are some great restaurants in Paris!" or "I found some excellent restaurants in Paris for you!"
+    * DO NOT write ANY text about individual restaurants
+    * DO NOT list restaurant names, addresses, or descriptions
+    * DO NOT mention photos at all (even if photos are present in the data)
+    * DO NOT write anything else - just the simple greeting sentence
+    * The frontend will automatically display beautiful cards with ALL information (name, rating, address, photos if available)
+    * The [LOCATION_DATA] tag will be added automatically - you don't need to do anything
+    * If you write too much, the frontend won't display the cards properly
+    * IMPORTANT: Always return a greeting sentence even if photos are not present - locations should still be displayed
+    * Example GOOD response: "Here are some excellent restaurants in Paris!"
+    * Example BAD response: "I found 10 restaurants. Restaurant 1 is located at... Photo 1, Photo 2..."
+  Only report an error if the result has "error": true AND no data.
 
 - For utilities_result: This contains utility information (weather, currency conversion, date/time, eSIM bundles, or holidays). Present the information naturally based on what tool was used:
   * MULTIPLE RESULTS: If utilities_result has "multiple_results": true, it contains a "results" array where each item has "tool", "args", and "result". Process each result and present all information together naturally.
@@ -351,61 +377,158 @@ Please revise your response based on this feedback to fix the issues mentioned."
         
         return result
     
-    # Call LLM to generate response
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=messages,
-            temperature=0.7
-        )
-        
-        message = response.choices[0].message
-        raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
-        
-        # Clean the response to remove any JSON/Collected_info references
-        final_response = clean_response(raw_response)
+    # Initialize final_response to avoid UnboundLocalError
+    final_response = ""
     
-    except Exception as e:
+    # CRITICAL: For TripAdvisor results ONLY, skip LLM and generate greeting directly
+    tripadvisor_result = collected_info.get("tripadvisor_result")
+    if tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error"):
+        locations = tripadvisor_result.get("data", [])
+        if locations and len(locations) > 0:
+            # Skip LLM entirely - just generate a simple greeting
+            import re
+            city_name = "this location"
+            city_match = re.search(r'\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', user_message)
+            if city_match:
+                city_name = city_match.group(1)
+            
+            location_type = "recommendations"
+            user_msg_lower = user_message.lower()
+            if "restaurant" in user_msg_lower:
+                location_type = "restaurants"
+            elif "museum" in user_msg_lower:
+                location_type = "museums"
+            elif "attraction" in user_msg_lower:
+                location_type = "attractions"
+            
+            if location_type == "recommendations":
+                final_response = f"Here are some great recommendations in {city_name}!"
+            else:
+                final_response = f"Here are some great {location_type} in {city_name}!"
+            
+            print(f"[CONVERSATIONAL] ✅ SKIPPED LLM for TripAdvisor - generated greeting: '{final_response}'")
+        else:
+            # No locations, proceed with normal LLM call
+            tripadvisor_result = None
+    
+    # Call LLM to generate response (skip if we already generated TripAdvisor greeting)
+    if not (tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error") and tripadvisor_result.get("data")):
         import traceback
-        error_msg = str(e)
-        error_trace = traceback.format_exc()
-        # Log the error for debugging
-        print(f"Error in conversational_agent_node: {error_msg}")
-        print(f"Traceback: {error_trace}")
-        
-        # Handle context length errors specifically
-        if "context_length" in error_msg.lower() or "maximum context length" in error_msg.lower():
-            # Try with simplified messages - just pass a summary
-            simplified_messages = [
-                {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories)},
-                {
-                    "role": "user",
-                    "content": f"""User's original message: {user_message}
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=messages,
+                temperature=0.7
+            )
+            
+            message = response.choices[0].message
+            raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+            
+            # Clean the response to remove any JSON/Collected_info references
+            final_response = clean_response(raw_response)
+        except Exception as e:
+            error_msg = str(e)
+            error_trace = traceback.format_exc()
+            # Log the error for debugging
+            print(f"Error in conversational_agent_node: {error_msg}")
+            print(f"Traceback: {error_trace}")
+            
+            # Handle context length errors specifically
+            if "context_length" in error_msg.lower() or "maximum context length" in error_msg.lower():
+                # Try with simplified messages - just pass a summary
+                simplified_messages = [
+                    {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories)},
+                    {
+                        "role": "user",
+                        "content": f"""User's original message: {user_message}
 
 The system has collected information from specialized agents. Please provide a helpful, natural response based on the available information."""
-                }
-            ]
-            
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4.1-mini",
-                    messages=simplified_messages,
-                    temperature=0.7
-                )
-                message = response.choices[0].message
-                raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
-                final_response = clean_response(raw_response)
-            except Exception:
-                final_response = "I have the information you requested, but there was a technical issue formatting the response. Please try rephrasing your query or ask for specific details."
-        else:
-            # Other errors
-            final_response = f"I encountered an error while generating the response: {error_msg}. Please try again."
+                    }
+                ]
+                
+                try:
+                    response = client.chat.completions.create(
+                        model="gpt-4.1-mini",
+                        messages=simplified_messages,
+                        temperature=0.7
+                    )
+                    message = response.choices[0].message
+                    raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+                    final_response = clean_response(raw_response)
+                except Exception as inner_e:
+                    print(f"Error in simplified message retry: {str(inner_e)}")
+                    final_response = "I have the information you requested, but there was a technical issue formatting the response. Please try rephrasing your query or ask for specific details."
+            else:
+                # Other errors
+                final_response = f"I encountered an error while generating the response: {error_msg}. Please try again."
     
     # Prepend filtered message if any non-travel parts were filtered
     if rfi_filtered_message and final_response:
         # Only add if the filtered message isn't already in the response
         if rfi_filtered_message not in final_response:
             final_response = f"{rfi_filtered_message}\n\n{final_response}"
+    
+    # Add structured data markers for frontend rendering
+    # This allows the frontend to display rich UI components for flights and locations
+    if collected_info.get("tripadvisor_result"):
+        tripadvisor_result = collected_info["tripadvisor_result"]
+        print(f"[CONVERSATIONAL] DEBUG: tripadvisor_result exists: {tripadvisor_result is not None}")
+        print(f"[CONVERSATIONAL] DEBUG: tripadvisor_result type: {type(tripadvisor_result)}")
+        
+        if isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error"):
+            locations = tripadvisor_result.get("data", [])
+            print(f"[CONVERSATIONAL] DEBUG: locations count: {len(locations) if locations else 0}, type: {type(locations)}")
+            
+            if locations and len(locations) > 0:
+                import json
+                print(f"[CONVERSATIONAL] ✅ Adding {len(locations)} locations to [LOCATION_DATA] tag")
+                print(f"[CONVERSATIONAL] DEBUG: First location keys: {list(locations[0].keys()) if locations else 'N/A'}")
+                
+                # ALWAYS add the location data tag AFTER the greeting - this is CRITICAL for frontend display
+                location_json = json.dumps(locations, ensure_ascii=False)
+                final_response += f"\n\n[LOCATION_DATA]{location_json}[/LOCATION_DATA]"
+                print(f"[CONVERSATIONAL] ✅ Successfully added [LOCATION_DATA] tag with {len(locations)} locations")
+                print(f"[CONVERSATIONAL] DEBUG: Tag length: {len(location_json)} chars, final_response length: {len(final_response)} chars")
+            else:
+                print(f"[CONVERSATIONAL] ⚠️ WARNING: tripadvisor_result has no locations data (data={locations}, type={type(locations)})")
+                print(f"[CONVERSATIONAL] Full tripadvisor_result: {json.dumps(tripadvisor_result, indent=2, default=str)}")
+        else:
+            print(f"[CONVERSATIONAL] ⚠️ WARNING: tripadvisor_result is invalid or has error: {tripadvisor_result.get('error') if isinstance(tripadvisor_result, dict) else 'not a dict'}")
+    else:
+        print(f"[CONVERSATIONAL] DEBUG: No tripadvisor_result in collected_info. Keys: {list(collected_info.keys())}")
+    
+    if collected_info.get("flight_result"):
+        flight_result = collected_info["flight_result"]
+        if isinstance(flight_result, dict) and not flight_result.get("error"):
+            import json
+            # Flight agent now makes 2 separate calls for round-trip, so we just use what we have
+            outbound_flights = flight_result.get("outbound", [])
+            return_flights = flight_result.get("return", [])
+            
+            print(f"[CONVERSATIONAL] Flight results: {len(outbound_flights)} outbound, {len(return_flights)} return")
+            
+            # Combine both outbound and return flights for display
+            all_flights = []
+            if outbound_flights:
+                # Ensure outbound flights are marked
+                for flight in outbound_flights:
+                    if not flight.get("direction"):
+                        flight["direction"] = "outbound"
+                    if not flight.get("type"):
+                        flight["type"] = "Outbound flight"
+                all_flights.extend(outbound_flights)
+            if return_flights:
+                # Ensure return flights are marked
+                for flight in return_flights:
+                    if not flight.get("direction"):
+                        flight["direction"] = "return"
+                    if not flight.get("type"):
+                        flight["type"] = "Return flight"
+                all_flights.extend(return_flights)
+            
+            if all_flights:
+                # Append structured flight data at the end
+                final_response += f"\n\n[FLIGHT_DATA]{json.dumps(all_flights, ensure_ascii=False)}[/FLIGHT_DATA]"
     
     updated_state = state.copy()
     updated_state["last_response"] = final_response

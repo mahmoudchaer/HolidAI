@@ -1,6 +1,8 @@
 # Flask web framework
 flask>=3.0.0
 flask-cors>=4.0.0
+flask-socketio>=5.3.6
+python-socketio>=5.11.1
 
 # Database
 psycopg2-binary>=2.9.9

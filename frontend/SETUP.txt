@@ -1,0 +1,139 @@
+# HolidAI Frontend Setup
+
+## Prerequisites
+
+- Node.js 18+ and npm
+- Python 3.10+
+
+## Installation
+
+### 1. Install Node.js Dependencies
+
+```bash
+cd frontend
+npm install
+```
+
+### 2. Install Python Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+## Development
+
+### Run Development Server
+
+```bash
+# Terminal 1: Start Vite dev server (React)
+npm run dev
+
+# Terminal 2: Start Flask backend
+python app.py
+```
+
+The React dev server runs on `http://localhost:3000` and proxies API requests to Flask on `http://localhost:5000`.
+
+## Production Build
+
+### Build the React App
+
+```bash
+npm run build
+```
+
+This creates a production build in the `dist/` folder.
+
+### Run Production Server
+
+```bash
+python app.py
+```
+
+Flask will serve the built React app from the `dist/` folder.
+
+## Tech Stack
+
+- **React 18** - UI framework
+- **Vite** - Build tool and dev server
+- **TailwindCSS** - Styling
+- **Framer Motion** - Animations
+- **Zustand** - State management
+- **React Router** - Routing
+- **Socket.IO** - WebSocket for real-time updates
+- **Flask** - Backend API server
+- **Flask-SocketIO** - WebSocket support
+
+## Project Structure
+
+```
+frontend/
+├── src/
+│   ├── components/       # Reusable UI components
+│   │   ├── BackgroundSlideshow.jsx
+│   │   ├── ChatSidebar.jsx
+│   │   ├── ActivitySidebar.jsx
+│   │   ├── ChatMessage.jsx
+│   │   ├── ChatInput.jsx
+│   │   ├── Navbar.jsx
+│   │   └── ProfileForm.jsx
+│   ├── pages/           # Page components
+│   │   ├── Login.jsx
+│   │   ├── Signup.jsx
+│   │   ├── Chat.jsx
+│   │   ├── About.jsx
+│   │   └── Profile.jsx
+│   ├── store/           # Zustand state management
+│   │   └── store.js
+│   ├── hooks/           # Custom React hooks
+│   │   └── useWebSocket.js
+│   ├── App.jsx          # Main app component with routing
+│   ├── main.jsx         # React entry point
+│   └── index.css        # Global styles
+├── dist/                # Production build (generated)
+├── app.py               # Flask backend server
+├── package.json         # Node dependencies
+├── vite.config.js       # Vite configuration
+├── tailwind.config.js   # TailwindCSS configuration
+└── postcss.config.js    # PostCSS configuration
+```
+
+## Features
+
+### Authentication
+- Login and Signup pages with animated background slideshow
+- Session-based authentication
+- Protected routes
+
+### Chat Interface
+- Three-column layout (conversations, chat, activity)
+- Real-time message updates
+- Markdown support in messages
+- Conversation management (create, select, delete, rename)
+
+### Real-Time Activity
+- WebSocket-based agent activity updates
+- Live status of multi-agent system operations
+
+### Static Pages
+- About/Mission page with feature cards
+- User Profile page with preferences
+
+## API Endpoints
+
+- `POST /api/login` - User login
+- `POST /api/signup` - User registration
+- `POST /api/logout` - User logout
+- `GET /api/conversations` - List all conversations
+- `POST /api/conversations` - Create new conversation
+- `GET /api/conversations/:id` - Get conversation details
+- `PUT /api/conversations/:id` - Update conversation
+- `DELETE /api/conversations/:id` - Delete conversation
+- `POST /api/chat` - Send chat message
+
+## WebSocket Events
+
+- `connect` - Client connected
+- `disconnect` - Client disconnected
+- `agent_activity` - Agent activity updates
+
