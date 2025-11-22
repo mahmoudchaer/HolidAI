@@ -296,13 +296,18 @@ IMPORTANT:
     * This will display the airline logo in the chat
   Only report an error if the result has "error": true AND no outbound flights data.
 
-- For visa_result: **CRITICAL**: Check the "result" field FIRST - if it has content (even if "error": true), that contains the visa requirement information. You MUST provide a helpful summary that includes the IMPORTANT details:
-  * **Always include**: Whether a visa is required or not (this is the most important)
-  * **Include key details**: Passport validity requirements, required documents, processing time, visa type (tourist/business/etc.), maximum stay duration, visa on arrival availability
-  * **Include important conditions**: Any special requirements, restrictions, or important notes that travelers should know
-  * **Summarize appropriately**: If the result contains very long or verbose information, summarize the key points in a clear, concise way. Don't just say "yes you need a visa" - provide enough context to be helpful (e.g., "You'll need a visa for France. Make sure your passport is valid for at least 3 months beyond your stay, and you'll need to apply in advance at the French consulate.")
-  * **Skip less relevant info**: You can skip promotional content (like eSIM ads) or very technical details that aren't directly relevant to the traveler's question
-  Preserve important markdown formatting (like **bold** for emphasis) but feel free to reformat for clarity. Only report an error if the result has "error": true AND the "result" field is empty or missing.
+- For visa_result: **CRITICAL**: Check the "result" field FIRST - if it has content (even if "error": true), that contains the visa requirement information. You MUST present ALL available visa information in detail:
+  * **Present all sections**: Include all sections from the result field:
+    - Travel Summary (whether visa is required or not)
+    - Visa Requirements section (all details about visa types, application process, requirements)
+    - Passport Requirements section (validity, expiration rules, etc.)
+    - Other Conditions/Documents section (any additional requirements, documents needed, special conditions)
+    - Any additional important details or notes
+  * **Show complete information**: Don't just summarize - present the full details from each section. If the result says "A visa is required" and provides details about the visa application process, passport validity, required documents, etc., include ALL of that information.
+  * **Preserve structure**: Keep the logical structure and organization of the information (use section headers, bullet points, etc. as appropriate)
+  * **Preserve markdown formatting**: Keep important markdown formatting (like **bold** markers, emojis, section headers) that may be present in the original result
+  * **Skip only promotional content**: You can skip promotional content (like eSIM ads) that appears in the result, but include ALL actual visa-related information
+  Only report an error if the result has "error": true AND the "result" field is empty or missing.
 
 - For hotel_result: If it has a "hotels" array with items, those are real hotels you found - present them to the user. 
   ⚠️ CRITICAL: Hotels may or may not have price information depending on the search type:
@@ -338,7 +343,13 @@ IMPORTANT:
   * For weather: Show temperature, conditions, etc. If multiple weather results, show each location separately.
   * For currency: Show the conversion result.
   * For date/time: Show the current date and time.
-  * For eSIM bundles: When you find bundles (either in utilities_result["bundles"] OR in utilities_result.results[].result.bundles), present each bundle with provider name, plan details, validity, price, and MOST IMPORTANTLY - include the purchase link as a clickable markdown link. Format like: "[Provider Name - Plan]($link)" or "Provider: [Purchase here]($link)". ALWAYS include the links from the "link" field in each bundle.
+  * For eSIM bundles: When you find bundles (either in utilities_result["bundles"] OR in utilities_result.results[].result.bundles), you MUST present ALL available bundles, not just a summary. For each bundle, include:
+    - Provider name
+    - Plan name/details (e.g., "Europe 100GB – 10 Days")
+    - Validity period
+    - Price
+    - Purchase link as a clickable markdown link: Format like "[Provider Name - Plan Name]($link)" or "Plan Name for $price - [Purchase here]($link)"
+    Present them in a clear list format, showing all bundles that are available. DO NOT summarize or say "there are multiple plans available" - actually list them all. If there are many bundles (20+), you can group them by provider or data size, but still show all of them.
     If eSIM data is unavailable (error with "recommended_providers"), present the recommended provider links as clickable options: "Try these eSIM providers: [Airalo](url), [Holafly](url), etc."
   * For holidays: When you find holidays (either in utilities_result["holidays"] OR in utilities_result.results[].result.holidays), present each holiday with its name, date, type (e.g., "National holiday", "Observance"), and description. Format dates in a readable way (e.g., "January 1, 2024" instead of "2024-01-01"). Group holidays by month if there are many.
     ⚠️ CRITICAL: If the user asked to avoid holidays AND you're showing flights/hotels, you MUST explain which dates were holidays and why the selected dates avoid them. Example: "I found that January 1st is New Year's Day (national holiday) in France, so I selected dates from January 8-14 which avoid all holidays."
