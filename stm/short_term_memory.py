@@ -175,37 +175,30 @@ def add_message(session_id: str, user_email: str, role: str, text: str) -> bool:
         }
         stm_data["last_messages"].append(new_message)
         
-        # Filter and keep only last 10 user messages and last 10 agent messages
-        user_messages = [msg for msg in stm_data["last_messages"] if msg["role"] == "user"]
-        agent_messages = [msg for msg in stm_data["last_messages"] if msg["role"] == "agent"]
-        
-        # Keep only last 10 of each
-        user_messages = user_messages[-10:]
-        agent_messages = agent_messages[-10:]
-        
-        # Reconstruct last_messages maintaining chronological order
-        # We need to merge them back in order, but only keeping the last 10 of each type
-        all_messages = stm_data["last_messages"]
-        # Get indices of last 10 user and agent messages
-        user_indices = [i for i, msg in enumerate(all_messages) if msg["role"] == "user"][-10:]
-        agent_indices = [i for i, msg in enumerate(all_messages) if msg["role"] == "agent"][-10:]
-        
-        # Keep messages that are in either list, maintaining order
-        kept_indices = set(user_indices + agent_indices)
-        stm_data["last_messages"] = [
-            msg for i, msg in enumerate(all_messages) if i in kept_indices
-        ]
-        
-        # Sort by timestamp to maintain chronological order
+        # Sort all messages by timestamp to maintain chronological order
         stm_data["last_messages"].sort(key=lambda x: x["timestamp"])
         
-        # Generate summary if we have 20 or more messages total
         total_messages = len(stm_data["last_messages"])
-        if total_messages >= 20:
-            print(f"[STM] Generating summary for {total_messages} messages")
-            stm_data["summary"] = _generate_summary(stm_data["last_messages"])
+        
+        # Keep last 10 messages total (not 10 of each type)
+        # Always keep the most recent 10 messages
+        if total_messages > 10:
+            # Get messages to summarize (all except the last 10)
+            messages_to_summarize = stm_data["last_messages"][:-10]
+            # Keep only the last 10 messages
+            stm_data["last_messages"] = stm_data["last_messages"][-10:]
+            
+            # Generate summary from all messages that are beyond the last 10
+            # This summary represents the conversation history before the last 10 messages
+            if messages_to_summarize:
+                print(f"[STM] Generating summary for {len(messages_to_summarize)} older messages (keeping last 10 messages as-is)")
+                # Generate summary from all old messages
+                stm_data["summary"] = _generate_summary(messages_to_summarize)
         else:
-            print(f"[STM] Not generating summary yet ({total_messages} messages, need 20)")
+            # Less than or equal to 10 messages, no summary needed yet
+            print(f"[STM] Not generating summary yet ({total_messages} messages, need >10)")
+            # Clear summary if we're at or under 10 messages (all messages are in last_messages)
+            stm_data["summary"] = ""
         
         # Update timestamp
         stm_data["updated_at"] = datetime.utcnow().isoformat()

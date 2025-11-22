@@ -14,6 +14,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from state import AgentState
 from clients.memory_agent_client import MemoryAgentClient
 
+# Import STM functions for short-term memory retrieval
+try:
+    from stm.short_term_memory import get_stm
+except ImportError:
+    print("[WARNING] Could not import STM module, short-term memory will not be retrieved")
+    get_stm = None
+
 # Load environment variables from .env file in main directory
 project_root = Path(__file__).parent.parent.parent
 env_path = project_root / ".env"
@@ -213,7 +220,8 @@ Remember: You MUST call the tools to complete these tasks."""
             except Exception as e:
                 print(f"[WARNING] Error storing/updating/deleting memory: {e}")
         
-        # Step 3: Always retrieve relevant memories
+        # Step 3: Always retrieve relevant long-term memories from Qdrant
+        long_term_memories = []
         try:
             result = await MemoryAgentClient.invoke(
                 "agent_get_relevant_memories_tool",
@@ -221,14 +229,55 @@ Remember: You MUST call the tools to complete these tasks."""
                 query=user_message,
                 top_k=5
             )
-            relevant_memories = result.get("memories", [])
-            print(f"[MEMORY] Retrieved {len(relevant_memories)} relevant memories")
-            if relevant_memories:
-                for i, mem in enumerate(relevant_memories, 1):
-                    print(f"  {i}. {mem[:80]}...")
+            long_term_memories = result.get("memories", [])
+            print(f"[MEMORY] Retrieved {len(long_term_memories)} relevant long-term memories from Qdrant")
+            if long_term_memories:
+                for i, mem in enumerate(long_term_memories, 1):
+                    print(f"  LTM {i}. {mem[:80]}...")
         except Exception as e:
-            print(f"[WARNING] Could not retrieve memories: {e}")
-            relevant_memories = []
+            print(f"[WARNING] Could not retrieve long-term memories: {e}")
+            long_term_memories = []
+        
+        # Step 4: Retrieve short-term memory from Redis
+        short_term_memories = []
+        session_id = state.get("session_id")
+        if session_id and get_stm:
+            try:
+                stm_data = get_stm(session_id)
+                if stm_data:
+                    summary = stm_data.get("summary", "")
+                    last_messages = stm_data.get("last_messages", [])
+                    
+                    # Add summary if available
+                    if summary:
+                        short_term_memories.append(f"[Short-term memory summary] {summary}")
+                        print(f"[MEMORY] Retrieved STM summary: {summary[:80]}...")
+                    
+                    # Add recent conversation context from last messages
+                    if last_messages:
+                        # Format recent messages for context (last 5 messages for brevity)
+                        recent_messages = last_messages[-5:]  # Last 5 messages
+                        if recent_messages:
+                            recent_context = "\n".join([
+                                f"{msg['role'].upper()}: {msg['text']}"
+                                for msg in recent_messages
+                            ])
+                            short_term_memories.append(f"[Recent conversation context]\n{recent_context}")
+                            print(f"[MEMORY] Retrieved {len(recent_messages)} recent messages from STM")
+                    
+                    print(f"[MEMORY] Retrieved {len(short_term_memories)} short-term memory items from Redis")
+            except Exception as e:
+                print(f"[WARNING] Could not retrieve short-term memory from Redis: {e}")
+                import traceback
+                traceback.print_exc()
+        elif not session_id:
+            print("[MEMORY] No session_id in state, skipping short-term memory retrieval")
+        elif not get_stm:
+            print("[MEMORY] STM module not available, skipping short-term memory retrieval")
+        
+        # Combine long-term and short-term memories
+        relevant_memories = long_term_memories + short_term_memories
+        print(f"[MEMORY] Total memories retrieved: {len(relevant_memories)} ({len(long_term_memories)} long-term, {len(short_term_memories)} short-term)")
         
         updated_state = state.copy()
     
@@ -244,7 +293,9 @@ Remember: You MUST call the tools to complete these tasks."""
     
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
-    print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🧠 MEMORY AGENT COMPLETED ({duration:.2f}s) - {len(relevant_memories)} memories retrieved")
+    ltm_count = len([m for m in relevant_memories if "[Short-term" not in m and "[Recent" not in m])
+    stm_count = len(relevant_memories) - ltm_count
+    print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🧠 MEMORY AGENT COMPLETED ({duration:.2f}s) - {len(relevant_memories)} total memories ({ltm_count} long-term, {stm_count} short-term)")
     print(f"[MEMORY] Routing to: rfi_node")
     
     return updated_state

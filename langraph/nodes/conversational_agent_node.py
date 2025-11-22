@@ -20,6 +20,182 @@ load_dotenv(dotenv_path=env_path)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+def _parse_price(price):
+    """Parse price from flight data."""
+    if isinstance(price, (int, float)):
+        return float(price)
+    if isinstance(price, str):
+        # Remove currency symbols and commas
+        cleaned = price.replace("$", "").replace(",", "").strip()
+        try:
+            return float(cleaned)
+        except:
+            return float('inf')
+    return float('inf')
+
+
+def _filter_flights_intelligently(user_message: str, outbound_flights: list, return_flights: list) -> tuple:
+    """
+    Intelligently filter flights based on user's message intent.
+    Uses LLM to understand filtering criteria, then applies filters.
+    
+    Returns:
+        (filtered_outbound, filtered_return) - filtered flight lists
+    """
+    if not outbound_flights and not return_flights:
+        return outbound_flights, return_flights
+    
+    # Use LLM to understand filtering intent
+    try:
+        filter_prompt = f"""Analyze the user's message and determine if they want to filter flight results.
+
+User message: "{user_message}"
+
+Determine the filtering criteria from the user's intent:
+1. Do they want ONLY the cheapest option(s)? (e.g., "cheapest one", "cheapest", "lowest price", "cheapest flight", "show me the cheapest")
+2. Do they want direct flights only? (e.g., "direct", "non-stop", "no layovers", "direct flights only")
+3. Do they want morning/afternoon/evening flights? (e.g., "morning flights", "early departure", "afternoon only")
+4. Do they want specific airlines? (e.g., "Emirates only", "not Turkish Airlines", "only MEA")
+5. Do they want flights under a certain price? (e.g., "under $500", "less than $300", "budget under 400")
+6. Do they want shortest duration? (e.g., "fastest", "quickest", "shortest", "fastest option")
+
+IMPORTANT:
+- If user says "cheapest one" or similar, they want ONLY the cheapest option(s), not all flights
+- For round-trip: "cheapest one" means cheapest outbound AND cheapest return (keep_count=1 for each)
+- Understand context: "cheapest" after seeing flight results means filter to show only cheapest
+- Be intelligent: understand variations like "show me cheapest", "get cheapest", "lowest price option"
+
+Respond with JSON:
+{{
+  "filter_type": "cheapest" | "direct_only" | "morning" | "afternoon" | "evening" | "airline" | "max_price" | "shortest_duration" | "none",
+  "filter_value": "value if needed (e.g., airline name, max price number, etc.)",
+  "apply_to": "both" | "outbound" | "return",
+  "keep_count": number of results to keep (e.g., 1 for "cheapest one", 3 for "top 3 cheapest")
+}}
+
+If no clear filtering intent, return {{"filter_type": "none"}}."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that analyzes user intent for filtering flight results. Respond only with valid JSON."},
+                {"role": "user", "content": filter_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"}
+        )
+        
+        filter_decision = response.choices[0].message.content
+        import json
+        filter_criteria = json.loads(filter_decision)
+        
+        filter_type = filter_criteria.get("filter_type", "none")
+        keep_count = filter_criteria.get("keep_count", 1)
+        apply_to = filter_criteria.get("apply_to", "both")
+        
+        print(f"[FILTER] Detected filter type: {filter_type}, keep_count: {keep_count}, apply_to: {apply_to}")
+        
+        if filter_type == "none":
+            return outbound_flights, return_flights
+        
+        filtered_outbound = outbound_flights.copy() if outbound_flights else []
+        filtered_return = return_flights.copy() if return_flights else []
+        
+        # Apply filters to outbound
+        if apply_to in ["both", "outbound"] and filtered_outbound:
+            if filter_type == "cheapest":
+                # Sort by price and keep only the cheapest
+                filtered_outbound.sort(key=lambda f: _parse_price(f.get("price", float('inf'))))
+                filtered_outbound = filtered_outbound[:keep_count]
+            elif filter_type == "direct_only":
+                # Keep only direct flights (no layovers)
+                filtered_outbound = [f for f in filtered_outbound if not f.get("layovers") or len(f.get("layovers", [])) == 0]
+            elif filter_type == "shortest_duration":
+                # Sort by duration and keep shortest
+                filtered_outbound.sort(key=lambda f: f.get("total_duration", float('inf')))
+                filtered_outbound = filtered_outbound[:keep_count]
+            elif filter_type == "max_price":
+                max_price = float(filter_criteria.get("filter_value", float('inf')))
+                filtered_outbound = [f for f in filtered_outbound if _parse_price(f.get("price", float('inf'))) <= max_price]
+            elif filter_type == "airline":
+                airline_name = filter_criteria.get("filter_value", "").lower()
+                filtered_outbound = [f for f in filtered_outbound if any(
+                    segment.get("airline", "").lower() == airline_name 
+                    for segment in f.get("flights", [])
+                )]
+            elif filter_type in ["morning", "afternoon", "evening"]:
+                # Filter by departure time
+                hour_ranges = {
+                    "morning": (0, 12),
+                    "afternoon": (12, 17),
+                    "evening": (17, 24)
+                }
+                start_hour, end_hour = hour_ranges.get(filter_type, (0, 24))
+                def _get_departure_hour(flight):
+                    """Extract hour from departure time."""
+                    try:
+                        first_segment = flight.get("flights", [{}])[0]
+                        time_str = first_segment.get("departure_airport", {}).get("time", "")
+                        # Handle format like "2025-12-25 05:15" or "05:15"
+                        if " " in time_str:
+                            time_str = time_str.split(" ")[-1]
+                        hour = int(time_str.split(":")[0])
+                        return hour
+                    except:
+                        return 0
+                filtered_outbound = [f for f in filtered_outbound if start_hour <= _get_departure_hour(f) < end_hour]
+        
+        # Apply filters to return
+        if apply_to in ["both", "return"] and filtered_return:
+            if filter_type == "cheapest":
+                filtered_return.sort(key=lambda f: _parse_price(f.get("price", float('inf'))))
+                filtered_return = filtered_return[:keep_count]
+            elif filter_type == "direct_only":
+                filtered_return = [f for f in filtered_return if not f.get("layovers") or len(f.get("layovers", [])) == 0]
+            elif filter_type == "shortest_duration":
+                filtered_return.sort(key=lambda f: f.get("total_duration", float('inf')))
+                filtered_return = filtered_return[:keep_count]
+            elif filter_type == "max_price":
+                max_price = float(filter_criteria.get("filter_value", float('inf')))
+                filtered_return = [f for f in filtered_return if _parse_price(f.get("price", float('inf'))) <= max_price]
+            elif filter_type == "airline":
+                airline_name = filter_criteria.get("filter_value", "").lower()
+                filtered_return = [f for f in filtered_return if any(
+                    segment.get("airline", "").lower() == airline_name 
+                    for segment in f.get("flights", [])
+                )]
+            elif filter_type in ["morning", "afternoon", "evening"]:
+                hour_ranges = {
+                    "morning": (0, 12),
+                    "afternoon": (12, 17),
+                    "evening": (17, 24)
+                }
+                start_hour, end_hour = hour_ranges.get(filter_type, (0, 24))
+                def _get_departure_hour(flight):
+                    """Extract hour from departure time."""
+                    try:
+                        first_segment = flight.get("flights", [{}])[0]
+                        time_str = first_segment.get("departure_airport", {}).get("time", "")
+                        # Handle format like "2025-12-25 05:15" or "05:15"
+                        if " " in time_str:
+                            time_str = time_str.split(" ")[-1]
+                        hour = int(time_str.split(":")[0])
+                        return hour
+                    except:
+                        return 0
+                filtered_return = [f for f in filtered_return if start_hour <= _get_departure_hour(f) < end_hour]
+        
+        print(f"[FILTER] Filtered results: {len(filtered_outbound)} outbound, {len(filtered_return)} return")
+        return filtered_outbound, filtered_return
+        
+    except Exception as e:
+        print(f"[FILTER] Error in intelligent filtering: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return original if filtering fails
+        return outbound_flights, return_flights
+
+
 def truncate_large_results(collected_info: dict, max_items: int = 20) -> dict:
     """Truncate large result arrays to avoid context overflow.
     
@@ -120,7 +296,13 @@ IMPORTANT:
     * This will display the airline logo in the chat
   Only report an error if the result has "error": true AND no outbound flights data.
 
-- For visa_result: If it has a "result" field with content, that contains the visa requirement information - present it to the user. Preserve any markdown formatting (like **bold** markers) that may be present. Only report an error if the result has "error": true AND no result data.
+- For visa_result: **CRITICAL**: Check the "result" field FIRST - if it has content (even if "error": true), that contains the visa requirement information. You MUST provide a helpful summary that includes the IMPORTANT details:
+  * **Always include**: Whether a visa is required or not (this is the most important)
+  * **Include key details**: Passport validity requirements, required documents, processing time, visa type (tourist/business/etc.), maximum stay duration, visa on arrival availability
+  * **Include important conditions**: Any special requirements, restrictions, or important notes that travelers should know
+  * **Summarize appropriately**: If the result contains very long or verbose information, summarize the key points in a clear, concise way. Don't just say "yes you need a visa" - provide enough context to be helpful (e.g., "You'll need a visa for France. Make sure your passport is valid for at least 3 months beyond your stay, and you'll need to apply in advance at the French consulate.")
+  * **Skip less relevant info**: You can skip promotional content (like eSIM ads) or very technical details that aren't directly relevant to the traveler's question
+  Preserve important markdown formatting (like **bold** for emphasis) but feel free to reformat for clarity. Only report an error if the result has "error": true AND the "result" field is empty or missing.
 
 - For hotel_result: If it has a "hotels" array with items, those are real hotels you found - present them to the user. 
   ⚠️ CRITICAL: Hotels may or may not have price information depending on the search type:
@@ -146,15 +328,21 @@ IMPORTANT:
   Only report an error if the result has "error": true AND no data.
 
 - For utilities_result: This contains utility information (weather, currency conversion, date/time, eSIM bundles, or holidays). Present the information naturally based on what tool was used:
-  * MULTIPLE RESULTS: If utilities_result has "multiple_results": true, it contains a "results" array where each item has "tool", "args", and "result". Process each result and present all information together naturally.
+  * **CRITICAL - MULTIPLE RESULTS**: If utilities_result has "multiple_results": true, it contains a "results" array where each item has "tool", "args", and "result". You MUST check each item in the "results" array:
+    - For eSIM bundles: Look for items where "tool" == "get_esim_bundles", then check the nested "result" object for a "bundles" array (path: utilities_result.results[].result.bundles)
+    - For holidays: Look for items where "tool" == "get_holidays", then check the nested "result" object for a "holidays" array (path: utilities_result.results[].result.holidays)
+    - Process each result and present all information together naturally.
+  * **SINGLE RESULT**: If utilities_result does NOT have "multiple_results": true, check directly:
+    - For eSIM bundles: Check utilities_result["bundles"] array
+    - For holidays: Check utilities_result["holidays"] array
   * For weather: Show temperature, conditions, etc. If multiple weather results, show each location separately.
   * For currency: Show the conversion result.
   * For date/time: Show the current date and time.
-  * For eSIM bundles: If utilities_result has a "bundles" array, present each bundle with provider name, plan details, validity, price, and MOST IMPORTANTLY - include the purchase link as a clickable markdown link. Format like: "[Provider Name - Plan]($link)" or "Provider: [Purchase here]($link)". ALWAYS include the links from the "link" field in each bundle.
+  * For eSIM bundles: When you find bundles (either in utilities_result["bundles"] OR in utilities_result.results[].result.bundles), present each bundle with provider name, plan details, validity, price, and MOST IMPORTANTLY - include the purchase link as a clickable markdown link. Format like: "[Provider Name - Plan]($link)" or "Provider: [Purchase here]($link)". ALWAYS include the links from the "link" field in each bundle.
     If eSIM data is unavailable (error with "recommended_providers"), present the recommended provider links as clickable options: "Try these eSIM providers: [Airalo](url), [Holafly](url), etc."
-  * For holidays: If utilities_result has a "holidays" array, present each holiday with its name, date, type (e.g., "National holiday", "Observance"), and description. Format dates in a readable way (e.g., "January 1, 2024" instead of "2024-01-01"). Group holidays by month if there are many.
+  * For holidays: When you find holidays (either in utilities_result["holidays"] OR in utilities_result.results[].result.holidays), present each holiday with its name, date, type (e.g., "National holiday", "Observance"), and description. Format dates in a readable way (e.g., "January 1, 2024" instead of "2024-01-01"). Group holidays by month if there are many.
     ⚠️ CRITICAL: If the user asked to avoid holidays AND you're showing flights/hotels, you MUST explain which dates were holidays and why the selected dates avoid them. Example: "I found that January 1st is New Year's Day (national holiday) in France, so I selected dates from January 8-14 which avoid all holidays."
-    Only report an error if the result has "error": true AND no actual data.
+    Only report an error if the result has "error": true AND no actual data found in either location (direct or nested).
 
 - Format dates in a natural, readable way (e.g., "December 12, 2025" instead of "2025-12-12")
 - Extract and present flight details (airline, times, prices) from the flight_result data
@@ -507,24 +695,29 @@ The system has collected information from specialized agents. Please provide a h
             
             print(f"[CONVERSATIONAL] Flight results: {len(outbound_flights)} outbound, {len(return_flights)} return")
             
+            # Intelligently filter flights based on user's message intent
+            filtered_outbound, filtered_return = _filter_flights_intelligently(
+                user_message, outbound_flights, return_flights
+            )
+            
             # Combine both outbound and return flights for display
             all_flights = []
-            if outbound_flights:
+            if filtered_outbound:
                 # Ensure outbound flights are marked
-                for flight in outbound_flights:
+                for flight in filtered_outbound:
                     if not flight.get("direction"):
                         flight["direction"] = "outbound"
                     if not flight.get("type"):
                         flight["type"] = "Outbound flight"
-                all_flights.extend(outbound_flights)
-            if return_flights:
+                all_flights.extend(filtered_outbound)
+            if filtered_return:
                 # Ensure return flights are marked
-                for flight in return_flights:
+                for flight in filtered_return:
                     if not flight.get("direction"):
                         flight["direction"] = "return"
                     if not flight.get("type"):
                         flight["type"] = "Return flight"
-                all_flights.extend(return_flights)
+                all_flights.extend(filtered_return)
             
             if all_flights:
                 # Append structured flight data at the end

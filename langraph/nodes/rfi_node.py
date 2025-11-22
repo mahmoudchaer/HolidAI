@@ -37,8 +37,16 @@ def get_safety_scope_prompt() -> str:
 2. Check if the query is within the system's SCOPE (travel-related only)
 3. Extract ONLY travel-related parts from mixed queries
 4. Identify any non-travel-related parts that should be ignored
+5. Use context from recent conversation and memory to understand vague queries
 
-CRITICAL: This is a TRAVEL ASSISTANT ONLY. It can ONLY help with travel-related queries. 
+CRITICAL: This is a TRAVEL ASSISTANT ONLY. It can ONLY help with travel-related queries.
+
+CONTEXT-AWARE VALIDATION:
+- If the user's message is vague (e.g., "get cheapest one", "that flight", "get me one"), check the provided context (recent conversation and memory) to understand what they're referring to
+- If previous messages were about flights, "cheapest one" means "cheapest flight" - mark as in_scope=True
+- If previous messages were about hotels, "cheapest one" means "cheapest hotel" - mark as in_scope=True
+- If context shows the query is travel-related, even if vague, mark as in_scope=True
+- Only mark as out_of_scope if the query is clearly NOT travel-related AND context doesn't help 
 
 ❌ STRICTLY REJECT:
 - Sports questions (World Cup, football, soccer, basketball, Olympics, etc.)
@@ -418,10 +426,34 @@ async def rfi_node(state: AgentState) -> AgentState:
     # STEP 1: Safety and Scope Validation (only on first check, not follow-ups)
     if not rfi_context:
         print("\n--- Step 1: Safety & Scope Check ---")
+        
+        # Get relevant memories and STM context for Safety & Scope Check too
+        relevant_memories = state.get("relevant_memories", [])
+        safety_memory_context = ""
+        if relevant_memories:
+            safety_memory_context = f"\n\nLONG-TERM AND SHORT-TERM MEMORY CONTEXT:\n{chr(10).join(f'- {mem}' for mem in relevant_memories)}\n"
+        
+        # Get STM context for safety check
+        safety_stm_context = ""
+        session_id = state.get("session_id")
+        if session_id and get_stm:
+            try:
+                stm_data = get_stm(session_id)
+                if stm_data:
+                    last_messages = stm_data.get("last_messages", [])
+                    if last_messages:
+                        recent_messages_text = "\n".join([
+                            f"{msg['role'].upper()}: {msg['text']}"
+                            for msg in last_messages[-5:]  # Last 5 messages for context
+                        ])
+                        safety_stm_context = f"\n\nRECENT CONVERSATION CONTEXT (from short-term memory):\n{recent_messages_text}\n\nIMPORTANT: If the user's message is vague (e.g., 'get cheapest one', 'that flight', 'get me one'), check the recent conversation context to understand what they're referring to. If previous messages were about flights, 'cheapest one' means 'cheapest flight'. If previous messages were about hotels, 'cheapest one' means 'cheapest hotel'."
+            except Exception as e:
+                print(f"[WARNING] Could not retrieve STM for safety check: {e}")
+        
         try:
             safety_messages = [
                 {"role": "system", "content": get_safety_scope_prompt()},
-                {"role": "user", "content": f"User message: {user_message}\n\nCheck if this message is safe and within the travel assistant's scope."}
+                {"role": "user", "content": f"User message: {user_message}{safety_memory_context}{safety_stm_context}\n\nCheck if this message is safe and within the travel assistant's scope. If the message is vague but the context shows it's travel-related (e.g., 'get cheapest one' after flight search), mark it as in_scope=True."}
             ]
             
             safety_response = client.chat.completions.create(
@@ -491,6 +523,19 @@ async def rfi_node(state: AgentState) -> AgentState:
     
     # STEP 2: RFI Validation (logical completeness check)
     print("\n--- Step 2: RFI Completeness Check ---")
+    
+    # Get relevant memories from state (long-term + short-term from memory agent)
+    relevant_memories = state.get("relevant_memories", [])
+    memory_context = ""
+    if relevant_memories:
+        memory_context = f"""LONG-TERM AND SHORT-TERM MEMORY CONTEXT (from memory agent):
+
+{chr(10).join(f"- {mem}" for mem in relevant_memories)}
+
+CRITICAL: Use these memories to understand user preferences, previous requests, and context.
+If the user says "cheapest one", "that flight", "the hotel", etc., check these memories and STM context to understand what they're referring to.
+"""
+        print(f"[RFI] Using {len(relevant_memories)} memories from memory agent")
     
     # Retrieve STM context if available
     stm_context = ""
@@ -635,6 +680,8 @@ The user has now provided additional information: "{state.get('user_message', ''
 
 Combined request: {user_message}
 
+{memory_context}
+
 {stm_context}
 
 Check if the user now provided ALL the missing information. If yes, mark as "complete" and provide enriched_message with the complete request. If still missing info, mark as "missing_info"."""
@@ -642,20 +689,35 @@ Check if the user now provided ALL the missing information. If yes, mark as "com
         # First time checking (may have been filtered)
         validation_message = f"""User message: {user_message}
 
+{memory_context}
+
 {stm_context}
 
 Check if this message contains enough logical information to understand the travel request. 
 
-CRITICAL: Before marking as "missing_info", you MUST check the short-term memory context above for:
+CRITICAL: Before marking as "missing_info", you MUST check:
+1. **Long-term and short-term memory context** (above) for user preferences and previous requests
+2. **Short-term memory context** (STM) for missing information from recent conversation
+
+CONTEXT UNDERSTANDING:
+- If user says "cheapest one", "that flight", "the hotel", "get me one", etc., check STM and memory context to understand what they're referring to
+- If previous messages mention flights, "cheapest one" likely means "cheapest flight"
+- If previous messages mention hotels, "cheapest one" likely means "cheapest hotel"
+- Use pronouns and references to infer meaning from context
+
+MISSING INFORMATION CHECK:
 - Missing destinations/locations (for flights, hotels, visa, tripadvisor, utilities)
-  **If user uses pronouns like "there", "that place", "the destination", "it", check STM for the location**
+  **If user uses pronouns like "there", "that place", "the destination", "it", check STM and memory for the location**
 - Missing dates (for flights, hotels)
 - Missing nationality/citizenship (for visa)
 - Missing origins (for flights)
 
-If any missing information is found in the STM context or EXTRACTED INFORMATION section, use it, mark as "complete", and provide enriched_message with all details filled in.
+If any missing information is found in the memory context, STM context, or EXTRACTED INFORMATION section, use it, mark as "complete", and provide enriched_message with all details filled in.
 
-Example: If user asks "how will the weather be like there?" and STM has "Qatar", mark as "complete" with enriched_message: "weather in Qatar"."""
+Examples:
+- User asks "how will the weather be like there?" and STM has "Qatar" → enriched: "weather in Qatar"
+- User asks "get me cheapest one" and previous message was about flights → enriched: "get me cheapest flight"
+- User asks "get me cheapest one" and previous message was about hotels → enriched: "get me cheapest hotel"."""
     
     # Call LLM for validation
     messages = [
