@@ -271,6 +271,106 @@
         }
       }
     ]
+  },
+
+  "book_hotel_room": {
+    "description": "Book a hotel room using LiteAPI. This tool creates a confirmed booking with payment processing. Use this tool when the user wants to complete a hotel reservation after selecting a specific hotel and rate. The tool requires hotel_id and rate_id (optionRefId) from previous hotel rate searches, along with guest information and payment details. Returns booking confirmation details including booking_id and confirmation_code.",
+    "use_cases": [
+      "User wants to book a specific hotel room after viewing rates",
+      "User has selected a hotel and rate and wants to complete the reservation",
+      "User provides payment information to confirm a booking"
+    ],
+    "important_notes": [
+      "REQUIRES rate_id (optionRefId) from get_hotel_rates response - you must first search for rates to get a valid rate_id",
+      "This tool processes payment and creates a confirmed booking",
+      "All guest and payment information is required",
+      "The rate_id should be the optionRefId from the hotel rates response"
+    ],
+    "inputs": {
+      "hotel_id": "string – required – unique ID of the hotel to book (obtained from hotel search or rates response)",
+      "rate_id": "string – required – rate ID or optionRefId from the hotel rates response (this is the specific rate/room option the user selected)",
+      "checkin": "string – required – check-in date in YYYY-MM-DD format (ISO 8601)",
+      "checkout": "string – required – check-out date in YYYY-MM-DD format (ISO 8601)",
+      "occupancies": "array – required – array of occupancy objects, each with 'adults' (integer, required) and optionally 'children' (array of integers representing ages)",
+      "guest_first_name": "string – required – guest's first name",
+      "guest_last_name": "string – required – guest's last name",
+      "guest_email": "string – required – guest's email address (must be valid email format)",
+      "card_number": "string – required – credit card number (13-19 digits, spaces/dashes will be removed)",
+      "card_expiry": "string – required – card expiry date in MM/YY or MM/YYYY format (e.g., '12/25' or '12/2025')",
+      "card_cvv": "string – required – card CVV code (3 or 4 digits)",
+      "card_holder_name": "string – required – name on the credit card",
+      "guest_phone": "string – optional – guest's phone number",
+      "currency": "string – optional – currency code (e.g., 'USD', 'EUR'). Default: USD",
+      "client_reference": "string – optional – client reference number for tracking the booking",
+      "remarks": "string – optional – additional remarks or special requests for the hotel"
+    },
+    "outputs": {
+      "error": "boolean – indicates if an error occurred",
+      "error_code": "string – code of the error, if any (VALIDATION_ERROR, BAD_REQUEST, UNAUTHORIZED, PAYMENT_ERROR, API_ERROR, HTTP_ERROR, TIMEOUT, NETWORK_ERROR, UNEXPECTED_ERROR)",
+      "error_message": "string – description of the error in LLM-readable format",
+      "booking": "object – complete booking details from the API response",
+      "booking_id": "string – unique booking ID/identifier for the confirmed reservation",
+      "confirmation_code": "string – hotel confirmation code or reference number for the booking",
+      "status": "string – booking status (typically 'confirmed')",
+      "suggestion": "string – optional suggestion for resolving errors"
+    },
+    "examples": [
+      {
+        "title": "Book a hotel room with basic information",
+        "body": {
+          "hotel_id": "lp1897",
+          "rate_id": "option_ref_12345",
+          "checkin": "2025-12-10",
+          "checkout": "2025-12-17",
+          "occupancies": [{"adults": 2}],
+          "guest_first_name": "John",
+          "guest_last_name": "Doe",
+          "guest_email": "john.doe@example.com",
+          "card_number": "4242424242424242",
+          "card_expiry": "12/25",
+          "card_cvv": "123",
+          "card_holder_name": "John Doe"
+        }
+      },
+      {
+        "title": "Book with guest phone and remarks",
+        "body": {
+          "hotel_id": "lp1897",
+          "rate_id": "option_ref_12345",
+          "checkin": "2025-12-10",
+          "checkout": "2025-12-17",
+          "occupancies": [{"adults": 2, "children": [5, 8]}],
+          "guest_first_name": "Jane",
+          "guest_last_name": "Smith",
+          "guest_email": "jane.smith@example.com",
+          "guest_phone": "+1234567890",
+          "card_number": "4242424242424242",
+          "card_expiry": "12/2025",
+          "card_cvv": "123",
+          "card_holder_name": "Jane Smith",
+          "remarks": "Late check-in requested"
+        }
+      },
+      {
+        "title": "Book with client reference and custom currency",
+        "body": {
+          "hotel_id": "lp1897",
+          "rate_id": "option_ref_12345",
+          "checkin": "2025-12-10",
+          "checkout": "2025-12-17",
+          "occupancies": [{"adults": 1}],
+          "guest_first_name": "Robert",
+          "guest_last_name": "Johnson",
+          "guest_email": "robert.johnson@example.com",
+          "card_number": "4242424242424242",
+          "card_expiry": "06/26",
+          "card_cvv": "456",
+          "card_holder_name": "Robert Johnson",
+          "currency": "EUR",
+          "client_reference": "REF-2025-001"
+        }
+      }
+    ]
   }
 }
 

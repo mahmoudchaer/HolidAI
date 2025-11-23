@@ -1,6 +1,7 @@
 """Hotel-related tools for the MCP server."""
 
 import os
+import json
 import httpx
 import re
 from datetime import datetime
@@ -19,6 +20,7 @@ load_dotenv(dotenv_path=env_path)
 API_ENDPOINT = "https://api.liteapi.travel/v3.0/hotels/rates"
 HOTEL_DETAILS_ENDPOINT = "https://api.liteapi.travel/v3.0/data/hotel"
 HOTELS_LIST_ENDPOINT = "https://api.liteapi.travel/v3.0/data/hotels"
+BOOKING_ENDPOINT = "https://api.liteapi.travel/v3.0/bookings"
 API_KEY = os.getenv("LITEAPI_KEY")
 
 # Validate that required credentials are set
@@ -309,17 +311,42 @@ def _make_api_call(request_payload: Dict, top_k: Optional[int] = None, sort_by: 
                 error_info = api_response.get("errors") or api_response.get("error", {})
                 if isinstance(error_info, list) and len(error_info) > 0:
                     error_message = error_info[0].get("message", "Unknown error occurred")
+                    error_code = error_info[0].get("code", "UNKNOWN")
                 elif isinstance(error_info, dict):
                     error_message = error_info.get("message", "Unknown error occurred")
+                    error_code = error_info.get("code", "UNKNOWN")
                 else:
                     error_message = str(error_info) if error_info else "Unknown error occurred"
+                    error_code = "UNKNOWN"
+                
+                # Log the full error for debugging
+                print(f"[HOTEL API] API Error Response: {json.dumps(api_response, indent=2)[:1000]}")
+                
+                # Check if dates are in the past
+                checkin = request_payload.get("checkin", "")
+                checkout = request_payload.get("checkout", "")
+                try:
+                    from datetime import datetime
+                    checkin_date = datetime.strptime(checkin, "%Y-%m-%d")
+                    if checkin_date < datetime.now():
+                        return {
+                            "error": True,
+                            "error_code": "VALIDATION_ERROR",
+                            "error_message": f"Check-in date '{checkin}' is in the past. Please use future dates.",
+                            "hotels": [],
+                            "suggestion": "Hotel bookings require future dates. Please use dates from today onwards."
+                        }
+                except (ValueError, TypeError):
+                    pass
                 
                 return {
                     "error": True,
                     "error_code": "API_ERROR",
-                    "error_message": "The hotel search service encountered an error. Please try again with different parameters.",
+                    "error_message": f"The hotel search service encountered an error: {error_message}",
+                    "api_error_code": error_code,
+                    "api_error_details": error_message,
                     "hotels": [],
-                    "suggestion": "Please try again with different search parameters. If the problem persists, contact support."
+                    "suggestion": "Please check your dates (must be in the future), location, and other parameters. If the problem persists, contact support."
                 }
             
             # Parse and optionally sort hotels
@@ -725,6 +752,380 @@ def _make_hotels_list_api_call(
         }
 
 
+def _validate_booking_inputs(
+    hotel_id: Optional[str],
+    rate_id: Optional[str],
+    checkin: Optional[str],
+    checkout: Optional[str],
+    occupancies: Optional[List[Dict]],
+    guest_first_name: Optional[str],
+    guest_last_name: Optional[str],
+    guest_email: Optional[str],
+    card_number: Optional[str],
+    card_expiry: Optional[str],
+    card_cvv: Optional[str],
+    card_holder_name: Optional[str],
+    guest_phone: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
+    """Validate booking inputs and return (is_valid, error_message)."""
+    # Validate hotel_id
+    if not hotel_id or not isinstance(hotel_id, str) or not hotel_id.strip():
+        return False, "Hotel ID is required and must be a non-empty string."
+    
+    # Validate rate_id
+    if not rate_id or not isinstance(rate_id, str) or not rate_id.strip():
+        return False, "Rate ID is required and must be a non-empty string. This should be the optionRefId or rateId from the hotel rates response."
+    
+    # Validate dates
+    date_pattern = r'^\d{4}-\d{2}-\d{2}$'
+    if not re.match(date_pattern, checkin):
+        return False, f"Invalid check-in date format: '{checkin}'. Expected format: YYYY-MM-DD (e.g., 2025-12-10)."
+    
+    if not re.match(date_pattern, checkout):
+        return False, f"Invalid check-out date format: '{checkout}'. Expected format: YYYY-MM-DD (e.g., 2025-12-17)."
+    
+    try:
+        checkin_date = datetime.strptime(checkin, "%Y-%m-%d")
+        checkout_date = datetime.strptime(checkout, "%Y-%m-%d")
+        
+        if checkout_date <= checkin_date:
+            return False, f"Check-out date '{checkout}' must be after check-in date '{checkin}'."
+    except ValueError:
+        return False, "Invalid date format. Please use YYYY-MM-DD format (e.g., 2025-12-10)."
+    
+    # Validate occupancies
+    # Handle occupancies - it might come as a string (JSON) or a list
+    if occupancies is not None:
+        if isinstance(occupancies, str):
+            try:
+                import json
+                occupancies = json.loads(occupancies)
+            except json.JSONDecodeError:
+                return False, f"Invalid occupancies format. Expected a JSON array, got: {occupancies}"
+    
+    if not occupancies or len(occupancies) == 0:
+        return False, "At least one occupancy is required. Please provide occupancies array with at least one room."
+    
+    for i, occupancy in enumerate(occupancies):
+        if not isinstance(occupancy, dict):
+            return False, f"Occupancy {i+1}: Must be an object with 'adults' field."
+        
+        if "adults" not in occupancy:
+            return False, f"Occupancy {i+1}: Missing required field 'adults'."
+        
+        adults = occupancy.get("adults")
+        if not isinstance(adults, int) or adults < 1:
+            return False, f"Occupancy {i+1}: 'adults' must be a positive integer (at least 1)."
+        
+        children = occupancy.get("children", [])
+        if children and not isinstance(children, list):
+            return False, f"Occupancy {i+1}: 'children' must be an array of integers (ages)."
+    
+    # Validate guest information
+    if not guest_first_name or not isinstance(guest_first_name, str) or not guest_first_name.strip():
+        return False, "Guest first name is required and must be a non-empty string."
+    
+    if not guest_last_name or not isinstance(guest_last_name, str) or not guest_last_name.strip():
+        return False, "Guest last name is required and must be a non-empty string."
+    
+    # Validate email format
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not guest_email or not isinstance(guest_email, str) or not re.match(email_pattern, guest_email.strip()):
+        return False, f"Invalid email format: '{guest_email}'. Please provide a valid email address."
+    
+    # Validate payment information
+    # Remove spaces and dashes from card number for validation
+    card_number_clean = card_number.replace(" ", "").replace("-", "")
+    if not card_number_clean or len(card_number_clean) < 13 or len(card_number_clean) > 19:
+        return False, "Invalid card number. Card number must be between 13 and 19 digits."
+    
+    if not re.match(r'^\d+$', card_number_clean):
+        return False, "Card number must contain only digits."
+    
+    # Validate expiry date (format: MM/YY or MM/YYYY)
+    expiry_pattern = r'^(\d{2})/(\d{2}|\d{4})$'
+    if not re.match(expiry_pattern, card_expiry.strip()):
+        return False, f"Invalid card expiry format: '{card_expiry}'. Expected format: MM/YY or MM/YYYY (e.g., 12/25 or 12/2025)."
+    
+    # Validate CVV
+    cvv_clean = card_cvv.strip()
+    if not cvv_clean or len(cvv_clean) < 3 or len(cvv_clean) > 4:
+        return False, "Invalid CVV. CVV must be 3 or 4 digits."
+    
+    if not re.match(r'^\d+$', cvv_clean):
+        return False, "CVV must contain only digits."
+    
+    # Validate card holder name
+    if not card_holder_name or not isinstance(card_holder_name, str) or not card_holder_name.strip():
+        return False, "Card holder name is required and must be a non-empty string."
+    
+    return True, None
+
+
+def _make_booking_api_call(booking_payload: Dict) -> Dict:
+    """Helper function to make booking API call with error handling.
+    
+    Args:
+        booking_payload: The booking request payload
+        
+    Returns:
+        Dict with booking result or error information
+    """
+    try:
+        print(f"[HOTEL BOOKING API] Making request to {BOOKING_ENDPOINT}")
+        print(f"[HOTEL BOOKING API] Payload keys: {list(booking_payload.keys())}")
+        print(f"[HOTEL BOOKING API] Payload (sanitized): {json.dumps({k: v if k != 'payment' else '***HIDDEN***' for k, v in booking_payload.items()}, indent=2)}")
+        
+        # Make API request
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
+                BOOKING_ENDPOINT,
+                json=booking_payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": API_KEY,
+                    "Accept": "application/json"
+                }
+            )
+            
+            print(f"[HOTEL BOOKING API] Response Status: {response.status_code}")
+            print(f"[HOTEL BOOKING API] Response Headers: {dict(response.headers)}")
+            print(f"[HOTEL BOOKING API] Response Length: {len(response.text)} bytes")
+            print(f"[HOTEL BOOKING API] Response Text (first 1000 chars): {response.text[:1000]}")
+            print(f"[HOTEL BOOKING API] Response Content-Type: {response.headers.get('content-type', 'unknown')}")
+            
+            # Handle 400 Bad Request
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_message = error_data.get("message", "Bad request: Invalid booking parameters.")
+                    if isinstance(error_message, dict):
+                        error_message = str(error_message)
+                    print(f"[HOTEL BOOKING API] 400 Bad Request - API Error: {error_message}")
+                    print(f"[HOTEL BOOKING API] Full error response: {error_data}")
+                except Exception:
+                    error_message = "Bad request: Invalid booking parameters sent to hotel booking API."
+                    print(f"[HOTEL BOOKING API] 400 Bad Request - Could not parse error response: {response.text[:500]}")
+                
+                return {
+                    "error": True,
+                    "error_code": "BAD_REQUEST",
+                    "error_message": f"Invalid booking parameters: {error_message}",
+                    "api_error_details": error_message,
+                    "booking": None,
+                    "suggestion": "Please verify your booking parameters (hotel_id, rate_id, dates, guest info, payment details) and try again."
+                }
+            
+            # Handle 401 Unauthorized
+            if response.status_code == 401:
+                return {
+                    "error": True,
+                    "error_code": "UNAUTHORIZED",
+                    "error_message": "Authentication failed. Please check your API credentials.",
+                    "booking": None,
+                    "suggestion": "Please verify your LITEAPI_KEY in the .env file."
+                }
+            
+            # Handle 402 Payment Required
+            if response.status_code == 402:
+                try:
+                    error_data = response.json()
+                    error_message = error_data.get("message", "Payment processing failed.")
+                except Exception:
+                    error_message = "Payment processing failed."
+                
+                return {
+                    "error": True,
+                    "error_code": "PAYMENT_ERROR",
+                    "error_message": f"Payment processing failed: {error_message}",
+                    "booking": None,
+                    "suggestion": "Please verify your payment information and try again."
+                }
+            
+            # Handle 204 No Content (successful but no body)
+            if response.status_code == 204:
+                print(f"[HOTEL BOOKING API] 204 No Content - Booking may have succeeded but no response body")
+                return {
+                    "error": False,
+                    "booking": {"status": "confirmed"},
+                    "booking_id": "unknown",
+                    "confirmation_code": "pending",
+                    "status": "confirmed",
+                    "message": "Booking request accepted (204 No Content response)"
+                }
+            
+            # Handle other HTTP errors
+            response.raise_for_status()
+            
+            # Check if response has content before parsing JSON
+            response_text = response.text
+            
+            # Handle empty response with 200 OK - this might indicate success in some APIs
+            if not response_text or not response_text.strip():
+                print(f"[HOTEL BOOKING API] Empty response received (status: {response.status_code}, content-type: {response.headers.get('content-type')})")
+                
+                # For 200 OK with empty body, check if this might be a successful booking
+                # Some APIs return 200 OK with no body when booking is accepted
+                if response.status_code == 200:
+                    # Check response headers for any booking information
+                    booking_id_header = response.headers.get('x-booking-id') or response.headers.get('booking-id')
+                    confirmation_header = response.headers.get('x-confirmation-code') or response.headers.get('confirmation-code')
+                    
+                    if booking_id_header or confirmation_header:
+                        # We have booking info in headers
+                        return {
+                            "error": False,
+                            "booking": {
+                                "status": "confirmed",
+                                "bookingId": booking_id_header,
+                                "confirmationCode": confirmation_header
+                            },
+                            "booking_id": booking_id_header,
+                            "confirmation_code": confirmation_header,
+                            "status": "confirmed",
+                            "message": "Booking confirmed (response in headers)"
+                        }
+                    else:
+                        # Empty 200 response - might be successful but no confirmation available
+                        # This could happen in test/sandbox mode or if payment was rejected
+                        print(f"[HOTEL BOOKING API] WARNING: Empty 200 response - no booking confirmation available")
+                        print(f"[HOTEL BOOKING API] This could indicate:")
+                        print(f"  1. Test/sandbox mode (booking not actually processed)")
+                        print(f"  2. Payment was rejected (invalid card or insufficient funds)")
+                        print(f"  3. Rate expired or no longer available")
+                        print(f"  4. API key lacks booking permissions")
+                        print(f"[HOTEL BOOKING API] Recommendation: Check email, verify API key permissions, or try with a fresh rate_id")
+                        
+                        return {
+                            "error": False,
+                            "booking": {
+                                "status": "pending",
+                                "message": "Booking request received but confirmation pending"
+                            },
+                            "booking_id": None,
+                            "confirmation_code": None,
+                            "status": "pending",
+                            "message": "Booking request received. The API returned an empty response, which may indicate:\n- Test/sandbox mode (booking not processed)\n- Payment processing issue\n- Rate no longer available\n\nPlease check your email for confirmation or contact the hotel directly.",
+                            "warning": "⚠️ IMPORTANT: The booking service returned an empty response. This is common when:\n1. Using test/sandbox mode with fake card information\n2. The rate_id has expired (rates expire quickly)\n3. Payment was rejected\n4. API key lacks booking permissions\n\nPlease verify with the hotel or check your email for confirmation. If testing, ensure you're using LiteAPI's sandbox environment correctly."
+                        }
+                else:
+                    # Non-200 status with empty body is an error
+                    return {
+                        "error": True,
+                        "error_code": "API_ERROR",
+                        "error_message": f"The hotel booking service returned an empty response (status: {response.status_code}).",
+                        "booking": None,
+                        "suggestion": "Please try again. If the problem persists, contact support."
+                    }
+            
+            # Handle 200 OK or 201 Created
+            try:
+                api_response = response.json()
+            except Exception as json_error:
+                print(f"[HOTEL BOOKING API] Failed to parse JSON response: {json_error}")
+                print(f"[HOTEL BOOKING API] Response text (first 500 chars): {response_text[:500]}")
+                return {
+                    "error": True,
+                    "error_code": "API_ERROR",
+                    "error_message": f"The hotel booking service returned an invalid response: {str(json_error)}",
+                    "booking": None,
+                    "suggestion": "Please try again. If the problem persists, contact support."
+                }
+            
+            # Check if response has errors
+            if "errors" in api_response or "error" in api_response:
+                error_info = api_response.get("errors") or api_response.get("error", {})
+                if isinstance(error_info, list) and len(error_info) > 0:
+                    error_message = error_info[0].get("message", "Unknown error occurred")
+                elif isinstance(error_info, dict):
+                    error_message = error_info.get("message", "Unknown error occurred")
+                else:
+                    error_message = str(error_info) if error_info else "Unknown error occurred"
+                
+                return {
+                    "error": True,
+                    "error_code": "API_ERROR",
+                    "error_message": f"The hotel booking service encountered an error: {error_message}",
+                    "booking": None,
+                    "suggestion": "Please try again. If the problem persists, contact support."
+                }
+            
+            # Process successful response
+            booking_data = api_response.get("data") or api_response
+            
+            return {
+                "error": False,
+                "booking": booking_data,
+                "booking_id": booking_data.get("bookingId") or booking_data.get("id"),
+                "confirmation_code": booking_data.get("confirmationCode") or booking_data.get("hotelConfirmationCode") or booking_data.get("reference"),
+                "status": booking_data.get("status", "confirmed")
+            }
+            
+    except httpx.HTTPStatusError as e:
+        status_code = e.response.status_code
+        try:
+            error_response = e.response.json()
+            api_error_message = error_response.get("message") or error_response.get("error") or str(error_response)
+        except Exception:
+            api_error_message = e.response.text[:500] if hasattr(e.response, 'text') else "No error details available"
+        
+        print(f"[HOTEL BOOKING API ERROR] Status Code: {status_code}")
+        print(f"[HOTEL BOOKING API ERROR] Response: {api_error_message}")
+        
+        if status_code == 400:
+            error_msg = f"Invalid booking parameters: {api_error_message}"
+        elif status_code == 401:
+            error_msg = f"Authentication failed: {api_error_message}"
+        elif status_code == 402:
+            error_msg = f"Payment processing failed: {api_error_message}"
+        elif status_code == 404:
+            error_msg = f"Booking endpoint not found: {api_error_message}"
+        elif status_code == 409:
+            error_msg = f"Booking conflict (room may no longer be available): {api_error_message}"
+        elif status_code == 429:
+            error_msg = f"Too many requests: {api_error_message}"
+        elif status_code == 500:
+            error_msg = f"Internal server error from LiteAPI: {api_error_message}"
+        elif status_code == 503:
+            error_msg = f"Service temporarily unavailable: {api_error_message}"
+        else:
+            error_msg = f"HTTP {status_code} error: {api_error_message}"
+        
+        return {
+            "error": True,
+            "error_code": "HTTP_ERROR",
+            "error_message": error_msg,
+            "http_status_code": status_code,
+            "api_error_details": api_error_message,
+            "booking": None,
+            "suggestion": "Please verify your booking parameters and try again. If the problem persists, contact support."
+        }
+    except httpx.TimeoutException:
+        return {
+            "error": True,
+            "error_code": "TIMEOUT",
+            "error_message": "Request timeout: The hotel booking took too long to respond (over 30 seconds).",
+            "booking": None,
+            "suggestion": "The hotel booking service may be experiencing high load. Please try again in a few moments."
+        }
+    except httpx.RequestError as e:
+        return {
+            "error": True,
+            "error_code": "NETWORK_ERROR",
+            "error_message": f"Network error: Unable to connect to hotel booking service. {str(e)}",
+            "booking": None,
+            "suggestion": "Please check your internet connection and try again. If the problem persists, the service may be temporarily unavailable."
+        }
+    except Exception as e:
+        return {
+            "error": True,
+            "error_code": "UNEXPECTED_ERROR",
+            "error_message": f"An unexpected error occurred during hotel booking: {str(e)}",
+            "booking": None,
+            "suggestion": "An unexpected error occurred. Please try again or contact support if the problem persists."
+        }
+
+
 def register_hotel_tools(mcp):
     """Register all hotel-related tools with the MCP server."""
     
@@ -787,6 +1188,38 @@ def register_hotel_tools(mcp):
         
         refundable_rates_only = refundable_rates_only if refundable_rates_only is not None else False
         room_mapping = room_mapping if room_mapping is not None else True
+        
+        # Normalize hotel_ids - ensure it's always a list
+        # Also detect if hotel_ids is actually a hotel name (not an ID)
+        if hotel_ids is not None:
+            if isinstance(hotel_ids, str):
+                # If it's a string, convert to list (handle comma-separated or single value)
+                hotel_ids = [h.strip() for h in hotel_ids.split(",") if h.strip()]
+            elif not isinstance(hotel_ids, list):
+                # If it's not a list or string, try to convert
+                hotel_ids = [str(hotel_ids)]
+            
+            # Validate hotel_ids format - hotel IDs are typically short alphanumeric (e.g., "lp1336", "lp1897")
+            # If hotel_ids contains spaces or looks like a name, it's probably not a valid ID
+            valid_hotel_ids = []
+            invalid_hotel_ids = []
+            for hotel_id in hotel_ids:
+                # Hotel IDs are typically: short (3-20 chars), alphanumeric with possible prefixes like "lp", "htl", etc.
+                # Names typically: contain spaces, special characters, are longer
+                if len(hotel_id) > 50 or " " in hotel_id or not re.match(r'^[a-zA-Z0-9_-]+$', hotel_id):
+                    invalid_hotel_ids.append(hotel_id)
+                else:
+                    valid_hotel_ids.append(hotel_id)
+            
+            # If all hotel_ids look like names, ignore them and use city/country instead
+            if invalid_hotel_ids and not valid_hotel_ids:
+                print(f"[HOTEL API] WARNING: hotel_ids look like names, not IDs: {invalid_hotel_ids}")
+                print(f"[HOTEL API] Ignoring hotel_ids and using city_name/country_code instead")
+                hotel_ids = None  # Will fall back to city/country search
+            elif invalid_hotel_ids:
+                # Some are valid, some are not - keep only valid ones
+                print(f"[HOTEL API] WARNING: Some hotel_ids look like names (ignored): {invalid_hotel_ids}")
+                hotel_ids = valid_hotel_ids
         
         # Validate k parameter first
         if k <= 0:
@@ -876,6 +1309,38 @@ def register_hotel_tools(mcp):
                 "hotels": [],
                 "suggestion": "Please reduce 'k' to 200 or less. For example, use k=10 to get top 10 results."
             }
+        
+        # Normalize hotel_ids - ensure it's always a list
+        # Also detect if hotel_ids is actually a hotel name (not an ID)
+        if hotel_ids is not None:
+            if isinstance(hotel_ids, str):
+                # If it's a string, convert to list (handle comma-separated or single value)
+                hotel_ids = [h.strip() for h in hotel_ids.split(",") if h.strip()]
+            elif not isinstance(hotel_ids, list):
+                # If it's not a list or string, try to convert
+                hotel_ids = [str(hotel_ids)]
+            
+            # Validate hotel_ids format - hotel IDs are typically short alphanumeric (e.g., "lp1336", "lp1897")
+            # If hotel_ids contains spaces or looks like a name, it's probably not a valid ID
+            valid_hotel_ids = []
+            invalid_hotel_ids = []
+            for hotel_id in hotel_ids:
+                # Hotel IDs are typically: short (3-20 chars), alphanumeric with possible prefixes like "lp", "htl", etc.
+                # Names typically: contain spaces, special characters, are longer
+                if len(hotel_id) > 50 or " " in hotel_id or not re.match(r'^[a-zA-Z0-9_-]+$', hotel_id):
+                    invalid_hotel_ids.append(hotel_id)
+                else:
+                    valid_hotel_ids.append(hotel_id)
+            
+            # If all hotel_ids look like names, ignore them and use city/country instead
+            if invalid_hotel_ids and not valid_hotel_ids:
+                print(f"[HOTEL API] WARNING: hotel_ids look like names, not IDs: {invalid_hotel_ids}")
+                print(f"[HOTEL API] Ignoring hotel_ids and using city_name/country_code instead")
+                hotel_ids = None  # Will fall back to city/country search
+            elif invalid_hotel_ids:
+                # Some are valid, some are not - keep only valid ones
+                print(f"[HOTEL API] WARNING: Some hotel_ids look like names (ignored): {invalid_hotel_ids}")
+                hotel_ids = valid_hotel_ids
         
         # Set defaults
         currency = currency or "USD"
@@ -1180,4 +1645,131 @@ def register_hotel_tools(mcp):
             hotel_ids=hotel_ids,
             timeout=timeout
         )
+    
+    @mcp.tool(description=get_doc("book_hotel_room", "hotel"))
+    def book_hotel_room(
+        hotel_id: Optional[str] = None,
+        rate_id: Optional[str] = None,
+        checkin: Optional[str] = None,
+        checkout: Optional[str] = None,
+        occupancies: Optional[List[Dict]] = None,
+        guest_first_name: Optional[str] = None,
+        guest_last_name: Optional[str] = None,
+        guest_email: Optional[str] = None,
+        card_number: Optional[str] = None,
+        card_expiry: Optional[str] = None,
+        card_cvv: Optional[str] = None,
+        card_holder_name: Optional[str] = None,
+        guest_phone: Optional[str] = None,
+        currency: Optional[str] = None,
+        client_reference: Optional[str] = None,
+        remarks: Optional[str] = None
+    ) -> Dict:
+        """Book a hotel room using LiteAPI. This tool creates a confirmed booking with payment.
+        
+        Args:
+            hotel_id: Unique ID of the hotel to book (required)
+            rate_id: Rate ID or optionRefId from the hotel rates response (required)
+            checkin: Check-in date in YYYY-MM-DD format (required)
+            checkout: Check-out date in YYYY-MM-DD format (required)
+            occupancies: Array of occupancy objects, each with 'adults' (int, required) and optionally 'children' (array of ages) (required)
+            guest_first_name: Guest's first name (required)
+            guest_last_name: Guest's last name (required)
+            guest_email: Guest's email address (required)
+            card_number: Credit card number (required)
+            card_expiry: Card expiry date in MM/YY or MM/YYYY format (required)
+            card_cvv: Card CVV code (required)
+            card_holder_name: Name on the credit card (required)
+            guest_phone: Guest's phone number (optional)
+            currency: Currency code (e.g., 'USD', 'EUR'). Default: USD
+            client_reference: Client reference number for tracking (optional)
+            remarks: Additional remarks or special requests (optional)
+        
+        Returns:
+            Dict with booking confirmation details including booking_id and confirmation_code
+        """
+        # Set defaults
+        currency = currency or "USD"
+        
+        # Parse occupancies if it's a string (JSON)
+        if occupancies is not None and isinstance(occupancies, str):
+            try:
+                import json
+                occupancies = json.loads(occupancies)
+            except json.JSONDecodeError:
+                return {
+                    "error": True,
+                    "error_code": "VALIDATION_ERROR",
+                    "error_message": f"Invalid occupancies format. Expected a JSON array, got: {occupancies}",
+                    "booking": None,
+                    "suggestion": "Please provide occupancies as an array of objects, e.g., [{'adults': 1}]"
+                }
+        
+        # Validate inputs - this will catch missing required parameters
+        is_valid, validation_error = _validate_booking_inputs(
+            hotel_id=hotel_id,
+            rate_id=rate_id,
+            checkin=checkin,
+            checkout=checkout,
+            occupancies=occupancies,
+            guest_first_name=guest_first_name,
+            guest_last_name=guest_last_name,
+            guest_email=guest_email,
+            card_number=card_number,
+            card_expiry=card_expiry,
+            card_cvv=card_cvv,
+            card_holder_name=card_holder_name,
+            guest_phone=guest_phone
+        )
+        
+        if not is_valid:
+            return {
+                "error": True,
+                "error_code": "VALIDATION_ERROR",
+                "error_message": validation_error,
+                "booking": None,
+                "suggestion": "Please correct the input parameters and try again."
+            }
+        
+        # Clean card number (remove spaces and dashes)
+        card_number_clean = card_number.replace(" ", "").replace("-", "")
+        
+        # Build booking payload
+        booking_payload = {
+            "hotelId": hotel_id.strip(),
+            "optionRefId": rate_id.strip(),
+            "checkin": checkin,
+            "checkout": checkout,
+            "occupancies": occupancies,
+            "currency": currency,
+            "holder": {
+                "name": guest_first_name.strip(),
+                "surname": guest_last_name.strip()
+            },
+            "guest": {
+                "firstName": guest_first_name.strip(),
+                "lastName": guest_last_name.strip(),
+                "email": guest_email.strip()
+            },
+            "payment": {
+                "method": "ACC_CREDIT_CARD",
+                "holderName": card_holder_name.strip(),
+                "cardNumber": card_number_clean,
+                "expireDate": card_expiry.strip(),
+                "cvc": card_cvv.strip()
+            }
+        }
+        
+        # Add optional fields
+        if guest_phone:
+            booking_payload["guest"]["phone"] = guest_phone.strip()
+        
+        if client_reference:
+            booking_payload["clientReference"] = client_reference.strip()
+        
+        if remarks:
+            booking_payload["remarks"] = remarks.strip()
+        
+        # Make booking API call
+        return _make_booking_api_call(booking_payload)
 

@@ -63,7 +63,7 @@ class Chat(Base):
 # Database connection - use 127.0.0.1 instead of localhost to avoid IPv6 issues
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://admin:admin123@127.0.0.1:5433/myproject"
+    "postgresql://admin:admin123@127.0.0.1:5437/myproject"
 )
 
 # Use connect_args to handle connection issues gracefully
@@ -161,12 +161,23 @@ def index():
     return send_from_directory(app.static_folder, 'index.html')
 
 
+@app.route("/booking")
+def serve_booking():
+    """Serve the React app for booking page (client-side routing)."""
+    return send_from_directory(app.static_folder, 'index.html')
+
+
 @app.route("/<path:path>")
 def serve_static(path):
     """Serve static files or React app for client-side routing."""
+    # Skip API routes - they're handled separately
+    if path.startswith("api/"):
+        return jsonify({"error": "Not found"}), 404
+    
     if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
     else:
+        # For client-side routes (like /booking), serve index.html
         return send_from_directory(app.static_folder, 'index.html')
 
 
@@ -698,6 +709,41 @@ def add_message(session_id):
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
+        }), 500
+
+
+@app.route("/api/book-hotel", methods=["POST"])
+@require_login
+def book_hotel():
+    """Secure booking endpoint - processes hotel booking with payment info."""
+    try:
+        data = request.json
+        user_email = session.get("user_email")
+        
+        if not user_email:
+            return jsonify({"error": True, "error_message": "Not authenticated"}), 401
+        
+        # Import MCP client to call booking tool
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent
+        sys.path.insert(0, str(project_root / "mcp_system" / "clients"))
+        
+        from hotel_agent_client import HotelAgentClient
+        import asyncio
+        
+        # Call booking tool via MCP
+        async def make_booking():
+            return await HotelAgentClient.invoke("book_hotel_room", **data)
+        
+        booking_result = asyncio.run(make_booking())
+        
+        return jsonify(booking_result)
+        
+    except Exception as e:
+        return jsonify({
+            "error": True,
+            "error_message": f"Booking failed: {str(e)}"
         }), 500
 
 

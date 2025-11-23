@@ -99,11 +99,12 @@ Analyze the user's query and choose the RIGHT tool:
    → Parameters: city_name, country_code (and optionally: min_rating, star_rating, limit)
    → ⚠️ IMPORTANT: This tool returns NO PRICES - only hotel metadata (name, rating, location, amenities)
 
-2. **BOOKING / CHECKING RATES** (User mentions dates OR wants to book/check availability)
-   Query examples: "Book hotel in Paris for Feb 1-7", "Hotel rates in Rome", "Check availability"
+2. **SEARCHING FOR HOTEL RATES** (User wants to see available hotels with prices for specific dates)
+   Query examples: "Find hotels in Paris for Feb 1-7", "Show me hotel rates in Rome", "Check availability for dates", "What hotels are available in Paris"
    → Use: get_hotel_rates or get_hotel_rates_by_price
-   → Why: User wants to book or check availability. Dates REQUIRED!
+   → Why: User wants to SEARCH/BROWSE hotels with prices. This is NOT booking yet - just searching!
    → Parameters: city_name, country_code, checkin, checkout, occupancies
+   → ⚠️ IMPORTANT: This is for SEARCHING, not booking! Use this when user wants to see options.
 
 3. **SPECIFIC HOTEL DETAILS** (User has a hotel_id)
    Query examples: "Tell me about hotel lp42fec", "Get details of this hotel"
@@ -111,17 +112,39 @@ Analyze the user's query and choose the RIGHT tool:
    → Why: User wants info about a specific hotel.
    → Parameters: hotel_id
 
+4. **COMPLETING A BOOKING** (User wants to COMPLETE/RESERVE a specific hotel room with payment)
+   Query examples: "Book this hotel", "I want to book hotel X", "Reserve this room", "Complete the booking", 
+                  "Book the first hotel", "I'll take this one", "Confirm booking for [hotel name]"
+   → Use: book_hotel_room (NOT get_hotel_rates!)
+   → Why: User wants to COMPLETE a booking with payment - they've already seen the hotels!
+   → Parameters: hotel_id, rate_id (from rates response), checkin, checkout, occupancies, guest info, payment info
+   → ⚠️ CRITICAL DISTINCTION:
+      - "Book hotel in Paris" (with location) = SEARCH → use get_hotel_rates
+      - "Book this hotel" or "Book hotel X" (specific hotel after seeing results) = BOOKING → use book_hotel_room
+   → ⚠️ CRITICAL: To book a hotel, you MUST:
+      a) Extract hotel_id and rate_id (optionRefId) from PREVIOUS hotel search results (state.hotel_result)
+      b) If previous results exist, find the selected hotel in hotel_result.hotels array
+      c) Extract hotel_id from hotel.hotelId or hotel.id field
+      d) Extract rate_id (optionRefId) from hotel.roomTypes[].rates[].optionRefId or hotel.optionRefId
+      e) If user mentions a specific hotel name, match it to hotels in previous results
+      f) Extract guest info (name, email, phone) from user message or use defaults
+      g) Extract payment info (card number, expiry, CVV, holder name) from user message
+   → If previous hotel_result is not available, you MUST first call get_hotel_rates to get available hotels and rates
+
 CRITICAL RULES:
 - If user query is GENERAL browsing (no dates mentioned) → ALWAYS use get_list_of_hotels
-- If user query mentions booking/rates/availability OR has dates → use get_hotel_rates
+- If user query mentions "book" + LOCATION (e.g., "book hotel in Paris") → use get_hotel_rates (SEARCHING)
+- If user query mentions "book" + SPECIFIC HOTEL (e.g., "book this hotel", "book hotel X") → use book_hotel_room (BOOKING)
+- If user has seen hotels and says "book" → ALWAYS use book_hotel_room (not get_hotel_rates!)
 - DO NOT assume dates for general browsing queries!
 - DO NOT use get_hotel_rates when user just wants to browse hotels!
 
 Available tools (you will see their full schemas with function calling):
 - get_list_of_hotels: Browse/search hotels (NO dates required) - USE THIS FOR GENERAL QUERIES
-- get_hotel_rates: Search for hotel rates (dates required) - USE ONLY when dates needed
-- get_hotel_rates_by_price: Search for hotels by price (dates required)
+- get_hotel_rates: SEARCH for hotel rates with prices (dates required) - USE when user wants to SEE available hotels with prices
+- get_hotel_rates_by_price: SEARCH for hotels by price (dates required) - USE when user wants cheapest options
 - get_hotel_details: Get details of specific hotel (hotel_id required)
+- book_hotel_room: 💳 COMPLETE BOOKING with payment - USE when user says "book this hotel" or "book hotel X" AFTER seeing results. NOT for searching!
 
 LOCATION HANDLING (for all tools):
 - Determine location information:
@@ -175,6 +198,16 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
     
     user_message = state.get("user_message", "")
     all_memories = state.get("relevant_memories", [])
+    previous_hotel_result = state.get("hotel_result")  # Get previous hotel search results
+    
+    # Debug: Log what we have
+    print(f"[HOTEL AGENT DEBUG] User message: {user_message[:100]}")
+    if previous_hotel_result:
+        has_error = previous_hotel_result.get("error", False)
+        hotels_count = len(previous_hotel_result.get("hotels", []))
+        print(f"[HOTEL AGENT DEBUG] Previous hotel_result exists: error={has_error}, hotels_count={hotels_count}")
+    else:
+        print(f"[HOTEL AGENT DEBUG] No previous hotel_result in state")
     
     # Filter memories to only include hotel-related ones
     relevant_memories = filter_memories_for_agent(all_memories, "hotel")
@@ -194,17 +227,162 @@ async def hotel_agent_node(state: AgentState) -> AgentState:
         step_context = current_step.get("description", "")
         print(f"🔍 HOTEL DEBUG - Step context: {step_context}")
     
+    # Check if user message contains booking intent (override misleading step context)
+    user_lower = user_message.lower()
+    booking_keywords_in_message = ["book", "reserve", "confirm booking", "i'll take", "i want to book", "complete the booking", "book a room", "book the", "book a room in"]
+    has_booking_intent = any(keyword in user_lower for keyword in booking_keywords_in_message)
+    
+    # If user says "book" but step context says "search", override the step context
+    if has_booking_intent:
+        if "search" in step_context.lower() or ("search" in step_context.lower() and "book" in step_context.lower()):
+            print(f"🚨 OVERRIDE: User wants to BOOK - overriding misleading step context that mentions 'search'")
+            # Extract hotel name from step context if mentioned
+            hotel_name_match = None
+            if "hotel" in step_context.lower():
+                # Try to extract hotel name (e.g., "Hotel Napoleon Beirut")
+                import re
+                hotel_match = re.search(r'hotel\s+([A-Z][a-zA-Z\s]+)', step_context, re.IGNORECASE)
+                if hotel_match:
+                    hotel_name_match = hotel_match.group(1).strip()
+            if hotel_name_match:
+                step_context = f"User wants to BOOK {hotel_name_match}. Extract hotel_id and rate_id from previous results or search first if needed."
+            else:
+                step_context = f"User wants to BOOK a hotel room. Extract hotel_id and rate_id from previous results or search first if needed."
+    
+    # Try to extract hotel results from memories if not in state
+    if not previous_hotel_result and relevant_memories:
+        print(f"[HOTEL AGENT DEBUG] Trying to extract hotel results from memories...")
+        # Look for hotel results in memory context
+        for memory in relevant_memories:
+            if isinstance(memory, str) and "hotel" in memory.lower():
+                # Check if memory contains hotel list with hotel IDs
+                # This is a fallback - ideally previous_hotel_result should be in state
+                print(f"[HOTEL AGENT DEBUG] Found hotel-related memory, but cannot parse structured data from it")
+    
     # Build the message to send to LLM
+    # Include previous hotel results if available (for booking scenarios)
+    previous_results_context = ""
+    if previous_hotel_result and not previous_hotel_result.get("error"):
+        hotels = previous_hotel_result.get("hotels", [])
+        if hotels:
+            previous_results_context = f"""
+
+=== PREVIOUS HOTEL SEARCH RESULTS (for booking reference) ===
+You have {len(hotels)} hotel(s) from a previous search. When user wants to book, extract hotel_id and rate_id from these results:
+
+"""
+            # Include first 3 hotels with key booking fields
+            for i, hotel in enumerate(hotels[:3], 1):
+                hotel_id = hotel.get("hotelId") or hotel.get("id") or hotel.get("hotel_id")
+                hotel_name = hotel.get("name", "Unknown")
+                
+                # Try to find rate_id (optionRefId) in the hotel structure
+                rate_id = None
+                option_ref_id = None
+                if "roomTypes" in hotel and isinstance(hotel["roomTypes"], list):
+                    for room_type in hotel["roomTypes"]:
+                        if "rates" in room_type and isinstance(room_type["rates"], list):
+                            for rate in room_type["rates"]:
+                                if "optionRefId" in rate:
+                                    option_ref_id = rate["optionRefId"]
+                                    break
+                                if "rateId" in rate:
+                                    rate_id = rate["rateId"]
+                                    break
+                            if option_ref_id or rate_id:
+                                break
+                
+                if not option_ref_id and not rate_id:
+                    option_ref_id = hotel.get("optionRefId")
+                    rate_id = hotel.get("rateId")
+                
+                booking_rate_id = option_ref_id or rate_id
+                
+                previous_results_context += f"Hotel {i}: {hotel_name}\n"
+                previous_results_context += f"  - hotel_id: {hotel_id}\n"
+                if booking_rate_id:
+                    previous_results_context += f"  - rate_id (optionRefId): {booking_rate_id}\n"
+                else:
+                    previous_results_context += f"  - rate_id: NOT FOUND (may need to search rates again)\n"
+                previous_results_context += "\n"
+            
+            previous_results_context += """
+🚨 CRITICAL FOR BOOKING REQUESTS:
+- If user says "book", "reserve", "I'll take", "confirm booking" → YOU MUST use book_hotel_room (NOT get_hotel_rates!)
+- When user says "book this hotel" or "book hotel X", match the hotel name to the list above
+- Extract the hotel_id and rate_id (optionRefId) from the matching hotel
+- Use these IDs in the book_hotel_room tool call
+- If rate_id is not found, you may need to call get_hotel_rates again for that specific hotel_id
+- DO NOT call get_hotel_rates when user wants to BOOK - they've already seen the hotels!
+
+"""
+    
+    # Check if this is a booking request (user says "book")
+    # Check booking intent from user message first
+    user_lower = user_message.lower()
+    booking_keywords = ["book", "reserve", "confirm booking", "i'll take", "i want to book", "complete the booking", "book a room", "book the", "book a room in"]
+    is_booking_request = any(keyword in user_lower for keyword in booking_keywords)
+    
+    # Check if we have previous results
+    has_previous_results = False
+    if previous_hotel_result and not previous_hotel_result.get("error"):
+        hotels = previous_hotel_result.get("hotels", [])
+        if hotels:
+            has_previous_results = True
+            print(f"[HOTEL AGENT DEBUG] Booking request detected with {len(hotels)} previous hotel results available")
+    
+    if is_booking_request:
+        # Emphasize booking when user says "book"
+        if has_previous_results:
+            booking_emphasis = """
+
+🚨🚨🚨 BOOKING REQUEST DETECTED 🚨🚨🚨
+User wants to COMPLETE A BOOKING, not search for hotels!
+YOU MUST use book_hotel_room tool (NOT get_hotel_rates!)
+Previous hotel results are available above - extract hotel_id and rate_id from them!
+
+"""
+            previous_results_context = booking_emphasis + previous_results_context
+        else:
+            # No previous results, but user wants to book - we need to search first OR extract from memories
+            booking_emphasis = """
+
+🚨🚨🚨 BOOKING REQUEST DETECTED 🚨🚨🚨
+User wants to COMPLETE A BOOKING, not search for hotels!
+However, no previous hotel results found in state. 
+
+OPTIONS:
+1. If hotel name is mentioned (e.g., "ODAN Apart"), you may need to search for rates first using get_hotel_rates with the hotel name
+2. OR if you can extract hotel_id from memories/context, use book_hotel_room directly
+
+⚠️ IMPORTANT: If you search first, make sure to extract hotel_id and rate_id from the results for the booking!
+
+"""
+            previous_results_context = booking_emphasis + previous_results_context
+    
     if step_context:
         # Use step description as primary instruction, with user message as background
-        agent_message = f"""Current task: {step_context}
+        # If booking is detected, emphasize it more strongly in the message
+        if is_booking_request:
+            agent_message = f"""Current task: {step_context}
+
+🚨 CRITICAL: User wants to BOOK a hotel - this is a BOOKING request!
+{previous_results_context}
+User's request: {user_message}
+
+INSTRUCTIONS:
+- If you have previous hotel results above, extract hotel_id and rate_id and call book_hotel_room NOW
+- If you don't have previous results, search first to get hotel_id and rate_id, THEN immediately call book_hotel_room
+- DO NOT just search and stop - you MUST complete the booking!"""
+        else:
+            agent_message = f"""Current task: {step_context}
 
 Background context from user: {user_message}
-
+{previous_results_context}
 Focus on the hotel search task described above."""
     else:
-        # Fallback to user message if no step context
-        agent_message = user_message
+        # Include previous results context even without step context
+        agent_message = user_message + previous_results_context
     updated_state = state.copy()
     
     # Always use LLM to extract parameters from user message
@@ -214,6 +392,21 @@ Focus on the hotel search task described above."""
     
     # Prepare messages for LLM
     prompt = get_hotel_agent_prompt(memories=relevant_memories)
+    
+    # If this is a booking request, add extra emphasis to the system prompt
+    if is_booking_request:
+        booking_system_override = """
+
+🚨🚨🚨 CRITICAL: USER WANTS TO BOOK A HOTEL 🚨🚨🚨
+The user has said they want to BOOK a specific hotel.
+You MUST use book_hotel_room tool - NOT get_hotel_rates!
+Previous hotel search results are available in the user message below.
+Extract hotel_id and rate_id from those results and call book_hotel_room.
+
+DO NOT call get_hotel_rates - the user has already seen the hotels!
+
+"""
+        prompt = booking_system_override + prompt
     
     # Enhance user message with hotel-related memories if available
     if relevant_memories:
@@ -226,6 +419,15 @@ Focus on the hotel search task described above."""
         {"role": "system", "content": prompt},
         {"role": "user", "content": agent_message}
     ]
+    
+    # Log booking detection for debugging
+    if is_booking_request:
+        print(f"🚨 BOOKING REQUEST DETECTED - User message contains booking keywords")
+        if previous_hotel_result:
+            print(f"   Previous results: {len(previous_hotel_result.get('hotels', []))} hotels available")
+        else:
+            print(f"   Previous results: No previous hotel results found")
+        print(f"   Expected tool: book_hotel_room (NOT get_hotel_rates)")
     
     # Build function calling schema for hotel tools
     functions = []
@@ -249,30 +451,51 @@ Focus on the hotel search task described above."""
             sanitized["items"] = _sanitize_schema(sanitized["items"])
         return sanitized
 
+    # Build function list - prioritize book_hotel_room if booking is detected
+    tool_list = []
     for tool in tools:
-        if tool["name"] in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details", "get_list_of_hotels"]:
-            input_schema = tool.get("inputSchema", {})
-            input_schema = _sanitize_schema(input_schema)
-            
-            # Override descriptions to make tool selection crystal clear
-            description = tool.get("description", "Search for hotels")
-            if tool["name"] == "get_list_of_hotels":
-                description = "🔍 BROWSE hotels by location (NO dates needed). Use this for general queries like 'find hotels in [city]'. Returns list of hotels with details. This is the PRIMARY tool for browsing."
-            elif tool["name"] == "get_hotel_rates":
-                description = "💰 Get hotel RATES for specific dates (dates REQUIRED). Use ONLY when user mentions dates or wants to book/check availability."
-            elif tool["name"] == "get_hotel_rates_by_price":
-                description = "💰 Get hotel RATES sorted by price for specific dates (dates REQUIRED). Use ONLY when user wants cheapest options with dates."
-            elif tool["name"] == "get_hotel_details":
-                description = "🏨 Get details of a SPECIFIC hotel by ID (hotel_id REQUIRED). Use when you already have a hotel_id."
-            
-            functions.append({
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": description,
-                    "parameters": input_schema
-                }
-            })
+        if tool["name"] in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details", "get_list_of_hotels", "book_hotel_room"]:
+            tool_list.append(tool)
+    
+    # If booking is detected, put book_hotel_room first in the list
+    if is_booking_request:
+        tool_list.sort(key=lambda t: 0 if t["name"] == "book_hotel_room" else 1)
+        print(f"🚨 BOOKING DETECTED - Prioritizing book_hotel_room tool")
+    
+    for tool in tool_list:
+        input_schema = tool.get("inputSchema", {})
+        input_schema = _sanitize_schema(input_schema)
+        
+        # Override descriptions to make tool selection crystal clear
+        description = tool.get("description", "Search for hotels")
+        if tool["name"] == "get_list_of_hotels":
+            description = "🔍 BROWSE hotels by location (NO dates needed). Use this for general queries like 'find hotels in [city]'. Returns list of hotels with details. This is the PRIMARY tool for browsing."
+        elif tool["name"] == "get_hotel_rates":
+            if is_booking_request:
+                description = "❌ DO NOT USE - User wants to BOOK, not search! Use book_hotel_room instead!"
+            else:
+                description = "💰 SEARCH for hotel RATES with prices (dates REQUIRED). Use ONLY when user wants to SEE available hotels with prices. NOT for booking!"
+        elif tool["name"] == "get_hotel_rates_by_price":
+            if is_booking_request:
+                description = "❌ DO NOT USE - User wants to BOOK, not search! Use book_hotel_room instead!"
+            else:
+                description = "💰 SEARCH for hotel RATES sorted by price (dates REQUIRED). Use ONLY when user wants cheapest options with dates. NOT for booking!"
+        elif tool["name"] == "get_hotel_details":
+            description = "🏨 Get details of a SPECIFIC hotel by ID (hotel_id REQUIRED). Use when you already have a hotel_id."
+        elif tool["name"] == "book_hotel_room":
+            if is_booking_request:
+                description = "💳💳💳 USE THIS TOOL NOW! COMPLETE BOOKING - Book a hotel room with payment. User wants to BOOK a specific hotel. Extract hotel_id and rate_id from previous results above. REQUIRED parameters: hotel_id, rate_id, checkin, checkout, occupancies, guest info, payment info."
+            else:
+                description = "💳 COMPLETE BOOKING - Book a hotel room with payment (hotel_id and rate_id REQUIRED). USE THIS when user says 'book this hotel', 'book hotel X', 'reserve this room', or 'complete the booking' AFTER seeing hotel options. NOT for searching - that's get_hotel_rates! Requires rate_id (optionRefId) from previous get_hotel_rates response."
+        
+        functions.append({
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": description,
+                "parameters": input_schema
+            }
+        })
     
     # Call LLM with function calling - require tool use when functions are available
     if functions:
@@ -295,7 +518,13 @@ Focus on the hotel search task described above."""
         tool_call = message.tool_calls[0]
         tool_name = tool_call.function.name
         
-        if tool_name in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details", "get_list_of_hotels"]:
+        # CRITICAL: If booking is detected but agent tries to search, warn and guide it
+        if is_booking_request and tool_name in ["get_hotel_rates", "get_hotel_rates_by_price"]:
+            print(f"⚠️⚠️⚠️ WARNING: Booking detected but agent chose {tool_name} instead of book_hotel_room!")
+            print(f"   This is OK if hotel_id/rate_id are missing - agent needs to search first to get them")
+            print(f"   After search completes, agent should call book_hotel_room with the extracted IDs")
+        
+        if tool_name in ["get_hotel_rates", "get_hotel_rates_by_price", "get_hotel_details", "get_list_of_hotels", "book_hotel_room"]:
             import json
             args = json.loads(tool_call.function.arguments)
             
@@ -308,6 +537,29 @@ Focus on the hotel search task described above."""
                 # Extract filter parameters (don't pass them to the tool)
                 max_price = tool_args.pop("max_price", None) or tool_args.pop("budget", None)
                 min_stars = tool_args.pop("min_stars", None) or tool_args.pop("star_rating", None) or tool_args.pop("stars", None)
+                
+                # If booking is detected and agent is searching, ensure location is correct
+                if is_booking_request and tool_name in ["get_hotel_rates", "get_hotel_rates_by_price"]:
+                    # Extract location from user message or step context
+                    if "beirut" in user_lower or "beirut" in step_context.lower():
+                        if "city_name" not in tool_args or not tool_args.get("city_name"):
+                            tool_args["city_name"] = "Beirut"
+                        if "country_code" not in tool_args or not tool_args.get("country_code"):
+                            tool_args["country_code"] = "LB"
+                        print(f"🔧 FIXED: Added location (Beirut, LB) to search for booking")
+                    
+                    # If hotel_ids is a hotel name (not an ID), remove it and use city/country instead
+                    if "hotel_ids" in tool_args:
+                        hotel_ids = tool_args.get("hotel_ids")
+                        if isinstance(hotel_ids, str) and (" " in hotel_ids or len(hotel_ids) > 20):
+                            # This looks like a hotel name, not an ID
+                            print(f"🔧 FIXED: hotel_ids looks like a name '{hotel_ids}', removing it and using city/country search")
+                            tool_args.pop("hotel_ids", None)
+                            # Ensure city/country are set
+                            if "city_name" not in tool_args:
+                                tool_args["city_name"] = "Beirut"
+                            if "country_code" not in tool_args:
+                                tool_args["country_code"] = "LB"
                 
                 # Call the hotel tool without filter parameters
                 hotel_result = await HotelAgentClient.invoke(tool_name, **tool_args)
@@ -326,6 +578,16 @@ Focus on the hotel search task described above."""
                     updated_state["hotel_result"] = error_result
                     print(f"Hotel agent: Error occurred - {error_result.get('error_code')}: {error_result.get('error_message')}")
                     # No need to set route - using add_edge means we automatically route to join_node
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).total_seconds()
+                    print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT COMPLETED (Duration: {duration:.3f}s)")
+                    return updated_state
+                
+                # Handle booking tool separately - no enrichment needed
+                if tool_name == "book_hotel_room":
+                    # Store booking result directly
+                    updated_state["hotel_result"] = hotel_result
+                    print(f"Hotel agent: Booking completed - Booking ID: {hotel_result.get('booking_id', 'N/A')}, Confirmation: {hotel_result.get('confirmation_code', 'N/A')}")
                     end_time = datetime.now()
                     duration = (end_time - start_time).total_seconds()
                     print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT COMPLETED (Duration: {duration:.3f}s)")
@@ -438,6 +700,153 @@ Focus on the hotel search task described above."""
                             # If all filtered out, keep original hotels (filtering might have been too strict)
                             hotel_result["hotels"] = hotels
                             hotel_result["_filtered"] = len(hotels)
+                        
+                        # CRITICAL: If booking was detected and we just searched, try to continue with booking
+                        if is_booking_request and tool_name in ["get_hotel_rates", "get_hotel_rates_by_price"]:
+                            print(f"🚨 BOOKING DETECTED: Just completed search, checking if we can proceed with booking...")
+                            # Find the hotel the user wants (second hotel = index 1, first = index 0)
+                            target_hotel = None
+                            if hotels:
+                                # User said "second hotel" or "first hotel" - extract from user message
+                                if "second" in user_lower or "2" in user_lower or "two" in user_lower:
+                                    if len(hotels) > 1:
+                                        target_hotel = hotels[1]  # Second hotel (index 1)
+                                        print(f"   Selected second hotel: {target_hotel.get('name', 'Unknown')}")
+                                    else:
+                                        target_hotel = hotels[0]  # Fallback to first if only one
+                                elif "first" in user_lower or "1" in user_lower or "one" in user_lower:
+                                    target_hotel = hotels[0]
+                                    print(f"   Selected first hotel: {target_hotel.get('name', 'Unknown')}")
+                                else:
+                                    # Try to match by hotel name from step context or user message
+                                    hotel_name_to_find = None
+                                    if "hotel napoleon" in user_lower or "napoleon" in user_lower:
+                                        hotel_name_to_find = "napoleon"
+                                    elif "odan" in user_lower:
+                                        hotel_name_to_find = "odan"
+                                    
+                                    if hotel_name_to_find:
+                                        for hotel in hotels:
+                                            hotel_name = hotel.get("name", "").lower()
+                                            if hotel_name_to_find in hotel_name:
+                                                target_hotel = hotel
+                                                print(f"   Matched hotel by name: {hotel.get('name', 'Unknown')}")
+                                                break
+                                    
+                                    # If no match, use first hotel
+                                    if not target_hotel:
+                                        target_hotel = hotels[0]
+                                        print(f"   No specific hotel mentioned, using first hotel: {target_hotel.get('name', 'Unknown')}")
+                            
+                            if target_hotel:
+                                hotel_id = target_hotel.get("hotelId") or target_hotel.get("id") or target_hotel.get("hotel_id")
+                                # Try to find rate_id
+                                rate_id = None
+                                option_ref_id = None
+                                if "roomTypes" in target_hotel and isinstance(target_hotel["roomTypes"], list):
+                                    for room_type in target_hotel["roomTypes"]:
+                                        if "rates" in room_type and isinstance(room_type["rates"], list):
+                                            for rate in room_type["rates"]:
+                                                if "optionRefId" in rate:
+                                                    option_ref_id = rate["optionRefId"]
+                                                    break
+                                                if "rateId" in rate:
+                                                    rate_id = rate["rateId"]
+                                                    break
+                                            if option_ref_id or rate_id:
+                                                break
+                                
+                                if not option_ref_id and not rate_id:
+                                    option_ref_id = target_hotel.get("optionRefId")
+                                    rate_id = target_hotel.get("rateId")
+                                
+                                booking_rate_id = option_ref_id or rate_id
+                                
+                                if hotel_id and booking_rate_id:
+                                    print(f"   ✅ Found hotel_id={hotel_id}, rate_id={booking_rate_id}")
+                                    
+                                    # Check if payment info is in the user message
+                                    has_payment_info = False
+                                    payment_info = {}
+                                    
+                                    # Extract payment info from user message if available
+                                    user_lower_for_payment = user_message.lower()
+                                    # Look for card number (typically 13-19 digits)
+                                    import re
+                                    card_match = re.search(r'card\s*(?:number|#|num)?\s*(?:is|:)?\s*(\d{13,19})', user_lower_for_payment)
+                                    expiry_match = re.search(r'expir(?:y|ation)?\s*(?:is|:)?\s*(\d{1,2}[/-]\d{2,4})', user_lower_for_payment)
+                                    cvv_match = re.search(r'cvv\s*(?:is|:)?\s*(\d{3,4})', user_lower_for_payment)
+                                    name_match = re.search(r'(?:name|card\s*holder)\s*(?:is|:)?\s*([A-Z][a-z]+\s+[A-Z][a-z]+)', user_message)
+                                    email_match = re.search(r'email\s*(?:is|:)?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', user_message, re.IGNORECASE)
+                                    
+                                    if card_match and expiry_match and cvv_match:
+                                        payment_info["card_number"] = card_match.group(1)
+                                        payment_info["card_expiry"] = expiry_match.group(1).replace("-", "/")
+                                        payment_info["card_cvv"] = cvv_match.group(1)
+                                        if name_match:
+                                            payment_info["card_holder_name"] = name_match.group(1)
+                                        has_payment_info = True
+                                        print(f"   ✅ Payment info found in user message!")
+                                    
+                                    # Extract guest info
+                                    guest_info = {}
+                                    if email_match:
+                                        guest_info["email"] = email_match.group(1)
+                                    if name_match:
+                                        full_name = name_match.group(1).split()
+                                        if len(full_name) >= 2:
+                                            guest_info["first_name"] = full_name[0]
+                                            guest_info["last_name"] = " ".join(full_name[1:])
+                                    
+                                    # Extract dates from step context or tool args
+                                    checkin_date = tool_args.get("checkin") or "2025-12-10"
+                                    checkout_date = tool_args.get("checkout") or "2025-12-12"
+                                    occupancies_list = tool_args.get("occupancies", [{"adults": 1}])
+                                    
+                                    if has_payment_info and guest_info.get("email") and guest_info.get("first_name"):
+                                        print(f"   🚀 Attempting to complete booking automatically...")
+                                        try:
+                                            booking_result = await HotelAgentClient.invoke(
+                                                "book_hotel_room",
+                                                hotel_id=hotel_id,
+                                                rate_id=booking_rate_id,
+                                                checkin=checkin_date,
+                                                checkout=checkout_date,
+                                                occupancies=occupancies_list,
+                                                guest_first_name=guest_info.get("first_name", "Guest"),
+                                                guest_last_name=guest_info.get("last_name", "User"),
+                                                guest_email=guest_info.get("email"),
+                                                card_number=payment_info["card_number"],
+                                                card_expiry=payment_info["card_expiry"],
+                                                card_cvv=payment_info["card_cvv"],
+                                                card_holder_name=payment_info.get("card_holder_name", guest_info.get("first_name", "Guest") + " " + guest_info.get("last_name", "User"))
+                                            )
+                                            
+                                            if not booking_result.get("error"):
+                                                print(f"   ✅ Booking completed successfully!")
+                                                updated_state["hotel_result"] = booking_result
+                                                end_time = datetime.now()
+                                                duration = (end_time - start_time).total_seconds()
+                                                print(f"[{end_time.strftime('%H:%M:%S.%f')[:-3]}] 🏨 HOTEL AGENT COMPLETED (Duration: {duration:.3f}s)")
+                                                return updated_state
+                                            else:
+                                                print(f"   ⚠️  Booking failed: {booking_result.get('error_message')}")
+                                        except Exception as booking_error:
+                                            print(f"   ⚠️  Error attempting automatic booking: {booking_error}")
+                                    else:
+                                        print(f"   ⚠️  Payment info missing - need: card number, expiry, CVV, guest name, email")
+                                        print(f"   🔗 Generating secure booking URL for payment collection")
+                                        # Store booking intent in hotel_result so conversational agent can show booking link
+                                        hotel_result["_booking_intent"] = True
+                                        hotel_result["_booking_hotel_id"] = hotel_id
+                                        hotel_result["_booking_rate_id"] = booking_rate_id
+                                        hotel_result["_booking_hotel_name"] = target_hotel.get("name", "Selected Hotel")
+                                        hotel_result["_booking_checkin"] = checkin_date
+                                        hotel_result["_booking_checkout"] = checkout_date
+                                        hotel_result["_booking_price"] = target_hotel.get("price") or "N/A"
+                                else:
+                                    print(f"   ⚠️  Cannot proceed with booking: Missing hotel_id or rate_id")
+                                    print(f"   hotel_id={hotel_id}, rate_id={booking_rate_id}")
                     except Exception as enrich_error:
                         # If enrichment fails completely, keep the original result
                         print(f"Warning: Hotel enrichment failed: {enrich_error}")

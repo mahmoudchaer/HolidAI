@@ -314,6 +314,11 @@ IMPORTANT:
     * If hotels have "roomTypes" or "rates" fields with prices → show the actual prices
     * If hotels DON'T have price fields → DO NOT make up prices! Just show hotel information (name, rating, location, amenities)
     * NEVER hallucinate or invent prices - only show prices if they exist in the data
+  ⚠️ BOOKING REQUESTS: If hotel_result has "_booking_intent": true, the user wants to book a hotel. 
+    * DO NOT ask for payment information in chat (this is a security risk)
+    * Instead, provide a secure booking link: [Complete Booking](/booking?hotel_id={_booking_hotel_id}&rate_id={_booking_rate_id}&hotel_name={_booking_hotel_name}&checkin={_booking_checkin}&checkout={_booking_checkout}&price={_booking_price})
+    * Tell the user: "I've prepared your booking! Please click the link below to securely complete your reservation with payment details."
+    * The booking link will take them to a secure page where they can enter payment information safely
   Only report an error if the result has "error": true AND no hotels data.
 
 - For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants you found.
@@ -625,6 +630,28 @@ Please revise your response based on this feedback to fix the issues mentioned."
             
             # Clean the response to remove any JSON/Collected_info references
             final_response = clean_response(raw_response)
+            
+            # Check if booking intent is present and add booking URL
+            hotel_result = collected_info.get("hotel_result")
+            if hotel_result and isinstance(hotel_result, dict) and hotel_result.get("_booking_intent"):
+                booking_hotel_id = hotel_result.get("_booking_hotel_id")
+                booking_rate_id = hotel_result.get("_booking_rate_id")
+                booking_hotel_name = hotel_result.get("_booking_hotel_name", "Selected Hotel")
+                booking_checkin = hotel_result.get("_booking_checkin")
+                booking_checkout = hotel_result.get("_booking_checkout")
+                booking_price = hotel_result.get("_booking_price", "")
+                
+                if booking_hotel_id and booking_rate_id:
+                    # Generate secure booking URL
+                    from urllib.parse import quote
+                    booking_url = f"/booking?hotel_id={quote(booking_hotel_id)}&rate_id={quote(booking_rate_id)}&hotel_name={quote(booking_hotel_name)}&checkin={quote(booking_checkin)}&checkout={quote(booking_checkout)}"
+                    if booking_price and booking_price != "N/A":
+                        booking_url += f"&price={quote(str(booking_price))}"
+                    
+                    # Append booking link to response
+                    booking_message = f"\n\n🔒 **Secure Booking**\n\nI've prepared your booking for {booking_hotel_name}! For your security, please complete your reservation and payment details on our secure booking page:\n\n[Complete Your Booking →]({booking_url})\n\nThis secure page will allow you to enter your payment information safely."
+                    final_response += booking_message
+                    print(f"[CONVERSATIONAL] Added booking URL: {booking_url}")
         except Exception as e:
             error_msg = str(e)
             error_trace = traceback.format_exc()
@@ -654,6 +681,24 @@ The system has collected information from specialized agents. Please provide a h
                     message = response.choices[0].message
                     raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
                     final_response = clean_response(raw_response)
+                    
+                    # Check if booking intent is present and add booking URL (for simplified path too)
+                    hotel_result = collected_info.get("hotel_result")
+                    if hotel_result and isinstance(hotel_result, dict) and hotel_result.get("_booking_intent"):
+                        booking_hotel_id = hotel_result.get("_booking_hotel_id")
+                        booking_rate_id = hotel_result.get("_booking_rate_id")
+                        booking_hotel_name = hotel_result.get("_booking_hotel_name", "Selected Hotel")
+                        booking_checkin = hotel_result.get("_booking_checkin")
+                        booking_checkout = hotel_result.get("_booking_checkout")
+                        booking_price = hotel_result.get("_booking_price", "")
+                        
+                        if booking_hotel_id and booking_rate_id:
+                            from urllib.parse import quote
+                            booking_url = f"/booking?hotel_id={quote(booking_hotel_id)}&rate_id={quote(booking_rate_id)}&hotel_name={quote(booking_hotel_name)}&checkin={quote(booking_checkin)}&checkout={quote(booking_checkout)}"
+                            if booking_price and booking_price != "N/A":
+                                booking_url += f"&price={quote(str(booking_price))}"
+                            booking_message = f"\n\n🔒 **Secure Booking**\n\nI've prepared your booking for {booking_hotel_name}! For your security, please complete your reservation and payment details on our secure booking page:\n\n[Complete Your Booking →]({booking_url})\n\nThis secure page will allow you to enter your payment information safely."
+                            final_response += booking_message
                 except Exception as inner_e:
                     print(f"Error in simplified message retry: {str(inner_e)}")
                     final_response = "I have the information you requested, but there was a technical issue formatting the response. Please try rephrasing your query or ask for specific details."

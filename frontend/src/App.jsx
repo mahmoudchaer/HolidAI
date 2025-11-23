@@ -5,6 +5,7 @@ import Signup from './pages/Signup'
 import Chat from './pages/Chat'
 import About from './pages/About'
 import Profile from './pages/Profile'
+import Booking from './pages/Booking'
 import { useAuthStore } from './store/store'
 
 // Protected Route Component
@@ -94,6 +95,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/booking"
+          element={
+            <ProtectedRoute>
+              <Booking />
             </ProtectedRoute>
           }
         />

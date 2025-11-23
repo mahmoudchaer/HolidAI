@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { getAirlineLogo, getPlaceholderImage } from '../utils/imageUtils'
 
 // Professional Flight Card Component
@@ -233,6 +234,8 @@ const LocationCard = ({ location, index }) => {
 }
 
 const ChatMessage = ({ message, isUser }) => {
+  const navigate = useNavigate()
+  
   const tryParseStructuredData = (content) => {
     let structuredData = null
     let cleanedContent = content
@@ -358,16 +361,34 @@ const ChatMessage = ({ message, isUser }) => {
                       code: ({ children }) => (
                         <code className="bg-slate-100 text-slate-800 px-2 py-1 rounded text-sm font-mono">{children}</code>
                       ),
-                      a: ({ children, href }) => (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-700 underline font-medium"
-                        >
-                          {children}
-                        </a>
-                      ),
+                      a: ({ children, href }) => {
+                        // Check if it's an internal link (starts with /)
+                        if (href && href.startsWith('/') && !href.startsWith('//')) {
+                          return (
+                            <Link
+                              to={href}
+                              className="text-blue-600 hover:text-blue-700 underline font-medium"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                navigate(href)
+                              }}
+                            >
+                              {children}
+                            </Link>
+                          )
+                        }
+                        // External links open in new tab
+                        return (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-700 underline font-medium"
+                          >
+                            {children}
+                          </a>
+                        )
+                      },
                       img: ({ src, alt }) => (
                         <img
                           src={src}
