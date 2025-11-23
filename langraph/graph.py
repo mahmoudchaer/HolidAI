@@ -22,6 +22,8 @@ from nodes.conversational_agent_node import conversational_agent_node
 from nodes.conversational_agent_feedback_node import conversational_agent_feedback_node
 from nodes.join_node import join_node
 from nodes.memory_agent_node import memory_agent_node
+from nodes.trip_planner_node import trip_planner_node
+from nodes.trip_planner_feedback_node import trip_planner_feedback_node
 
 
 def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
@@ -66,6 +68,12 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return "join_node"
     elif route == "main_agent":
         return "main_agent"
+    elif route == "trip_planner":
+        return "trip_planner"
+    elif route == "trip_planner_feedback":
+        return "trip_planner_feedback"
+    elif route == "conversational_agent_feedback":
+        return "conversational_agent_feedback"
     else:
         return "end"
 
@@ -99,6 +107,8 @@ def create_graph() -> StateGraph:
     graph.add_node("join_node", join_node)
     graph.add_node("conversational_agent", conversational_agent_node)
     graph.add_node("conversational_agent_feedback", conversational_agent_feedback_node)
+    graph.add_node("trip_planner", trip_planner_node)
+    graph.add_node("trip_planner_feedback", trip_planner_feedback_node)
     
     # Set entry point - Memory agent runs first!
     graph.set_entry_point("memory_agent")
@@ -113,6 +123,20 @@ def create_graph() -> StateGraph:
         {
             "main_agent": "main_agent",
             "conversational_agent": "conversational_agent",
+            "trip_planner": "trip_planner",
+            "end": END
+        }
+    )
+    
+    # Trip planner routes to its feedback node
+    graph.add_edge("trip_planner", "trip_planner_feedback")
+    
+    # Trip planner feedback routes to conversational_agent_feedback for final validation
+    graph.add_conditional_edges(
+        "trip_planner_feedback",
+        route_decision,
+        {
+            "conversational_agent_feedback": "conversational_agent_feedback",
             "end": END
         }
     )
@@ -312,7 +336,8 @@ async def run(user_message: str, config: dict = None, user_email: str = None, se
         "needs_user_input": False,
         "user_email": user_email,
         "relevant_memories": [],  # Will be populated by memory_agent
-        "session_id": session_id  # Session ID for STM access
+        "session_id": session_id,  # Session ID for STM access
+        "trip_planner_result": None  # Result from trip_planner node
     }
     
     if config is None:

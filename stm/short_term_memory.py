@@ -216,3 +216,57 @@ def add_message(session_id: str, user_email: str, role: str, text: str) -> bool:
         traceback.print_exc()
         return False
 
+
+def set_trip_plan_summary(session_id: str, trip_plan_summary: Dict) -> bool:
+    """
+    Store a summary of the current trip plan in STM.
+    
+    Args:
+        session_id: Session identifier
+        trip_plan_summary: Dictionary containing condensed trip plan info
+            Should contain: types, segments, titles, event_times, etc.
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        stm_data = get_stm(session_id)
+        
+        if not stm_data:
+            print(f"[STM] Warning: Cannot set trip plan summary - STM not initialized for session {session_id}")
+            return False
+        
+        stm_data["trip_plan_summary"] = trip_plan_summary
+        stm_data["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Save back to Redis
+        key = get_stm_key(session_id)
+        redis_client.set(key, json.dumps(stm_data))
+        
+        print(f"[STM] Updated trip plan summary for session {session_id}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Error setting trip plan summary: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def get_trip_plan_summary(session_id: str) -> Optional[Dict]:
+    """
+    Retrieve trip plan summary from STM.
+    
+    Args:
+        session_id: Session identifier
+        
+    Returns:
+        Trip plan summary dictionary or None if not found
+    """
+    try:
+        stm_data = get_stm(session_id)
+        if stm_data:
+            return stm_data.get("trip_plan_summary")
+        return None
+    except Exception as e:
+        print(f"[ERROR] Error getting trip plan summary: {e}")
+        return None

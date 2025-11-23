@@ -60,6 +60,16 @@ class Chat(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class TripPlan(Base):
+    """Trip Plan model."""
+    __tablename__ = "trip_plans"
+
+    email = Column(String, primary_key=True, index=True)
+    session_id = Column(String, primary_key=True, index=True)
+    plan = Column(JSONB, nullable=False, default=list)  # Store as JSON array of steps
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 # Database connection - use 127.0.0.1 instead of localhost to avoid IPv6 issues
 DATABASE_URL = os.getenv(
     "DATABASE_URL",

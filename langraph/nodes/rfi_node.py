@@ -30,6 +30,121 @@ load_dotenv(dotenv_path=env_path)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+def _detect_trip_planning_intent(user_message: str, stm_data: dict = None) -> bool:
+    """Detect if user message indicates trip-planning intent (confirm/update/change/delete).
+    
+    Args:
+        user_message: User's message
+        stm_data: Optional STM data for context
+        
+    Returns:
+        True if trip-planning intent detected, False otherwise
+    """
+    if not user_message:
+        return False
+    
+    message_lower = user_message.lower()
+    
+    # Keywords/phrases that indicate trip-planning actions
+    confirm_keywords = [
+        "i'll take", "i'll choose", "i'll select", "i'll pick",
+        "book", "book this", "book that", "book it",
+        "select", "select this", "select that", "select it",
+        "choose", "choose this", "choose that", "choose it",
+        "take", "take this", "take that", "take it",
+        "yes", "yes to", "yes for", "yes i want",
+        "add to my plan", "add to plan", "add this to", "add that to",
+        "confirm", "confirm this", "confirm that"
+    ]
+    
+    update_keywords = [
+        "change", "change my", "change the", "change this", "change that",
+        "update", "update my", "update the", "update this", "update that",
+        "replace", "replace my", "replace the", "replace this", "replace that",
+        "switch", "switch my", "switch the", "switch to",
+        "modify", "modify my", "modify the"
+    ]
+    
+    delete_keywords = [
+        "remove", "remove my", "remove the", "remove this", "remove that",
+        "delete", "delete my", "delete the", "delete this", "delete that",
+        "cancel", "cancel my", "cancel the", "cancel this", "cancel that",
+        "drop", "drop my", "drop the"
+    ]
+    
+    # Check for option references (e.g., "option 1", "option 2", "first one", "second hotel")
+    option_patterns = [
+        r"option\s+\d+",
+        r"the\s+\d+(?:st|nd|rd|th)\s+(?:one|option|flight|hotel|activity)",
+        r"(?:first|second|third|fourth|fifth)\s+(?:one|option|flight|hotel|activity)",
+        r"the\s+(?:first|second|third|fourth|fifth)",
+    ]
+    
+    import re
+    has_option_ref = any(re.search(pattern, message_lower) for pattern in option_patterns)
+    
+    # Check for flight/hotel/activity references
+    has_trip_ref = any(term in message_lower for term in [
+        "flight", "hotel", "activity", "car rental", "trip", "plan",
+        "outbound", "return", "departure", "returning"
+    ])
+    
+    # Check for "show/view/display trip plan" queries
+    view_keywords = [
+        "show", "show me", "show my", "display", "display my", "view", "view my",
+        "what's in", "what is in", "what's on", "what is on",
+        "list", "list my", "see", "see my", "tell me about"
+    ]
+    has_view = any(keyword in message_lower for keyword in view_keywords)
+    
+    # If user wants to view their trip plan
+    if has_view and ("trip plan" in message_lower or "plan" in message_lower and has_trip_ref):
+        return True
+    
+    # Check for keywords
+    has_confirm = any(keyword in message_lower for keyword in confirm_keywords)
+    has_update = any(keyword in message_lower for keyword in update_keywords)
+    has_delete = any(keyword in message_lower for keyword in delete_keywords)
+    
+    # If user mentions option numbers AND trip-related terms, likely trip-planning
+    if has_option_ref and has_trip_ref:
+        return True
+    
+    # If user has confirm/update/delete keywords AND trip references
+    if (has_confirm or has_update or has_delete) and has_trip_ref:
+        return True
+    
+    # Check STM context for recent agent messages with options
+    # This is important for cases like "i choose option 2" where trip keywords aren't in the message
+    if stm_data:
+        last_messages = stm_data.get("last_messages", [])
+        # Check if recent agent messages contain options/flights/hotels
+        for msg in reversed(last_messages[-5:]):  # Check last 5 messages for better context
+            if msg.get("role") == "agent":
+                agent_text = msg.get("text", "").lower()
+                # If agent mentioned options/flights/hotels and user is responding
+                agent_terms = ["option", "flight", "hotel", "here are", "results", "available"]
+                if any(term in agent_text for term in agent_terms):
+                    # If user has option reference OR confirm/update/delete keywords, route to trip_planner
+                    if has_option_ref or has_confirm or has_update or has_delete:
+                        matched_term = next((t for t in agent_terms if t in agent_text), "trip-related content")
+                        print(f"[RFI] Detected trip-planning intent via STM context: agent mentioned '{matched_term}' and user has option/action keywords")
+                        return True
+    
+    # If user has option reference OR confirm keywords, check if STM has trip context
+    # This handles cases like "i choose option 2" without explicit trip keywords
+    if (has_option_ref or has_confirm) and stm_data:
+        last_messages = stm_data.get("last_messages", [])
+        # Check if any recent messages (user or agent) mention flights/hotels/activities
+        for msg in reversed(last_messages[-5:]):
+            msg_text = msg.get("text", "").lower()
+            if any(term in msg_text for term in ["flight", "hotel", "activity", "trip", "booking", "reservation"]):
+                print(f"[RFI] Detected trip-planning intent: user has option/confirm keywords and STM has trip context")
+                return True
+    
+    return False
+
+
 def get_safety_scope_prompt() -> str:
     """Get the system prompt for Safety and Scope Validation."""
     return """You are a Safety and Scope Validator for a Travel Assistant system. Your role is to:
@@ -670,6 +785,20 @@ Examples:
                     print(f"[RFI] Retrieved STM context: {len(last_messages)} messages, summary: {'yes' if summary else 'no'}")
         except Exception as e:
             print(f"[WARNING] Could not retrieve STM context: {e}")
+    
+    # Check for trip-planning intents (after STM is retrieved)
+    print("\n--- Step 1.5: Trip Planning Intent Detection ---")
+    trip_planning_intent = _detect_trip_planning_intent(user_message, stm_data)
+    
+    if trip_planning_intent:
+        print(f"RFI: Detected trip-planning intent, routing to trip_planner")
+        # Route directly to trip_planner, bypassing main agent
+        return {
+            "route": "trip_planner",
+            "rfi_status": "complete",
+            "rfi_context": "",
+            "needs_user_input": False
+        }
     
     # Build the validation message
     if rfi_status == "missing_info" and needs_user_input and rfi_context:

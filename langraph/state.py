@@ -126,4 +126,5 @@ class AgentState(TypedDict):
     user_email: Annotated[Optional[str], reducer]  # User's email for memory storage
     relevant_memories: Annotated[Optional[List[str]], reducer]  # Relevant memories retrieved for this query
     session_id: Annotated[Optional[str], reducer]  # Session ID for STM access
+    trip_planner_result: Annotated[Optional[Dict[str, Any]], reducer]  # Result from trip_planner node
 
