@@ -111,6 +111,16 @@ IMPORTANT:
 - ALWAYS call a tool - do not ask for clarification unless absolutely critical information is missing
 - You have access to the full tool documentation through function calling - use it to understand parameter requirements
 
+⚠️ CRITICAL - days_flex LIMITATION:
+- The days_flex parameter in agent_get_flights_flexible_tool is LIMITED to 0-7 (maximum 7 days)
+- If user asks for "during the month" or "in December", you MUST:
+  1. Pick a date in the middle of the month (e.g., December 15 for December, or the 15th of any month)
+  2. Set days_flex to 7 (the maximum allowed) to cover as much of the month as possible
+  3. DO NOT set days_flex to 10, 15, 20, or any value greater than 7 - it will cause an error
+- Example: User says "flights in December 2025" → Use departure_date="2025-12-15" with days_flex=7
+- Example: User says "flights during January" → Use departure_date="2025-01-15" with days_flex=7
+- If user provides a specific date, use that date with an appropriate days_flex (0-7) based on their flexibility
+
 You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
     
     return base_prompt + memory_section + docs_text
@@ -239,6 +249,24 @@ Focus on the flight search task described above."""
         if tool_name in ["agent_get_flights_tool", "agent_get_flights_flexible_tool"]:
             import json
             args = json.loads(tool_call.function.arguments)
+            
+            # Validate and cap days_flex at 7 (tool limitation)
+            # IMPORTANT: agent_get_flights_tool (non-flexible) does NOT accept days_flex parameter
+            if tool_name == "agent_get_flights_tool" and "days_flex" in args:
+                print(f"[FLIGHT AGENT] WARNING: Removing days_flex parameter from agent_get_flights_tool (not supported)")
+                args.pop("days_flex", None)
+            elif tool_name == "agent_get_flights_flexible_tool" and "days_flex" in args and args["days_flex"] is not None:
+                try:
+                    days_flex_value = int(args["days_flex"])
+                    if days_flex_value > 7:
+                        print(f"[FLIGHT AGENT] WARNING: days_flex={days_flex_value} exceeds maximum of 7, capping to 7")
+                        args["days_flex"] = 7
+                    elif days_flex_value < 0:
+                        print(f"[FLIGHT AGENT] WARNING: days_flex={days_flex_value} is negative, setting to 0")
+                        args["days_flex"] = 0
+                except (ValueError, TypeError):
+                    print(f"[FLIGHT AGENT] WARNING: Invalid days_flex value '{args['days_flex']}', using default 3")
+                    args["days_flex"] = 3
             
             # Debug: Log all args
             print(f"[FLIGHT AGENT] Tool call args: {json.dumps(args, indent=2)}")
@@ -394,6 +422,15 @@ Focus on the flight search task described above."""
                 else:
                     # Single one-way call
                     flight_result = await FlightAgentClient.invoke(tool_name, **args)
+                    
+                    # Transform flexible tool response format to standard format
+                    # agent_get_flights_flexible_tool returns {"flights": [...]} but we need {"outbound": [...]}
+                    if not flight_result.get("error") and "flights" in flight_result and "outbound" not in flight_result:
+                        flights = flight_result.get("flights", [])
+                        flight_result["outbound"] = flights
+                        # Remove the old "flights" key to avoid confusion
+                        flight_result.pop("flights", None)
+                        print(f"[FLIGHT AGENT] Transformed flexible tool result: {len(flights)} flights moved to 'outbound' array")
                 
                 # ===== INTELLIGENT SUMMARIZATION =====
                 # Summarize flight results before passing to conversational agent
@@ -431,7 +468,7 @@ Focus on the flight search task described above."""
                             except Exception as e:
                                 print(f"⚠️ Flight summarization failed, using original data: {e}")
                     else:
-                        # Old format: single flights array
+                        # Old format: single flights array - transform to outbound format
                         flights = flight_result.get("flights", [])
                         if flights and len(flights) > 0:
                             try:
@@ -442,13 +479,20 @@ Focus on the flight search task described above."""
                                     user_message,
                                     step_context
                                 )
-                                flight_result["flights"] = summarized.get("flights", [])
+                                # Transform to new format: move flights to outbound array
+                                flight_result["outbound"] = summarized.get("flights", [])
                                 flight_result["original_count"] = len(flights)
                                 flight_result["summarized_count"] = len(summarized.get("flights", []))
                                 flight_result["summary"] = summarized.get("summary", "")
-                                print(f"✅ Flight agent: Summarized from {len(flights)} to {flight_result['summarized_count']} flights")
+                                # Remove old flights key
+                                flight_result.pop("flights", None)
+                                print(f"✅ Flight agent: Summarized from {len(flights)} to {flight_result['summarized_count']} flights and transformed to 'outbound' format")
                             except Exception as e:
                                 print(f"⚠️ Flight summarization failed, using original data: {e}")
+                                # Still transform format even if summarization fails
+                                if "flights" in flight_result:
+                                    flight_result["outbound"] = flight_result.pop("flights")
+                                print(f"✅ Flight agent: Transformed {len(flight_result.get('outbound', []))} flights to 'outbound' format (summarization skipped)")
                 
                 # Store result directly in state for parallel execution
                 updated_state["flight_result"] = flight_result

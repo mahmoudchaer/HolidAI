@@ -1,10 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useActivityStore } from '../store/store'
+import { useChatStore } from '../store/store'
 
 const AgentStatusIndicator = () => {
   const { currentStatus, isAgentActive } = useActivityStore()
+  const { isLoading } = useChatStore()
 
-  if (!isAgentActive || !currentStatus) return null
+  // Hide when loading (activity is shown in the thinking bubble instead)
+  if (!isAgentActive || !currentStatus || isLoading) return null
 
   const getStatusIcon = (type) => {
     switch (type) {

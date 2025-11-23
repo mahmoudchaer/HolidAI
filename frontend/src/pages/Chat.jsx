@@ -2,10 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import Navbar from '../components/Navbar'
 import ChatSidebar from '../components/ChatSidebar'
-import AgentStatusIndicator from '../components/AgentStatusIndicator'
 import ChatMessage from '../components/ChatMessage'
 import ChatInput from '../components/ChatInput'
-import { useChatStore } from '../store/store'
+import { useChatStore, useActivityStore } from '../store/store'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 const Chat = () => {
@@ -21,10 +20,37 @@ const Chat = () => {
     setLoading,
   } = useChatStore()
 
+  // Get agent activity status
+  const { currentStatus } = useActivityStore()
+
   const chatContainerRef = useRef(null)
   
   // WebSocket for real-time updates
   useWebSocket()
+
+  // Helper function to get icon for agent activity type
+  const getActivityIcon = (type) => {
+    switch (type) {
+      case 'flight':
+        return '✈️'
+      case 'hotel':
+        return '🏨'
+      case 'visa':
+        return '📄'
+      case 'attractions':
+      case 'tripadvisor':
+        return '🎭'
+      case 'search':
+        return '🔍'
+      case 'analyzing':
+      case 'thinking':
+        return '🤔'
+      case 'planning':
+        return '📋'
+      default:
+        return null
+    }
+  }
 
   useEffect(() => {
     loadConversations()
@@ -124,13 +150,21 @@ const Chat = () => {
         }
         addMessage(assistantMessage)
         
+        // Update session_id if we got a new one, but preserve current conversation state
         if (data.session_id) {
-          if (!currentConversation || currentConversation.session_id !== data.session_id) {
-            setCurrentConversation({ session_id: data.session_id })
+          const newSessionId = data.session_id
+          // Only update if it's actually different
+          if (!currentConversation || currentConversation.session_id !== newSessionId) {
+            // Preserve the current messages when updating conversation
+            setCurrentConversation({ 
+              session_id: newSessionId,
+              title: currentConversation?.title // Preserve title if exists
+            })
           }
         }
         
-        await loadConversations()
+        // Load conversations in background without affecting current state
+        loadConversations().catch(err => console.error('Error loading conversations:', err))
       } else {
         addMessage({
           role: 'assistant',
@@ -144,6 +178,9 @@ const Chat = () => {
       })
     } finally {
       setLoading(false)
+      // Clear agent activity when loading is done
+      const { clearCurrentStatus } = useActivityStore.getState()
+      clearCurrentStatus()
     }
   }
 
@@ -160,9 +197,6 @@ const Chat = () => {
         />
 
         <div className="flex-1 flex flex-col relative">
-          {/* Agent Status Indicator */}
-          <AgentStatusIndicator />
-          
           {/* Chat messages area */}
           <div
             ref={chatContainerRef}
@@ -238,14 +272,28 @@ const Chat = () => {
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     className="flex justify-start mb-4"
                   >
                     <div className="card-professional">
                       <div className="flex gap-2 items-center">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                        <span className="ml-2 text-caption">Thinking...</span>
+                        {currentStatus?.type && currentStatus?.message ? (
+                          <>
+                            {getActivityIcon(currentStatus.type) && (
+                              <span className="text-base">{getActivityIcon(currentStatus.type)}</span>
+                            )}
+                            <span className="text-caption">
+                              {currentStatus.message}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            <span className="ml-2 text-caption">Thinking...</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </motion.div>

@@ -32,54 +32,678 @@ def _normalize_location(location: str) -> str:
     
     # Mapping of common country/city names to main airport codes
     location_map = {
-        # Countries
-        "LEBANON": "BEY",  # Beirut
-        "QATAR": "DOH",  # Doha
-        "UNITED STATES": "NYC",  # New York (default)
-        "USA": "NYC",
-        "UNITED KINGDOM": "LHR",  # London
-        "UK": "LHR",
-        "FRANCE": "CDG",  # Paris
-        "GERMANY": "FRA",  # Frankfurt
-        "ITALY": "FCO",  # Rome
-        "SPAIN": "MAD",  # Madrid
-        "UAE": "DXB",  # Dubai
-        "UNITED ARAB EMIRATES": "DXB",
-        "SAUDI ARABIA": "RUH",  # Riyadh
-        "EGYPT": "CAI",  # Cairo
-        "TURKEY": "IST",  # Istanbul
-        "JAPAN": "NRT",  # Tokyo
-        "CHINA": "PEK",  # Beijing
-        "INDIA": "DEL",  # Delhi
-        "AUSTRALIA": "SYD",  # Sydney
-        "CANADA": "YYZ",  # Toronto
-        "MEXICO": "MEX",  # Mexico City
-        "BRAZIL": "GRU",  # São Paulo
-        "ARGENTINA": "EZE",  # Buenos Aires
-        "SOUTH AFRICA": "JNB",  # Johannesburg
-        # Major cities
-        "BEIRUT": "BEY",
-        "DOHA": "DOH",
-        "NEW YORK": "NYC",
-        "LONDON": "LHR",
-        "PARIS": "CDG",
-        "FRANKFURT": "FRA",
-        "ROME": "FCO",
-        "MADRID": "MAD",
-        "DUBAI": "DXB",
-        "RIYADH": "RUH",
-        "CAIRO": "CAI",
-        "ISTANBUL": "IST",
-        "TOKYO": "NRT",
-        "BEIJING": "PEK",
-        "DELHI": "DEL",
-        "SYDNEY": "SYD",
-        "TORONTO": "YYZ",
-        "MEXICO CITY": "MEX",
-        "SAO PAULO": "GRU",
-        "BUENOS AIRES": "EZE",
-        "JOHANNESBURG": "JNB",
-    }
+    # ----------------------------
+    # AFRICA — 54 COUNTRIES + CITIES
+    # ----------------------------
+    "ALGERIA": "ALG",
+    "ALGIERS": "ALG",
+    "ORAN": "ORN",
+
+    "ANGOLA": "LAD",
+    "LUANDA": "LAD",
+
+    "BENIN": "COO",
+    "COTONOU": "COO",
+
+    "BOTSWANA": "GBE",
+    "GABORONE": "GBE",
+
+    "BURKINA FASO": "OUA",
+    "OUAGADOUGOU": "OUA",
+
+    "BURUNDI": "BJM",
+    "BUJUMBURA": "BJM",
+
+    "CABO VERDE": "RAI",
+    "PRAIA": "RAI",
+
+    "CAMEROON": "NSI",
+    "YAOUNDE": "NSI",
+    "DOUALA": "DLA",
+
+    "CENTRAL AFRICAN REPUBLIC": "BGF",
+    "BANGUI": "BGF",
+
+    "CHAD": "NDJ",
+    "N'DJAMENA": "NDJ",
+
+    "COMOROS": "HAH",
+    "MORONI": "HAH",
+
+    "CONGO": "BZV",
+    "BRAZZAVILLE": "BZV",
+    "POINTE-NOIRE": "PNR",
+
+    "DEMOCRATIC REPUBLIC OF THE CONGO": "FIH",
+    "KINSHASA": "FIH",
+    "LUBUMBASHI": "FBM",
+
+    "DJIBOUTI": "JIB",
+    "DJIBOUTI CITY": "JIB",
+
+    "EGYPT": "CAI",
+    "CAIRO": "CAI",
+    "ALEXANDRIA": "HBE",
+    "SHARM EL SHEIKH": "SSH",
+    "HURGHADA": "HRG",
+    "LUXOR": "LXR",
+
+    "EQUATORIAL GUINEA": "SSG",
+    "MALABO": "SSG",
+
+    "ERITREA": "ASM",
+    "ASMARA": "ASM",
+
+    "ESWATINI": "SHO",
+    "MBABANE": "SHO",
+
+    "ETHIOPIA": "ADD",
+    "ADDIS ABABA": "ADD",
+
+    "GABON": "LBV",
+    "LIBREVILLE": "LBV",
+
+    "GAMBIA": "BJL",
+    "BANJUL": "BJL",
+
+    "GHANA": "ACC",
+    "ACCRA": "ACC",
+    "KUMASI": "KMS",
+
+    "GUINEA": "CKY",
+    "CONAKRY": "CKY",
+
+    "GUINEA-BISSAU": "OXB",
+    "BISSAU": "OXB",
+
+    "KENYA": "NBO",
+    "NAIROBI": "NBO",
+    "MOMBASA": "MBA",
+
+    "LESOTHO": "MSU",
+    "MASERU": "MSU",
+
+    "LIBERIA": "ROB",
+    "MONROVIA": "ROB",
+
+    "LIBYA": "TIP",
+    "TRIPOLI": "TIP",
+    "BENGHAZI": "BEN",
+
+    "MADAGASCAR": "TNR",
+    "ANTANANARIVO": "TNR",
+
+    "MALAWI": "LLW",
+    "LILONGWE": "LLW",
+    "BLANTYRE": "BLZ",
+
+    "MALI": "BKO",
+    "BAMAKO": "BKO",
+
+    "MAURITANIA": "NKC",
+    "NOUAKCHOTT": "NKC",
+
+    "MAURITIUS": "MRU",
+    "PORT LOUIS": "MRU",
+
+    "MOROCCO": "CMN",
+    "CASABLANCA": "CMN",
+    "MARRAKECH": "RAK",
+    "TANGIER": "TNG",
+    "AGADIR": "AGA",
+
+    "MOZAMBIQUE": "MPM",
+    "MAPUTO": "MPM",
+
+    "NAMIBIA": "WDH",
+    "WINDHOEK": "WDH",
+
+    "NIGER": "NIM",
+    "NIAMEY": "NIM",
+
+    "NIGERIA": "LOS",
+    "LAGOS": "LOS",
+    "ABUJA": "ABV",
+    "PORT HARCOURT": "PHC",
+    "KANO": "KAN",
+
+    "RWANDA": "KGL",
+    "KIGALI": "KGL",
+
+    "SAO TOME AND PRINCIPE": "TMS",
+    "SAO TOME": "TMS",
+
+    "SENEGAL": "DSS",
+    "DAKAR": "DSS",
+
+    "SEYCHELLES": "SEZ",
+    "VICTORIA": "SEZ",
+
+    "SIERRA LEONE": "FNA",
+    "FREETOWN": "FNA",
+
+    "SOMALIA": "MGQ",
+    "MOGADISHU": "MGQ",
+
+    "SOUTH AFRICA": "JNB",
+    "JOHANNESBURG": "JNB",
+    "CAPE TOWN": "CPT",
+    "DURBAN": "DUR",
+    "PORT ELIZABETH": "PLZ",
+
+    "SOUTH SUDAN": "JUB",
+    "JUBA": "JUB",
+
+    "SUDAN": "KRT",
+    "KHARTOUM": "KRT",
+
+    "TANZANIA": "DAR",
+    "DAR ES SALAAM": "DAR",
+    "KILIMANJARO": "JRO",
+    "ZANZIBAR": "ZNZ",
+
+    "TOGO": "LFW",
+    "LOME": "LFW",
+
+    "TUNISIA": "TUN",
+    "TUNIS": "TUN",
+
+    "UGANDA": "EBB",
+    "ENTEBBE": "EBB",
+
+    "ZAMBIA": "LUN",
+    "LUSAKA": "LUN",
+    "NDOLA": "NLA",
+
+    "ZIMBABWE": "HRE",
+    "HARARE": "HRE",
+    "VICTORIA FALLS": "VFA",
+
+    # -----------------------------------------------------------
+    # ASIA — 48 COUNTRIES + MAJOR CITIES
+    # -----------------------------------------------------------
+    "AFGHANISTAN": "KBL",
+    "KABUL": "KBL",
+
+    "ARMENIA": "EVN",
+    "YEREVAN": "EVN",
+
+    "AZERBAIJAN": "GYD",
+    "BAKU": "GYD",
+
+    "BAHRAIN": "BAH",
+    "MANAMA": "BAH",
+
+    "BANGLADESH": "DAC",
+    "DHAKA": "DAC",
+    "CHITTAGONG": "CGP",
+
+    "BHUTAN": "PBH",
+    "PARO": "PBH",
+
+    "BRUNEI": "BWN",
+    "BANDAR SERI BEGAWAN": "BWN",
+
+    "CAMBODIA": "PNH",
+    "PHNOM PENH": "PNH",
+    "SIEM REAP": "REP",
+
+    "CHINA": "PEK",
+    "BEIJING": "PEK",
+    "SHANGHAI": "PVG",
+    "GUANGZHOU": "CAN",
+    "SHENZHEN": "SZX",
+    "CHENGDU": "CTU",
+    "HONG KONG": "HKG",
+    "MACAU": "MFM",
+
+    "CYPRUS": "LCA",
+    "LARNACA": "LCA",
+    "PAPHOS": "PFO",
+
+    "GEORGIA": "TBS",
+    "TBILISI": "TBS",
+    "BATUMI": "BUS",
+
+    "INDIA": "DEL",
+    "DELHI": "DEL",
+    "MUMBAI": "BOM",
+    "BANGALORE": "BLR",
+    "CHENNAI": "MAA",
+    "KOLKATA": "CCU",
+    "HYDERABAD": "HYD",
+    "GOA": "GOI",
+    "KOCHI": "COK",
+    "AHMEDABAD": "AMD",
+
+    "INDONESIA": "CGK",
+    "JAKARTA": "CGK",
+    "BALI": "DPS",
+    "SURABAYA": "SUB",
+    "MEDAN": "KNO",
+
+    "IRAN": "IKA",
+    "TEHRAN": "IKA",
+    "MASHHAD": "MHD",
+    "SHIRAZ": "SYZ",
+
+    "IRAQ": "BGW",
+    "BAGHDAD": "BGW",
+    "ERBIL": "EBL",
+    "BASRA": "BSR",
+
+    "ISRAEL": "TLV",
+    "TEL AVIV": "TLV",
+    "EILAT": "ETM",
+
+    "JAPAN": "NRT",
+    "TOKYO": "NRT",
+    "OSAKA": "KIX",
+    "NAGOYA": "NGO",
+    "FUKUOKA": "FUK",
+    "SAPPORO": "CTS",
+
+    "JORDAN": "AMM",
+    "AMMAN": "AMM",
+    "AQABA": "AQJ",
+
+    "KAZAKHSTAN": "ALA",
+    "ALMATY": "ALA",
+    "ASTANA": "NQZ",
+
+    "KUWAIT": "KWI",
+    "KUWAIT CITY": "KWI",
+
+    "KYRGYZSTAN": "FRU",
+    "BISHKEK": "FRU",
+
+    "LAOS": "VTE",
+    "VIENTIANE": "VTE",
+    "LUANG PRABANG": "LPQ",
+
+    "LEBANON": "BEY",
+    "BEIRUT": "BEY",
+
+    "MALAYSIA": "KUL",
+    "KUALA LUMPUR": "KUL",
+    "PENANG": "PEN",
+    "KOTA KINABALU": "BKI",
+
+    "MALDIVES": "MLE",
+    "MALE": "MLE",
+
+    "MONGOLIA": "UBN",
+    "ULAANBAATAR": "UBN",
+
+    "MYANMAR": "RGN",
+    "YANGON": "RGN",
+    "MANDALAY": "MDL",
+
+    "NEPAL": "KTM",
+    "KATHMANDU": "KTM",
+
+    "OMAN": "MCT",
+    "MUSCAT": "MCT",
+    "SALALAH": "SLL",
+
+    "PAKISTAN": "ISB",
+    "ISLAMABAD": "ISB",
+    "KARACHI": "KHI",
+    "LAHORE": "LHE",
+
+    "PHILIPPINES": "MNL",
+    "MANILA": "MNL",
+    "CEBU": "CEB",
+
+    "QATAR": "DOH",
+    "DOHA": "DOH",
+
+    "SAUDI ARABIA": "RUH",
+    "RIYADH": "RUH",
+    "JEDDAH": "JED",
+    "DAMMAM": "DMM",
+    "MEDINA": "MED",
+
+    "SINGAPORE": "SIN",
+
+    "SOUTH KOREA": "ICN",
+    "SEOUL": "ICN",
+    "BUSAN": "PUS",
+
+    "SRI LANKA": "CMB",
+    "COLOMBO": "CMB",
+
+    "SYRIA": "DAM",
+    "DAMASCUS": "DAM",
+
+    "TAIWAN": "TPE",
+    "TAIPEI": "TPE",
+    "KAOHSIUNG": "KHH",
+
+    "TAJIKISTAN": "DYU",
+    "DUSHANBE": "DYU",
+
+    "THAILAND": "BKK",
+    "BANGKOK": "BKK",
+    "PHUKET": "HKT",
+    "CHIANG MAI": "CNX",
+
+    "TURKEY": "IST",
+    "ISTANBUL": "IST",
+    "ANKARA": "ESB",
+    "IZMIR": "ADB",
+    "ANTALYA": "AYT",
+
+    "UNITED ARAB EMIRATES": "DXB",
+    "DUBAI": "DXB",
+    "ABU DHABI": "AUH",
+    "SHARJAH": "SHJ",
+
+    "UZBEKISTAN": "TAS",
+    "TASHKENT": "TAS",
+    "SAMARKAND": "SKD",
+
+    "VIETNAM": "SGN",
+    "HO CHI MINH": "SGN",
+    "HANOI": "HAN",
+
+    # -----------------------------------------------------------
+    # EUROPE — 44 COUNTRIES + ALL MAJOR CITIES
+    # -----------------------------------------------------------
+    "ALBANIA": "TIA",
+    "TIRANA": "TIA",
+
+    "AUSTRIA": "VIE",
+    "VIENNA": "VIE",
+    "SALZBURG": "SZG",
+
+    "BELARUS": "MSQ",
+    "MINSK": "MSQ",
+
+    "BELGIUM": "BRU",
+    "BRUSSELS": "BRU",
+    "ANTWERP": "ANR",
+
+    "BULGARIA": "SOF",
+    "SOFIA": "SOF",
+    "VARNA": "VAR",
+
+    "CROATIA": "ZAG",
+    "ZAGREB": "ZAG",
+    "SPLIT": "SPU",
+    "DUBROVNIK": "DBV",
+
+    "CZECH REPUBLIC": "PRG",
+    "PRAGUE": "PRG",
+
+    "DENMARK": "CPH",
+    "COPENHAGEN": "CPH",
+
+    "ESTONIA": "TLL",
+    "TALLINN": "TLL",
+
+    "FINLAND": "HEL",
+    "HELSINKI": "HEL",
+
+    "FRANCE": "CDG",
+    "PARIS": "CDG",
+    "NICE": "NCE",
+    "LYON": "LYS",
+    "MARSEILLE": "MRS",
+    "TOULOUSE": "TLS",
+    "BORDEAUX": "BOD",
+
+    "GERMANY": "FRA",
+    "FRANKFURT": "FRA",
+    "MUNICH": "MUC",
+    "BERLIN": "BER",
+    "HAMBURG": "HAM",
+    "DUSSELDORF": "DUS",
+    "STUTTGART": "STR",
+    "COLOGNE": "CGN",
+
+    "GREECE": "ATH",
+    "ATHENS": "ATH",
+    "THESSALONIKI": "SKG",
+    "HERAKLION": "HER",
+
+    "HUNGARY": "BUD",
+    "BUDAPEST": "BUD",
+
+    "ICELAND": "KEF",
+    "REYKJAVIK": "KEF",
+
+    "IRELAND": "DUB",
+    "DUBLIN": "DUB",
+    "CORK": "ORK",
+
+    "ITALY": "FCO",
+    "ROME": "FCO",
+    "MILAN": "MXP",
+    "VENICE": "VCE",
+    "NAPLES": "NAP",
+    "FLORENCE": "FLR",
+    "BOLOGNA": "BLQ",
+    "PALERMO": "PMO",
+    "CATANIA": "CTA",
+
+    "LATVIA": "RIX",
+    "RIGA": "RIX",
+
+    "LITHUANIA": "VNO",
+    "VILNIUS": "VNO",
+
+    "LUXEMBOURG": "LUX",
+    "LUXEMBOURG CITY": "LUX",
+
+    "MALTA": "MLA",
+    "VALLETTA": "MLA",
+
+    "MOLDOVA": "KIV",
+    "CHISINAU": "KIV",
+
+    "MONACO": "NCE",
+
+    "MONTENEGRO": "TGD",
+    "PODGORICA": "TGD",
+
+    "NETHERLANDS": "AMS",
+    "AMSTERDAM": "AMS",
+    "ROTTERDAM": "RTM",
+
+    "NORTH MACEDONIA": "SKP",
+    "SKOPJE": "SKP",
+
+    "NORWAY": "OSL",
+    "OSLO": "OSL",
+    "BERGEN": "BGO",
+
+    "POLAND": "WAW",
+    "WARSAW": "WAW",
+    "KRAKOW": "KRK",
+
+    "PORTUGAL": "LIS",
+    "LISBON": "LIS",
+    "PORTO": "OPO",
+    "FARO": "FAO",
+
+    "ROMANIA": "OTP",
+    "BUCHAREST": "OTP",
+    "CLUJ": "CLJ",
+
+    "RUSSIA": "SVO",
+    "MOSCOW": "SVO",
+    "SAINT PETERSBURG": "LED",
+
+    "SERBIA": "BEG",
+    "BELGRADE": "BEG",
+
+    "SLOVAKIA": "BTS",
+    "BRATISLAVA": "BTS",
+
+    "SLOVENIA": "LJU",
+    "LJUBLJANA": "LJU",
+
+    "SPAIN": "MAD",
+    "MADRID": "MAD",
+    "BARCELONA": "BCN",
+    "MALAGA": "AGP",
+    "SEVILLE": "SVQ",
+    "VALENCIA": "VLC",
+    "BILBAO": "BIO",
+    "PALMA": "PMI",
+    "IBIZA": "IBZ",
+
+    "SWEDEN": "ARN",
+    "STOCKHOLM": "ARN",
+    "GOTHENBURG": "GOT",
+
+    "SWITZERLAND": "ZRH",
+    "ZURICH": "ZRH",
+    "GENEVA": "GVA",
+    "BASEL": "BSL",
+
+    "UKRAINE": "IEV",
+    "KYIV": "IEV",
+    "LVIV": "LWO",
+
+    "UNITED KINGDOM": "LHR",
+    "LONDON": "LHR",
+    "MANCHESTER": "MAN",
+    "EDINBURGH": "EDI",
+    "BIRMINGHAM": "BHX",
+    "GLASGOW": "GLA",
+    "BRISTOL": "BRS",
+    "LIVERPOOL": "LPL",
+    "BELFAST": "BFS",
+
+    # -----------------------------------------------------------
+    # NORTH AMERICA — USA + CANADA + 21 OTHER COUNTRIES
+    # -----------------------------------------------------------
+    "UNITED STATES": "NYC",
+    "NEW YORK": "NYC",
+    "LOS ANGELES": "LAX",
+    "CHICAGO": "ORD",
+    "MIAMI": "MIA",
+    "SAN FRANCISCO": "SFO",
+    "ATLANTA": "ATL",
+    "DALLAS": "DFW",
+    "HOUSTON": "IAH",
+    "LAS VEGAS": "LAS",
+    "SEATTLE": "SEA",
+    "BOSTON": "BOS",
+    "DENVER": "DEN",
+    "ORLANDO": "MCO",
+    "PHILADELPHIA": "PHL",
+    "WASHINGTON": "IAD",
+    "DETROIT": "DTW",
+    "PHOENIX": "PHX",
+    "MINNEAPOLIS": "MSP",
+    "CHARLOTTE": "CLT",
+    "SAN DIEGO": "SAN",
+
+    "CANADA": "YYZ",
+    "TORONTO": "YYZ",
+    "VANCOUVER": "YVR",
+    "MONTREAL": "YUL",
+    "CALGARY": "YYC",
+    "OTTAWA": "YOW",
+    "EDMONTON": "YEG",
+    "WINNIPEG": "YWG",
+
+    "MEXICO": "MEX",
+    "MEXICO CITY": "MEX",
+    "CANCUN": "CUN",
+    "GUADALAJARA": "GDL",
+    "MONTERREY": "MTY",
+
+    "COSTA RICA": "SJO",
+    "SAN JOSE": "SJO",
+
+    "PANAMA": "PTY",
+    "PANAMA CITY": "PTY",
+
+    "DOMINICAN REPUBLIC": "SDQ",
+    "PUNTA CANA": "PUJ",
+    "SANTO DOMINGO": "SDQ",
+
+    "JAMAICA": "KIN",
+    "KINGSTON": "KIN",
+    "MONTEGO BAY": "MBJ",
+
+    "CUBA": "HAV",
+    "HAVANA": "HAV",
+
+    "PUERTO RICO": "SJU",
+    "SAN JUAN": "SJU",
+
+    "BAHAMAS": "NAS",
+    "NASSAU": "NAS",
+
+    "TRINIDAD AND TOBAGO": "POS",
+    "PORT OF SPAIN": "POS",
+
+    # -----------------------------------------------------------
+    # SOUTH AMERICA — 12 COUNTRIES + CITIES
+    # -----------------------------------------------------------
+    "BRAZIL": "GRU",
+    "SAO PAULO": "GRU",
+    "RIO DE JANEIRO": "GIG",
+    "BRASILIA": "BSB",
+    "SALVADOR": "SSA",
+
+    "ARGENTINA": "EZE",
+    "BUENOS AIRES": "EZE",
+    "CORDOBA": "COR",
+
+    "CHILE": "SCL",
+    "SANTIAGO": "SCL",
+
+    "COLOMBIA": "BOG",
+    "BOGOTA": "BOG",
+    "MEDELLIN": "MDE",
+    "CALI": "CLO",
+
+    "PERU": "LIM",
+    "LIMA": "LIM",
+
+    "ECUADOR": "UIO",
+    "QUITO": "UIO",
+    "GUAYAQUIL": "GYE",
+
+    "PARAGUAY": "ASU",
+    "ASUNCION": "ASU",
+
+    "URUGUAY": "MVD",
+    "MONTEVIDEO": "MVD",
+
+    "BOLIVIA": "LPB",
+    "LA PAZ": "LPB",
+    "SANTA CRUZ": "VVI",
+
+    # -----------------------------------------------------------
+    # OCEANIA — 14 COUNTRIES + CITIES
+    # -----------------------------------------------------------
+    "AUSTRALIA": "SYD",
+    "SYDNEY": "SYD",
+    "MELBOURNE": "MEL",
+    "BRISBANE": "BNE",
+    "PERTH": "PER",
+    "ADELAIDE": "ADL",
+    "GOLD COAST": "OOL",
+
+    "NEW ZEALAND": "AKL",
+    "AUCKLAND": "AKL",
+    "WELLINGTON": "WLG",
+    "CHRISTCHURCH": "CHC",
+
+    "FIJI": "NAN",
+    "VITI LEVU": "NAN",
+
+    "PAPUA NEW GUINEA": "POM",
+    "PORT MORESBY": "POM",
+}
+
     
     # Check if we have a mapping
     if location in location_map:
