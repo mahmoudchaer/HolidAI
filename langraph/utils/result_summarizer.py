@@ -48,6 +48,14 @@ def remove_flight_redundant_fields(flights: list) -> list:
             "price": flight.get("price"),
             "type": flight.get("type"),
             "carbon_emissions": flight.get("carbon_emissions", {}),
+            # Keep booking links - CRITICAL for user to book flights
+            "booking_link": flight.get("booking_link"),
+            "google_flights_url": flight.get("google_flights_url"),
+            "book_with": flight.get("book_with"),
+            "booking_price": flight.get("booking_price"),
+            # Note: booking_token removed to reduce JSON size (booking_link is sufficient)
+            "direction": flight.get("direction"),  # Keep direction for outbound/return
+            "airline_logo": flight.get("airline_logo"),  # Keep top-level airline logo
         }
         
         # Clean each flight segment
@@ -66,8 +74,18 @@ def remove_flight_redundant_fields(flights: list) -> list:
             }
             cleaned_flight["flights"].append(cleaned_segment)
         
-        # Remove None values
-        cleaned_flight = {k: v for k, v in cleaned_flight.items() if v}
+        # Remove None values (but keep empty strings for URLs)
+        # CRITICAL: Always preserve google_flights_url even if it seems None
+        # (it might be set later or we want to ensure it's always present)
+        cleaned_flight = {k: v for k, v in cleaned_flight.items() if v is not None}
+        
+        # Ensure google_flights_url is always present (use fallback if missing)
+        if not cleaned_flight.get("google_flights_url"):
+            # Try to get it from original flight
+            original_url = flight.get("google_flights_url")
+            if original_url:
+                cleaned_flight["google_flights_url"] = original_url
+        
         cleaned.append(cleaned_flight)
     
     return cleaned

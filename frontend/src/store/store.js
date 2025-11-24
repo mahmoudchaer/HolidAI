@@ -78,12 +78,37 @@ export const usePlanStore = create((set) => ({
 
 export const useSidebarStore = create((set) => ({
   leftSidebarOpen: true,
+  rightSidebarOpen: true,
+  
   toggleLeftSidebar: () => set((state) => ({ 
     leftSidebarOpen: !state.leftSidebarOpen 
   })),
-  
-  // Deprecated: Right sidebar removed in favor of AgentStatusIndicator
-  rightSidebarOpen: false,
-  toggleRightSidebar: () => {}, // No-op for backwards compatibility
+  toggleRightSidebar: () => set((state) => ({
+    rightSidebarOpen: !state.rightSidebarOpen
+  })),
+  setLeftSidebarOpen: (open) => set({ leftSidebarOpen: open }),
+  setRightSidebarOpen: (open) => set({ rightSidebarOpen: open }),
+}))
+
+const getInitialTheme = () => {
+  if (typeof window === 'undefined') return 'light'
+  return localStorage.getItem('holidAI-theme') || 'light'
+}
+
+export const useThemeStore = create((set) => ({
+  theme: getInitialTheme(),
+  setTheme: (theme) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('holidAI-theme', theme)
+    }
+    set({ theme })
+  },
+  toggleTheme: () => set((state) => {
+    const nextTheme = state.theme === 'dark' ? 'light' : 'dark'
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('holidAI-theme', nextTheme)
+    }
+    return { theme: nextTheme }
+  }),
 }))
 

@@ -188,6 +188,7 @@ def create_graph() -> StateGraph:
             "flight_agent": "flight_agent",
             "tripadvisor_agent": "tripadvisor_agent",
             "utilities_agent": "utilities_agent",
+            "planner_agent": "planner_agent",
             "join_node": "join_node",
             "end": END
         }

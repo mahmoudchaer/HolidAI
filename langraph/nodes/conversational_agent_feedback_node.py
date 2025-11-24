@@ -65,6 +65,8 @@ VALIDATION RULES:
    - Contradictory information (e.g., says "no visa required" when data shows visa is required)
    - Empty or generic response when specific data was available
    - Missing links when eSIM bundles or other bookable items were provided
+   - **IMPORTANT**: For FLIGHTS, do NOT require booking links in text - flight cards automatically display booking buttons
+   - **IMPORTANT**: Only require links for eSIM bundles and hotel bookings (when _booking_intent is true)
 
 Respond with JSON:
 {
@@ -103,7 +105,7 @@ Validation: {
   "suggested_fix": "Remove all JSON and technical details, present only the extracted information naturally"
 }
 
-Example 4 - Missing links (REGENERATE):
+Example 4 - Missing links for eSIM (REGENERATE):
 User: "Find eSIM for France"
 Collected: {"utilities_result": {"bundles": [{"provider": "Airalo", "link": "https://..."}]}}
 Response: "I found eSIM bundles: Airalo offers 5GB for $10"
@@ -111,6 +113,16 @@ Validation: {
   "validation_status": "need_regenerate",
   "feedback_message": "Response doesn't include purchase links for eSIM bundles",
   "suggested_fix": "Add clickable markdown links for each eSIM bundle using [text](url) format"
+}
+
+Example 4b - Flight with booking link in text (REGENERATE):
+User: "Find flights to Dubai"
+Collected: {"flight_result": {"outbound": [{"airline": "Emirates", "price": 270, "booking_link": "https://..."}]}}
+Response: "I found Emirates flight for $270. You can book here: [Book Flight](url)"
+Validation: {
+  "validation_status": "need_regenerate",
+  "feedback_message": "Response includes booking link in text, but flight cards automatically display booking buttons",
+  "suggested_fix": "Remove all booking links and booking mentions from text. Flight cards automatically show 'Book Now' and 'View on Google Flights' buttons - no need to mention booking in text."
 }
 
 Example 5 - Contradictory information (REGENERATE):

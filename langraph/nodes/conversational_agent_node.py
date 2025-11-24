@@ -292,6 +292,7 @@ IMPORTANT:
 - Do NOT say you don't have information if it's provided in the collected_info section - ALWAYS check the collected_info JSON before saying information is unavailable
 
 - For flight_result: If it has an "outbound" array with items, those are outbound flight options. If it has a "return" array, those are return flight options.
+  🚫 **ABSOLUTE RULE**: NEVER mention booking, booking links, or "Book here" in your text for flights. Flight cards automatically show booking buttons.
   ⚠️ IMPORTANT FOR ROUND-TRIP FLIGHTS: 
     * For round-trip flights, the system makes TWO separate one-way calls
     * "outbound" array contains flights from origin to destination (e.g., Beirut → Paris)
@@ -303,6 +304,17 @@ IMPORTANT:
     * If a segment has "airline_logo", include it in markdown format BEFORE the airline name
     * Format like: "![Airline](logo_url) **Airline Name** Flight XX"
     * This will display the airline logo in the chat
+  ⚠️⚠️⚠️ CRITICAL - ABSOLUTELY NO BOOKING LINKS IN TEXT FOR FLIGHTS ⚠️⚠️⚠️:
+    * **NEVER** include "booking_link" or "google_flights_url" fields in your text response
+    * **NEVER** write "Book it here", "Book your flight here", "You can book here", or ANY booking-related text
+    * **NEVER** create markdown links like [Book Flight](url) or [Book Now](url) for flights
+    * **NEVER** mention booking at all - the frontend automatically displays "Book Now" and "View on Google Flights" buttons on each flight card
+    * **ONLY** describe flight details: airline, departure/arrival times, duration, price, aircraft, legroom
+    * **STOP** after describing the flight - do NOT add any booking information
+    * Example GOOD: "Emirates direct flight, departing at 10:10 AM, arriving at 4:35 PM. Duration 8h 25m. Price: $659."
+    * Example BAD: "Emirates flight... Price: $659. You can book your flight here: [Book Flight](url)"
+    * Example BAD: "Emirates flight... Price: $659. Book it [here](url)"
+    * **REMEMBER**: Flight cards automatically show booking buttons - you must NEVER mention booking in text
   Only report an error if the result has "error": true AND no outbound flights data.
 
 - For visa_result: **CRITICAL**: Check the "result" field FIRST - if it has content (even if "error": true), that contains the visa requirement information. You MUST present ALL available visa information in detail:
@@ -407,6 +419,7 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     last_response = state.get("last_response", "")  # May contain rejection message from RFI
     relevant_memories = state.get("relevant_memories") or []  # Relevant memories for this user
     travel_plan_items = state.get("travel_plan_items", [])  # Travel plan items from database
+    session_id = state.get("session_id")
     
     # Also check context for results
     if context.get("flight_result"):
@@ -419,6 +432,25 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
         collected_info["tripadvisor_result"] = context.get("tripadvisor_result")
     if context.get("utilities_result"):
         collected_info["utilities_result"] = context.get("utilities_result")
+    
+    # CRITICAL: If user is asking about flights (e.g., "cheapest one", "option 3") but we don't have flight_result,
+    # retrieve it from STM (Short-Term Memory) where previous results are stored
+    user_lower = user_message.lower()
+    is_flight_query = any(keyword in user_lower for keyword in [
+        "cheapest", "cheaper", "lowest price", "cheapest one", "cheapest flight",
+        "option", "first one", "second one", "third one", "that flight", "this flight",
+        "direct", "non-stop", "morning", "afternoon", "evening", "shortest", "fastest"
+    ])
+    
+    if is_flight_query and not collected_info.get("flight_result") and session_id:
+        try:
+            from stm.short_term_memory import get_last_results
+            last_results = get_last_results(session_id)
+            if last_results and last_results.get("flight_result"):
+                collected_info["flight_result"] = last_results["flight_result"]
+                print(f"[CONVERSATIONAL] Retrieved flight_result from STM for filtering query: {len(last_results.get('flight_result', {}).get('outbound', []))} outbound flights")
+        except Exception as e:
+            print(f"[CONVERSATIONAL] WARNING: Could not retrieve flight_result from STM: {e}")
     
     # Debug: Log what we're passing to the LLM
     if collected_info.get("hotel_result"):
@@ -776,26 +808,50 @@ The system has collected information from specialized agents. Please provide a h
             
             # Combine both outbound and return flights for display
             all_flights = []
+            
+            # Get Google Flights URL from first flight (if available) to use as fallback
+            google_flights_fallback = None
+            if filtered_outbound and len(filtered_outbound) > 0:
+                google_flights_fallback = filtered_outbound[0].get("google_flights_url")
+            elif filtered_return and len(filtered_return) > 0:
+                google_flights_fallback = filtered_return[0].get("google_flights_url")
+            
             if filtered_outbound:
-                # Ensure outbound flights are marked
+                # Ensure outbound flights are marked and have Google Flights URL
                 for flight in filtered_outbound:
                     if not flight.get("direction"):
                         flight["direction"] = "outbound"
                     if not flight.get("type"):
                         flight["type"] = "Outbound flight"
+                    # Ensure Google Flights URL is present
+                    if not flight.get("google_flights_url") and google_flights_fallback:
+                        flight["google_flights_url"] = google_flights_fallback
                 all_flights.extend(filtered_outbound)
             if filtered_return:
-                # Ensure return flights are marked
+                # Ensure return flights are marked and have Google Flights URL
                 for flight in filtered_return:
                     if not flight.get("direction"):
                         flight["direction"] = "return"
                     if not flight.get("type"):
                         flight["type"] = "Return flight"
+                    # Ensure Google Flights URL is present
+                    if not flight.get("google_flights_url") and google_flights_fallback:
+                        flight["google_flights_url"] = google_flights_fallback
                 all_flights.extend(filtered_return)
             
             if all_flights:
                 # Append structured flight data at the end
-                final_response += f"\n\n[FLIGHT_DATA]{json.dumps(all_flights, ensure_ascii=False)}[/FLIGHT_DATA]"
+                try:
+                    flight_json = json.dumps(all_flights, ensure_ascii=False)
+                    json_size = len(flight_json)
+                    print(f"[CONVERSATIONAL] Flight JSON size: {json_size:,} bytes ({json_size/1024:.1f} KB)")
+                    if json_size > 500000:  # 500KB
+                        print(f"[CONVERSATIONAL] ⚠️ WARNING: Flight JSON is very large ({json_size/1024:.1f} KB)")
+                    final_response += f"\n\n[FLIGHT_DATA]{flight_json}[/FLIGHT_DATA]"
+                except Exception as e:
+                    print(f"[CONVERSATIONAL] ⚠️ ERROR serializing flight data: {e}")
+                    import traceback
+                    traceback.print_exc()
     
     # Store last results in STM for future reference (e.g., when user says "i want option 3")
     session_id = state.get("session_id")

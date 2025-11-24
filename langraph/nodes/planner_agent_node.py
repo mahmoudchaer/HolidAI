@@ -41,11 +41,12 @@ Available tools:
 - agent_get_plan_items_tool: Retrieve all plan items for the session
 
 IMPORTANT WORKFLOW:
-1. Analyze the user message to understand their intent:
-   - "I want option 2" / "save option 2" / "select option 2" → Add item
-   - "I liked hotel X" / "save flight Y" → Add item
+1. Analyze the user message to understand their intent - use SEMANTIC understanding, not just keywords:
+   - "I want option 2" / "save option 2" / "select option 2" / "add option 2" → Add item
+   - "I liked hotel X" / "save flight Y" / "add hotel X" → Add item
    - "remove X" / "delete Y" / "cancel Z" → Delete item
-   - "update X" / "change Y" → Update item
+   - "update X" / "change Y" / "modify Z" → Update item
+   - "add X instead of Y" / "replace Y with X" / "change Y to X" → DELETE Y, then ADD X (two operations: delete then add)
    - "show my plan" / "what's in my plan" → Get items
 
 2. Extract the item details from the collected_info (flight_result, hotel_result, etc.) based on the user's selection
@@ -105,20 +106,31 @@ async def planner_agent_node(state: AgentState) -> AgentState:
         collected_info["utilities_result"] = context.get("utilities_result")
     
     # If no results in collected_info, try to retrieve from STM (from previous message)
-    if not collected_info.get("flight_result") and not collected_info.get("hotel_result") and not collected_info.get("tripadvisor_result"):
-        if session_id:
-            try:
-                from stm.short_term_memory import get_last_results
-                last_results = get_last_results(session_id)
-                if last_results:
-                    print(f"[PLANNER] Retrieved last results from STM: {list(last_results.keys())}")
-                    # Merge with collected_info (don't overwrite if something exists)
-                    for key, value in last_results.items():
-                        if not collected_info.get(key) and value:
-                            collected_info[key] = value
-                            print(f"[PLANNER] Loaded {key} from STM ({len(value.get('outbound', [])) if key == 'flight_result' and isinstance(value, dict) else 'N/A'} items)")
-            except Exception as e:
-                print(f"[WARNING] Could not retrieve last results from STM: {e}")
+    # Retrieve each type separately - don't require all to be missing
+    if session_id:
+        try:
+            from stm.short_term_memory import get_last_results
+            last_results = get_last_results(session_id)
+            if last_results:
+                print(f"[PLANNER] Retrieved last results from STM: {list(last_results.keys())}")
+                # Merge with collected_info (don't overwrite if something exists)
+                for key, value in last_results.items():
+                    if not collected_info.get(key) and value:
+                        collected_info[key] = value
+                        if key == "flight_result" and isinstance(value, dict):
+                            outbound_count = len(value.get("outbound", []))
+                            return_count = len(value.get("return", []))
+                            print(f"[PLANNER] Loaded {key} from STM: {outbound_count} outbound, {return_count} return flights")
+                        elif key == "hotel_result" and isinstance(value, dict):
+                            hotels_count = len(value.get("hotels", []))
+                            print(f"[PLANNER] Loaded {key} from STM: {hotels_count} hotels")
+                        elif key == "tripadvisor_result" and isinstance(value, dict):
+                            locations_count = len(value.get("data", []))
+                            print(f"[PLANNER] Loaded {key} from STM: {locations_count} locations")
+                        else:
+                            print(f"[PLANNER] Loaded {key} from STM")
+        except Exception as e:
+            print(f"[WARNING] Could not retrieve last results from STM: {e}")
     
     # If no user email or session, skip planner operations
     if not user_email or not session_id:
@@ -184,27 +196,38 @@ async def planner_agent_node(state: AgentState) -> AgentState:
             results_context += f"\n\nAvailable flight results:\n"
             
             if outbound:
-                results_context += f"Outbound flights ({len(outbound)} options):\n"
+                results_context += f"Outbound flights ({len(outbound)} options, numbered 1 to {len(outbound)}):\n"
                 for i, flight in enumerate(outbound[:10], 1):  # Limit to first 10
                     price = flight.get("price", "N/A")
                     airline = flight.get("flights", [{}])[0].get("airline", "Unknown") if flight.get("flights") else "Unknown"
                     departure = flight.get("flights", [{}])[0].get("departure_airport", {}).get("name", "Unknown") if flight.get("flights") else "Unknown"
                     arrival = flight.get("flights", [{}])[0].get("arrival_airport", {}).get("name", "Unknown") if flight.get("flights") else "Unknown"
-                    results_context += f"  Option {i}: {airline} - {departure} to {arrival} - ${price}\n"
-                    # Store full flight data for extraction
+                    position_label = " (LAST)" if i == len(outbound) else " (FIRST)" if i == 1 else ""
+                    results_context += f"  Option {i}{position_label}: {airline} - {departure} to {arrival} - ${price}\n"
+                    # Store full flight data for extraction (by both number and semantic position)
                     full_flight_data[f"outbound_option_{i}"] = flight
+                    if i == 1:
+                        full_flight_data["outbound_first"] = flight
+                    if i == len(outbound):
+                        full_flight_data["outbound_last"] = flight
             
             if return_flights:
-                results_context += f"Return flights ({len(return_flights)} options):\n"
+                results_context += f"Return flights ({len(return_flights)} options, numbered 1 to {len(return_flights)}):\n"
                 for i, flight in enumerate(return_flights[:10], 1):
                     price = flight.get("price", "N/A")
                     airline = flight.get("flights", [{}])[0].get("airline", "Unknown") if flight.get("flights") else "Unknown"
                     departure = flight.get("flights", [{}])[0].get("departure_airport", {}).get("name", "Unknown") if flight.get("flights") else "Unknown"
                     arrival = flight.get("flights", [{}])[0].get("arrival_airport", {}).get("name", "Unknown") if flight.get("flights") else "Unknown"
-                    results_context += f"  Option {i}: {airline} - {departure} to {arrival} - ${price}\n"
-                    # Store full flight data for extraction
+                    position_label = " (LAST)" if i == len(return_flights) else " (FIRST)" if i == 1 else ""
+                    results_context += f"  Option {i}{position_label}: {airline} - {departure} to {arrival} - ${price}\n"
+                    # Store full flight data for extraction (by both number and semantic position)
                     full_flight_data[f"return_option_{i}"] = flight
+                    if i == 1:
+                        full_flight_data["return_first"] = flight
+                    if i == len(return_flights):
+                        full_flight_data["return_last"] = flight
         
+        full_hotel_data = {}  # Store full hotel data for extraction
         if collected_info.get("hotel_result"):
             hotel_result = collected_info["hotel_result"]
             hotels = hotel_result.get("hotels", [])
@@ -214,6 +237,11 @@ async def planner_agent_node(state: AgentState) -> AgentState:
                     name = hotel.get("name", "Unknown")
                     price = hotel.get("roomTypes", [{}])[0].get("rates", [{}])[0].get("price", {}).get("total", "N/A") if hotel.get("roomTypes") else "N/A"
                     results_context += f"  Option {i}: {name} - ${price}\n"
+                    # Store full hotel data for extraction (by both option number and name)
+                    full_hotel_data[f"hotel_option_{i}"] = hotel
+                    # Also store by name (normalized) for name-based matching
+                    name_key = name.lower().replace(" ", "_").replace("-", "_")
+                    full_hotel_data[f"hotel_name_{name_key}"] = hotel
         
         if collected_info.get("tripadvisor_result"):
             tripadvisor_result = collected_info["tripadvisor_result"]
@@ -224,13 +252,24 @@ async def planner_agent_node(state: AgentState) -> AgentState:
                     name = loc.get("name", "Unknown")
                     results_context += f"  Option {i}: {name}\n"
         
-        # Include full flight data in JSON format for extraction
+        # Include full flight and hotel data in JSON format for extraction
         full_data_context = ""
         if full_flight_data:
-            full_data_context = f"\n\nFULL FLIGHT DATA (use this to extract complete details when saving):\n{json.dumps(full_flight_data, indent=2, default=str)}\n\nWhen user says 'option X', extract the complete flight object from the corresponding key (e.g., 'outbound_option_3' or 'return_option_3') and save ALL details in the 'details' field."
+            full_data_context += f"\n\nFULL FLIGHT DATA (use this to extract complete details when saving):\n{json.dumps(full_flight_data, indent=2, default=str)}\n\n**SEMANTIC MAPPING FOR OPTION REFERENCES:**\n"
+            full_data_context += "- 'last option' / 'last one' → Use 'outbound_last' or 'return_last' key\n"
+            full_data_context += "- 'first option' / 'first one' → Use 'outbound_first' or 'return_first' key\n"
+            full_data_context += "- 'option X' (e.g., 'option 3') → Use 'outbound_option_X' or 'return_option_X' key\n"
+            full_data_context += "- 'cheapest' → Find the flight with lowest price from all options\n"
+            full_data_context += "- 'most expensive' → Find the flight with highest price from all options\n"
+            full_data_context += "\nExtract the complete flight object from the corresponding key and save ALL details in the 'details' field."
         else:
             # No flight data available - make this clear
-            full_data_context = "\n\n NO FLIGHT DATA AVAILABLE: The user is asking to save an option, but no flight search results are available. You MUST inform the user that they need to search for flights first before they can save an option."
+            full_data_context += "\n\n NO FLIGHT DATA AVAILABLE: The user is asking to save an option, but no flight search results are available. You MUST inform the user that they need to search for flights first before they can save an option."
+        
+        if full_hotel_data:
+            full_data_context += f"\n\nFULL HOTEL DATA (use this to extract complete details when saving):\n{json.dumps(full_hotel_data, indent=2, default=str)}\n\nWhen user says 'option X' or mentions a hotel name (e.g., 'add Le Meridien Fairway', 'add meridien fairway'), find the matching hotel:\n- If they say 'option X', use 'hotel_option_X' key\n- If they mention a hotel name, search for a matching key like 'hotel_name_*' (names are normalized: lowercase, spaces/hyphens become underscores)\n- Extract the COMPLETE hotel object (all fields: name, address, rating, roomTypes, etc.) and save ALL details in the 'details' field."
+        elif collected_info.get("hotel_result") and not collected_info.get("hotel_result", {}).get("hotels"):
+            full_data_context += "\n\n NO HOTEL DATA AVAILABLE: The user is asking to save a hotel, but no hotel search results are available. You MUST inform the user that they need to search for hotels first before they can save one."
         
         agent_message = f"""User message: {user_message}
 
@@ -244,17 +283,38 @@ User email: {user_email}
 Session ID: {session_id}
 
 CRITICAL INSTRUCTIONS:
-1. Analyze the user's intent (add, update, delete, or view plan items)
-2. If user says "option X" (e.g., "option 3"), find the corresponding flight in the FULL FLIGHT DATA above
-3. Extract the COMPLETE flight object (all fields: flights, price, duration, carbon_emissions, booking_token, etc.)
-4. When calling agent_add_plan_item_tool:
-   - title: Create a descriptive title like "Flight: Beirut to Dubai on Dec 1, 2025 - Emirates EK 958"
-   - details: Pass the COMPLETE flight object (all fields) - this is critical!
-   - type: "flight"
+1. Analyze the user's intent (add, update, delete, or view plan items) - understand the SEMANTIC meaning, not just keywords
+2. **HANDLING "INSTEAD OF" / "REPLACE" SCENARIOS** (CRITICAL):
+   - If user says "add X instead of Y" or "replace Y with X" or "change Y to X":
+     * FIRST: Find Y in the current travel plan items (check the "Current travel plan items" section above)
+     * SECOND: Call agent_delete_plan_item_tool to remove Y (you'll need the item's ID from travel_plan_items)
+     * THIRD: Find X in the available results (FULL HOTEL DATA or FULL FLIGHT DATA)
+     * FOURTH: Call agent_add_plan_item_tool to add X
+     * This requires TWO tool calls: delete then add
+3. **SEMANTIC UNDERSTANDING OF OPTION REFERENCES** (CRITICAL):
+   - "last option" / "last one" / "the last flight" → Find the LAST item in the list (highest index number, use 'outbound_last' or 'return_last' key)
+   - "first option" / "first one" / "the first flight" → Find the FIRST item in the list (index 1, use 'outbound_first' or 'return_first' key)
+   - "second option" / "second one" → Find the SECOND item (index 2)
+   - "third option" / "third one" → Find the THIRD item (index 3)
+   - "option X" (e.g., "option 3") → Find the Xth item (index X)
+   - "cheapest" / "cheapest one" → Find the item with the LOWEST price
+   - "most expensive" / "expensive one" → Find the item with the HIGHEST price
+   - Use your understanding of the context - if user says "last option" after seeing 9 flights, they mean the 9th flight (the one at the end of the list)
+4. If user mentions a hotel name (e.g., "add Le Meridien Fairway", "add meridien fairway"), search the FULL HOTEL DATA for a matching hotel name (case-insensitive, partial matches OK - e.g., "meridien fairway" matches "Le Meridien Fairway")
+5. Extract the COMPLETE flight/hotel object (all fields: flights, price, duration, carbon_emissions, booking_token for flights; name, address, rating, roomTypes, etc. for hotels)
+6. When calling agent_add_plan_item_tool:
+   - For flights: title like "Flight: Beirut to Dubai on Dec 1, 2025 - Emirates EK 958", type: "flight"
+   - For hotels: title like "Hotel: Le Meridien Fairway, Dubai", type: "hotel"
+   - details: Pass the COMPLETE flight/hotel object (all fields) - this is critical!
    - status: "not_booked"
-5. If no results are available, inform them they need to search first
+7. When calling agent_delete_plan_item_tool:
+   - You need the item's ID from the "Current travel plan items" section
+   - Match by title or details to find the correct item ID
+8. If no results are available, inform them they need to search first
 
-Remember: You MUST extract and save the COMPLETE flight object with ALL details, not just a summary."""
+**IMPORTANT**: Use semantic understanding, not rule-based logic. Understand what the user means by "last", "first", "cheapest", "instead of", etc. based on the context and the list of available options.
+
+Remember: You MUST extract and save the COMPLETE flight/hotel object with ALL details, not just a summary."""
 
         messages = [
             {"role": "system", "content": prompt},

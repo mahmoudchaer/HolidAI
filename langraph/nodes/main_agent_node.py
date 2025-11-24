@@ -48,6 +48,7 @@ Available specialized agents:
   * get_holidays: Get holidays for a country (to avoid booking on holidays)
   * Weather, currency conversion, date/time
   * eSIM bundles for mobile data
+- planner_agent: For managing travel plan items (add/update/delete flights, hotels, activities to user's saved plan)
 
 CRITICAL DEPENDENCY RULES:
 1. HOLIDAYS affect booking → must be fetched BEFORE flight/hotel booking
@@ -140,7 +141,12 @@ Respond with a JSON object in this format:
   ]
 }}
 
-Available agent names: flight_agent, hotel_agent, visa_agent, tripadvisor_agent, utilities_agent
+Available agent names: flight_agent, hotel_agent, visa_agent, tripadvisor_agent, utilities_agent, planner_agent
+
+IMPORTANT: Use planner_agent when user wants to:
+- Add items to their travel plan (e.g., "add option 2 to plan", "save hotel X", "add flight Y")
+- Update or delete plan items
+- View their travel plan
 
 If no agents are needed, return an empty execution_plan array."""
     

@@ -5,7 +5,7 @@ import ChatSidebar from '../components/ChatSidebar'
 import ChatMessage from '../components/ChatMessage'
 import ChatInput from '../components/ChatInput'
 import PlanSidebar from '../components/PlanSidebar'
-import { useChatStore, useActivityStore, usePlanStore } from '../store/store'
+import { useChatStore, useActivityStore, usePlanStore, useSidebarStore } from '../store/store'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 const Chat = () => {
@@ -28,6 +28,10 @@ const Chat = () => {
   const setPlanLoadingState = usePlanStore((state) => state.setLoading)
   const setPlanErrorState = usePlanStore((state) => state.setError)
   const clearPlan = usePlanStore((state) => state.clearPlan)
+  const leftSidebarOpen = useSidebarStore((state) => state.leftSidebarOpen)
+  const rightSidebarOpen = useSidebarStore((state) => state.rightSidebarOpen)
+  const toggleLeftSidebar = useSidebarStore((state) => state.toggleLeftSidebar)
+  const toggleRightSidebar = useSidebarStore((state) => state.toggleRightSidebar)
 
   const chatContainerRef = useRef(null)
   
@@ -179,9 +183,30 @@ const Chat = () => {
         }),
       })
 
-      const data = await response.json()
+      // Check if response is ok before parsing
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        addMessage({
+          role: 'assistant',
+          content: `Error: ${errorData.error || 'Something went wrong'}`,
+        })
+        return
+      }
       
-      if (response.ok) {
+      // Parse response with error handling
+      let data
+      try {
+        data = await response.json()
+      } catch (e) {
+        console.error('Failed to parse response JSON:', e)
+        addMessage({
+          role: 'assistant',
+          content: `Error: Failed to parse server response. The response may be too large.`,
+        })
+        return
+      }
+      
+      if (data.response) {
         const assistantMessage = {
           role: 'assistant',
           content: data.response,
@@ -228,16 +253,58 @@ const Chat = () => {
     }
   }
 
+  const handleRenameConversation = async (sessionId, newTitle) => {
+    try {
+      const response = await fetch(`/api/conversations/${sessionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        await loadConversations()
+        if (currentConversation?.session_id === sessionId) {
+          setCurrentConversation({
+            ...currentConversation,
+            title: newTitle,
+          })
+        }
+        return true
+      }
+    } catch (err) {
+      console.error('Error renaming conversation:', err)
+    }
+    return false
+  }
+
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
       <Navbar />
       
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
+        <button
+          onClick={toggleLeftSidebar}
+          className="flex items-center justify-center w-10 h-10 rounded-full shadow-soft bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 absolute z-30"
+          style={{ left: leftSidebarOpen ? '19rem' : '1rem', top: '1rem' }}
+          title="Toggle chat history"
+        >
+          {leftSidebarOpen ? '⟨' : '⟩'}
+        </button>
+        <button
+          onClick={toggleRightSidebar}
+          className="hidden xl:flex items-center justify-center w-10 h-10 rounded-full shadow-soft bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 absolute z-30"
+          style={{ right: rightSidebarOpen ? '19rem' : '1rem', top: '1rem' }}
+          title="Toggle plan"
+        >
+          {rightSidebarOpen ? '⟩' : '⟨'}
+        </button>
+
         <ChatSidebar
           conversations={conversations}
           onSelectConversation={handleSelectConversation}
           onNewChat={handleNewChat}
           onDeleteConversation={handleDeleteConversation}
+          onRenameConversation={handleRenameConversation}
         />
 
         <div className="flex-1 flex flex-col relative">
@@ -350,7 +417,7 @@ const Chat = () => {
           <ChatInput onSend={handleSendMessage} disabled={isLoading} />
         </div>
 
-        <PlanSidebar />
+        {rightSidebarOpen && <PlanSidebar />}
       </div>
     </div>
   )

@@ -39,6 +39,7 @@ Available agents to validate:
 - visa_agent: Checks visa requirements
 - tripadvisor_agent: Searches locations, attractions, restaurants
 - utilities_agent: Handles weather, currency, eSIM, holidays, date/time
+- planner_agent: Manages travel plan items (add/update/delete flights, hotels, activities)
 
 VALIDATION RULES:
 

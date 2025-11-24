@@ -6,7 +6,7 @@ import Chat from './pages/Chat'
 import About from './pages/About'
 import Profile from './pages/Profile'
 import Booking from './pages/Booking'
-import { useAuthStore } from './store/store'
+import { useAuthStore, useThemeStore } from './store/store'
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -32,6 +32,7 @@ const AuthRoute = ({ children }) => {
 
 function App() {
   const setUser = useAuthStore((state) => state.setUser)
+  const theme = useThemeStore((state) => state.theme)
 
   useEffect(() => {
     // Check if user is already logged in by fetching user info
@@ -51,6 +52,15 @@ function App() {
         // User is not authenticated, do nothing
       })
   }, [setUser])
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') {
+      root.classList.add('dark')
+    } else {
+      root.classList.remove('dark')
+    }
+  }, [theme])
 
   return (
     <Router>

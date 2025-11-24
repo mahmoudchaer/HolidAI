@@ -741,11 +741,170 @@ def fetch_booking_details(
         params["return_date"] = return_date
 
     try:
-        resp = requests.get(BASE_URL, params=params, timeout=30)
+        # Use very short timeout to avoid blocking (3 seconds max)
+        resp = requests.get(BASE_URL, params=params, timeout=3)
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        
+        # Check if response has error
+        if "error" in data:
+            return {"error": data.get("error", "Unknown error from API")}
+        
+        return data
+    except requests.exceptions.Timeout:
+        return {"error": "Request timeout"}  # Don't raise, just return error
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Request failed: {str(e)}"}  # Don't raise, just return error
     except Exception as e:
-        return {"error": f"Booking details fetch failed: {e}"}
+        return {"error": f"Booking details fetch failed: {e}"}  # Don't raise, just return error
+
+
+def _extract_booking_links(booking_details):
+    """Extract booking links from booking details response.
+    
+    Returns:
+        dict with 'booking_link' (deep link) and 'book_with' (seller name)
+        Returns None if no booking options found
+    """
+    if not booking_details or "error" in booking_details:
+        return None
+    
+    try:
+        booking_options = booking_details.get("booking_options", [])
+        if not booking_options:
+            return None
+        
+        # Get the first booking option (usually the best/cheapest)
+        first_option = booking_options[0]
+        
+        # Check for 'together' or 'separate' booking options
+        booking_info = first_option.get("together") or first_option.get("separate")
+        if not booking_info:
+            return None
+        
+        booking_request = booking_info.get("booking_request")
+        if not booking_request:
+            return None
+        
+        url = booking_request.get("url")
+        post_data = booking_request.get("post_data")
+        
+        if url and post_data:
+            # Create deep link: url + "?" + post_data
+            deep_link = f"{url}?{post_data}"
+            book_with = booking_info.get("book_with", "Unknown")
+            
+            return {
+                "booking_link": deep_link,
+                "book_with": book_with,
+                "price": booking_info.get("price")
+            }
+    except Exception as e:
+        print(f"[FLIGHT_TOOLS] Error extracting booking links: {e}")
+        return None
+    
+    return None
+
+
+def _attach_booking_links_to_flights(flights, search_metadata, departure_id, arrival_id, 
+                                     outbound_date, return_date=None, trip_type=2, max_flights=5):
+    """Attach booking links to each flight in the list.
+    
+    Args:
+        flights: List of flight objects
+        search_metadata: Metadata from search response (contains google_flights_url)
+        departure_id: Departure airport code
+        arrival_id: Arrival airport code
+        outbound_date: Outbound date
+        return_date: Return date (for round-trip)
+        trip_type: 1 for round-trip, 2 for one-way
+        max_flights: Maximum number of flights to process (reduced to 5 for performance)
+    
+    Returns:
+        List of flights with booking links attached
+    """
+    if not flights:
+        return flights
+    
+    google_flights_url = search_metadata.get("google_flights_url") if search_metadata else None
+    
+    # Fallback: Construct Google Flights URL if not in metadata
+    if not google_flights_url and departure_id and arrival_id and outbound_date:
+        # Construct a basic Google Flights search URL
+        # Use a simple format: /flights?q=Flights from DEP to ARR on DATE
+        from urllib.parse import quote
+        query = f"Flights from {departure_id} to {arrival_id} on {outbound_date}"
+        google_flights_url = (
+            f"https://www.google.com/travel/flights"
+            f"?q={quote(query)}"
+            f"&hl=en&gl=us&curr=USD"
+        )
+        print(f"[FLIGHT_TOOLS] ⚠️ Constructed fallback Google Flights URL for {departure_id}→{arrival_id} on {outbound_date}")
+    
+    # CRITICAL: Attach Google Flights URL to ALL flights FIRST (before any processing)
+    # This ensures every flight has at least the Google Flights link
+    if google_flights_url:
+        for i, flight in enumerate(flights):
+            # Always set it, even if flight already has one (ensures consistency)
+            flight["google_flights_url"] = google_flights_url
+        print(f"[FLIGHT_TOOLS] Attached Google Flights URL to {len(flights)} flights")
+    else:
+        print(f"[FLIGHT_TOOLS] ⚠️ WARNING: No Google Flights URL available (search_metadata={search_metadata is not None})")
+    
+    # Process only first max_flights to get booking links (for performance)
+    # We prioritize the first flights which are usually the best/cheapest
+    # REDUCED to 5 to avoid blocking the system
+    flights_to_process = flights[:max_flights]
+    
+    # Process booking links (with timeout protection via fetch_booking_details)
+    for idx, flight in enumerate(flights_to_process):
+        booking_token = flight.get("booking_token")
+        
+        if booking_token:
+            try:
+                # Fetch booking details with very short timeout to avoid blocking
+                booking_details = fetch_booking_details(
+                    booking_token,
+                    departure_id=departure_id,
+                    arrival_id=arrival_id,
+                    outbound_date=outbound_date,
+                    return_date=return_date,
+                    trip_type=trip_type
+                )
+                
+                # Extract booking links
+                if booking_details and "error" not in booking_details:
+                    booking_info = _extract_booking_links(booking_details)
+                    
+                    if booking_info:
+                        flight["booking_link"] = booking_info["booking_link"]
+                        flight["book_with"] = booking_info["book_with"]
+                        if booking_info.get("price"):
+                            flight["booking_price"] = booking_info["price"]
+                    else:
+                        # If extraction failed, get airline name from flight data as fallback
+                        airline_name = None
+                        if flight.get("flights") and len(flight["flights"]) > 0:
+                            airline_name = flight["flights"][0].get("airline")
+                        
+                        if airline_name:
+                            flight["book_with"] = airline_name
+            except Exception as e:
+                # Silent fail - we already have google_flights_url for all flights
+                # Don't log to avoid spam
+                pass
+    
+    # Final verification: Ensure ALL flights have google_flights_url (double-check)
+    if google_flights_url:
+        missing_count = 0
+        for flight in flights:
+            if not flight.get("google_flights_url"):
+                flight["google_flights_url"] = google_flights_url
+                missing_count += 1
+        if missing_count > 0:
+            print(f"[FLIGHT_TOOLS] ⚠️ Added missing Google Flights URL to {missing_count} flights")
+    
+    return flights
 
 
 def _parse_price(text):
@@ -855,18 +1014,26 @@ def fetch_one_way_flights(departure, arrival, date, currency,
         return {"outbound": []}
 
     flights = data.get("best_flights") or data.get("other_flights") or []
+    
+    # Attach booking links to each flight
     if flights:
-        token = flights[0].get("booking_token")
-        if token:
-            details = fetch_booking_details(
-                token,
-                departure_id=departure,
-                arrival_id=arrival,
-                outbound_date=date,
-                trip_type=2,
-            )
-            data["booking_details"] = details
-            data["booking_details"]["token"] = token
+        search_metadata = data.get("search_metadata", {})
+        flights = _attach_booking_links_to_flights(
+            flights,
+            search_metadata,
+            departure_id=departure,
+            arrival_id=arrival,
+            outbound_date=date,
+            return_date=None,
+            trip_type=2,
+            max_flights=5  # Process up to 5 flights to get booking links (reduced for performance)
+        )
+        # Update the data with flights that now have booking links
+        if data.get("best_flights"):
+            data["best_flights"] = flights
+        elif data.get("other_flights"):
+            data["other_flights"] = flights
+    
     return data
 
 
@@ -893,24 +1060,49 @@ def fetch_round_trip_flights(departure, arrival, dep_date, arr_date, currency,
     data = resp.json()
 
     if "error" in data:
-        return {"outbound": [], "return": []}
+        return {"outbound": [], "return": []}, {"outbound": [], "return": []}
 
     outbound = data.get("best_flights") or data.get("other_flights") or []
-    inbound = data.get("return_flights") or outbound
-
+    inbound = data.get("return_flights") or []
+    
+    search_metadata = data.get("search_metadata", {})
+    
+    # Attach booking links to outbound flights
     if outbound:
-        token = outbound[0].get("booking_token")
-        if token:
-            details = fetch_booking_details(
-                token,
-                departure_id=departure,
-                arrival_id=arrival,
-                outbound_date=dep_date,
-                return_date=arr_date,
-                trip_type=1,
-            )
-            data["booking_details"] = details
-            data["booking_details"]["token"] = token
+        outbound = _attach_booking_links_to_flights(
+            outbound,
+            search_metadata,
+            departure_id=departure,
+            arrival_id=arrival,
+            outbound_date=dep_date,
+            return_date=arr_date,
+            trip_type=1,
+            max_flights=5
+        )
+        # Update the data with outbound flights that now have booking links
+        if data.get("best_flights"):
+            data["best_flights"] = outbound
+        elif data.get("other_flights"):
+            data["other_flights"] = outbound
+    
+    # Attach booking links to return flights
+    # For return flights, each flight should have its own booking_token
+    # We'll fetch booking details using the return flight's booking_token
+    if inbound:
+        inbound = _attach_booking_links_to_flights(
+            inbound,
+            search_metadata,
+            departure_id=arrival,  # For return, departure is the arrival airport
+            arrival_id=departure,  # For return, arrival is the departure airport
+            outbound_date=arr_date,  # Return date becomes the outbound for return flight
+            return_date=None,
+            trip_type=2,  # Treat return leg as one-way for booking link purposes
+            max_flights=5
+        )
+        # Update return flights in data
+        if data.get("return_flights"):
+            data["return_flights"] = inbound
+    
     return data, data
 
 

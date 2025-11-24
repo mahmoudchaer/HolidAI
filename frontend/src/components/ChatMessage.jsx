@@ -150,6 +150,41 @@ const FlightCard = ({ flight, index }) => {
           </div>
         </div>
       )}
+      
+      {/* Booking Links */}
+      {(flight.booking_link || flight.google_flights_url) && (
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          <div className="flex flex-wrap gap-3">
+            {flight.booking_link && (
+              <a
+                href={flight.booking_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
+              >
+                <span>🔗</span>
+                <span>Book Now{flight.book_with ? ` with ${flight.book_with}` : ''}</span>
+              </a>
+            )}
+            {flight.google_flights_url && (
+              <a
+                href={flight.google_flights_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-700 text-sm font-semibold rounded-lg border-2 border-slate-300 hover:border-blue-500 hover:text-blue-600 transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                <span>✈️</span>
+                <span>View on Google Flights</span>
+              </a>
+            )}
+          </div>
+          {flight.book_with && !flight.booking_link && (
+            <div className="mt-2 text-xs text-slate-500">
+              Book with: <span className="font-semibold text-slate-700">{flight.book_with}</span>
+            </div>
+          )}
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -240,24 +275,54 @@ const ChatMessage = ({ message, isUser }) => {
     let structuredData = null
     let cleanedContent = content
     
-    const flightMatch = content.match(/\[FLIGHT_DATA\](.*?)\[\/FLIGHT_DATA\]/s)
-    if (flightMatch) {
-      try {
-        structuredData = { type: 'flights', data: JSON.parse(flightMatch[1]) }
-        cleanedContent = cleanedContent.replace(/\[FLIGHT_DATA\].*?\[\/FLIGHT_DATA\]/s, '').trim()
-      } catch (e) {
-        console.error('Failed to parse flight data:', e)
+    // Find FLIGHT_DATA tag positions more efficiently
+    const flightStartTag = '[FLIGHT_DATA]'
+    const flightEndTag = '[/FLIGHT_DATA]'
+    const flightStartIdx = content.indexOf(flightStartTag)
+    
+    if (flightStartIdx !== -1) {
+      const flightDataStart = flightStartIdx + flightStartTag.length
+      const flightEndIdx = content.indexOf(flightEndTag, flightDataStart)
+      
+      if (flightEndIdx !== -1) {
+        try {
+          const flightJson = content.substring(flightDataStart, flightEndIdx)
+          const flightData = JSON.parse(flightJson)
+          structuredData = { type: 'flights', data: flightData }
+          // Remove the tag from content
+          cleanedContent = (
+            content.substring(0, flightStartIdx) + 
+            content.substring(flightEndIdx + flightEndTag.length)
+          ).trim()
+        } catch (e) {
+          console.error('Failed to parse flight data:', e)
+          console.error('Flight JSON length:', flightEndIdx - flightDataStart, 'chars')
+        }
       }
     }
     
-    const locationMatch = content.match(/\[LOCATION_DATA\](.*?)\[\/LOCATION_DATA\]/s)
-    if (locationMatch) {
-      try {
-        const locationData = JSON.parse(locationMatch[1])
-        structuredData = { type: 'locations', data: locationData }
-        cleanedContent = cleanedContent.replace(/\[LOCATION_DATA\].*?\[\/LOCATION_DATA\]/s, '').trim()
-      } catch (e) {
-        console.error('Failed to parse location data:', e)
+    // Find LOCATION_DATA tag positions more efficiently
+    const locationStartTag = '[LOCATION_DATA]'
+    const locationEndTag = '[/LOCATION_DATA]'
+    const locationStartIdx = cleanedContent.indexOf(locationStartTag)
+    
+    if (locationStartIdx !== -1) {
+      const locationDataStart = locationStartIdx + locationStartTag.length
+      const locationEndIdx = cleanedContent.indexOf(locationEndTag, locationDataStart)
+      
+      if (locationEndIdx !== -1) {
+        try {
+          const locationJson = cleanedContent.substring(locationDataStart, locationEndIdx)
+          const locationData = JSON.parse(locationJson)
+          structuredData = { type: 'locations', data: locationData }
+          // Remove the tag from content
+          cleanedContent = (
+            cleanedContent.substring(0, locationStartIdx) + 
+            cleanedContent.substring(locationEndIdx + locationEndTag.length)
+          ).trim()
+        } catch (e) {
+          console.error('Failed to parse location data:', e)
+        }
       }
     }
     

@@ -42,12 +42,12 @@ const FlightSummary = ({ details }) => {
   const departure = first.departure_airport || {}
   const arrival = last.arrival_airport || {}
   return (
-    <div className="text-sm text-slate-600">
-      <div className="font-medium text-slate-800">
+    <div className="text-sm text-slate-600 dark:text-slate-300">
+      <div className="font-medium text-slate-800 dark:text-slate-100">
         {departure.name || departure.id || 'Origin'} → {arrival.name || arrival.id || 'Destination'}
       </div>
       <div>{formatDateTime(departure.time)}</div>
-      <div className="text-xs text-slate-500 mt-1">
+      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
         {segments.length > 0 && segments[0].airline ? segments[0].airline : 'Flight'} · {details.price ? `$${details.price}` : 'Price TBD'}
       </div>
     </div>
@@ -57,8 +57,8 @@ const FlightSummary = ({ details }) => {
 const HotelSummary = ({ details }) => {
   if (!details) return null
   return (
-    <div className="text-sm text-slate-600">
-      <div className="font-medium text-slate-800">{details.name || 'Hotel'}</div>
+    <div className="text-sm text-slate-600 dark:text-slate-300">
+      <div className="font-medium text-slate-800 dark:text-slate-100">{details.name || 'Hotel'}</div>
       {details.location && <div>{details.location}</div>}
       {details.date && <div>{formatDateTime(details.date)}</div>}
     </div>
@@ -68,8 +68,8 @@ const HotelSummary = ({ details }) => {
 const RestaurantSummary = ({ details }) => {
   if (!details) return null
   return (
-    <div className="text-sm text-slate-600">
-      <div className="font-medium text-slate-800">{details.name || 'Restaurant'}</div>
+    <div className="text-sm text-slate-600 dark:text-slate-300">
+      <div className="font-medium text-slate-800 dark:text-slate-100">{details.name || 'Restaurant'}</div>
       {details.location && <div>{details.location}</div>}
       {details.date && <div>{formatDateTime(details.date)}</div>}
     </div>
@@ -87,8 +87,8 @@ const SummaryByType = ({ item }) => {
       return <RestaurantSummary details={item.details} />
     default:
       return (
-        <div className="text-sm text-slate-600">
-          <div className="font-medium text-slate-800">{item.title}</div>
+        <div className="text-sm text-slate-600 dark:text-slate-300">
+          <div className="font-medium text-slate-800 dark:text-slate-100">{item.title}</div>
         </div>
       )
   }
@@ -96,14 +96,14 @@ const SummaryByType = ({ item }) => {
 
 const PlanSection = ({ label, icon, items }) => (
   <div className="mb-6">
-    <div className="flex items-center gap-2 text-slate-700 font-semibold mb-3">
+    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200 font-semibold mb-3">
       <span>{icon}</span>
       <span>{label}</span>
-      <span className="text-xs text-slate-400">({items.length})</span>
+      <span className="text-xs text-slate-400 dark:text-slate-500">({items.length})</span>
     </div>
     <div className="space-y-3">
       {items.map((item, idx) => (
-        <div key={`${item.title}-${idx}`} className="rounded-lg border border-slate-200 bg-white/90 p-3 shadow-sm">
+        <div key={`${item.title}-${idx}`} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 p-3 shadow-sm">
           <SummaryByType item={item} />
         </div>
       ))}
@@ -132,13 +132,13 @@ const PlanSidebar = () => {
   }, [groupedItems])
 
   return (
-    <aside className="hidden xl:flex w-80 border-l border-slate-200 bg-white/80 backdrop-blur px-4 py-6 flex-col overflow-y-auto">
+    <aside className="hidden xl:flex w-80 border-l border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur px-4 py-6 flex-col overflow-y-auto">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold text-slate-800">My Plan</h2>
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">My Plan</h2>
         {sessionId ? (
-          <p className="text-xs text-slate-500 mt-1">Session: {sessionId.slice(0, 8)}...</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Session: {sessionId.slice(0, 8)}...</p>
         ) : (
-          <p className="text-xs text-slate-500 mt-1">Start chatting to build your plan</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Start chatting to build your plan</p>
         )}
       </div>
 
@@ -149,11 +149,11 @@ const PlanSidebar = () => {
       )}
 
       {isLoading && !error && (
-        <div className="text-sm text-slate-500">Loading plan…</div>
+        <div className="text-sm text-slate-500 dark:text-slate-400">Loading plan…</div>
       )}
 
       {!isLoading && !error && items.length === 0 && (
-        <div className="text-sm text-slate-500">
+        <div className="text-sm text-slate-500 dark:text-slate-400">
           Your plan is empty. Ask me to save a flight, hotel, or restaurant and it will appear here.
         </div>
       )}
