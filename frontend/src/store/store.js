@@ -64,6 +64,18 @@ export const useActivityStore = create((set) => ({
   clearActivities: () => set({ activities: [] }),
 }))
 
+export const usePlanStore = create((set) => ({
+  items: [],
+  isLoading: false,
+  error: null,
+  sessionId: null,
+
+  setItems: (items, sessionId) => set({ items, sessionId, error: null }),
+  setLoading: (isLoading) => set({ isLoading }),
+  setError: (error) => set({ error }),
+  clearPlan: () => set({ items: [], sessionId: null, error: null }),
+}))
+
 export const useSidebarStore = create((set) => ({
   leftSidebarOpen: true,
   toggleLeftSidebar: () => set((state) => ({ 

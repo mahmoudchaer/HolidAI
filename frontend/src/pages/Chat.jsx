@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import Navbar from '../components/Navbar'
 import ChatSidebar from '../components/ChatSidebar'
 import ChatMessage from '../components/ChatMessage'
 import ChatInput from '../components/ChatInput'
-import { useChatStore, useActivityStore } from '../store/store'
+import PlanSidebar from '../components/PlanSidebar'
+import { useChatStore, useActivityStore, usePlanStore } from '../store/store'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 const Chat = () => {
@@ -22,6 +23,11 @@ const Chat = () => {
 
   // Get agent activity status
   const { currentStatus } = useActivityStore()
+
+  const setPlanItemsState = usePlanStore((state) => state.setItems)
+  const setPlanLoadingState = usePlanStore((state) => state.setLoading)
+  const setPlanErrorState = usePlanStore((state) => state.setError)
+  const clearPlan = usePlanStore((state) => state.clearPlan)
 
   const chatContainerRef = useRef(null)
   
@@ -81,9 +87,41 @@ const Chat = () => {
     }
   }
 
+  const fetchPlanItems = useCallback(async (targetSessionId, { silent = false } = {}) => {
+    if (!targetSessionId) {
+      clearPlan()
+      return
+    }
+
+    if (!silent) setPlanLoadingState(true)
+
+    try {
+      const response = await fetch(`/api/travel-plan?session_id=${targetSessionId}`)
+      const data = await response.json()
+      if (response.ok && data.success) {
+        setPlanItemsState(data.items, targetSessionId)
+      } else {
+        setPlanErrorState(data.error || 'Unable to load travel plan')
+      }
+    } catch (err) {
+      setPlanErrorState(err.message)
+    } finally {
+      if (!silent) setPlanLoadingState(false)
+    }
+  }, [clearPlan, setPlanErrorState, setPlanItemsState, setPlanLoadingState])
+
+  useEffect(() => {
+    if (currentConversation?.session_id) {
+      fetchPlanItems(currentConversation.session_id)
+    } else {
+      clearPlan()
+    }
+  }, [currentConversation?.session_id, clearPlan, fetchPlanItems])
+
   const handleNewChat = async () => {
     setCurrentConversation(null)
     setMessages([])
+    clearPlan()
   }
 
   const handleSelectConversation = async (sessionId) => {
@@ -115,6 +153,7 @@ const Chat = () => {
         if (currentConversation?.session_id === sessionId) {
           setCurrentConversation(null)
           setMessages([])
+          clearPlan()
         }
         await loadConversations()
       }
@@ -151,6 +190,7 @@ const Chat = () => {
         addMessage(assistantMessage)
         
         // Update session_id if we got a new one, but preserve current conversation state
+        const activeSessionId = data.session_id || sessionId
         if (data.session_id) {
           const newSessionId = data.session_id
           // Only update if it's actually different
@@ -161,6 +201,10 @@ const Chat = () => {
               title: currentConversation?.title // Preserve title if exists
             })
           }
+        }
+
+        if (activeSessionId) {
+          fetchPlanItems(activeSessionId, { silent: true })
         }
         
         // Load conversations in background without affecting current state
@@ -305,6 +349,8 @@ const Chat = () => {
           {/* Chat input */}
           <ChatInput onSend={handleSendMessage} disabled={isLoading} />
         </div>
+
+        <PlanSidebar />
       </div>
     </div>
   )

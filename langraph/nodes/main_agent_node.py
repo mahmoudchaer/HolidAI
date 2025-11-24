@@ -190,6 +190,42 @@ If no agents are needed, return an empty execution_plan array."""
         plan_data = {"execution_plan": []}
     
     execution_plan = plan_data.get("execution_plan", [])
+    user_msg_lower = user_message.lower()
+
+    # Heuristic guard: only keep tripadvisor agent when user explicitly asks
+    tripadvisor_keywords = [
+        "restaurant",
+        "food",
+        "dining",
+        "eat",
+        "cuisine",
+        "attraction",
+        "things to do",
+        "places to visit",
+        "places to go",
+        "recommendation",
+        "sightseeing",
+        "activities",
+        "nightlife",
+        "coffee shop",
+        "bar",
+        "museum"
+    ]
+    wants_tripadvisor = any(keyword in user_msg_lower for keyword in tripadvisor_keywords)
+
+    if execution_plan and not wants_tripadvisor:
+        filtered_plan = []
+        for step in execution_plan:
+            agents = step.get("agents", [])
+            filtered_agents = [agent for agent in agents if agent != "tripadvisor_agent"]
+            if filtered_agents:
+                new_step = step.copy()
+                new_step["agents"] = filtered_agents
+                filtered_plan.append(new_step)
+        # Re-number steps to keep sequence consistent
+        for idx, step in enumerate(filtered_plan, 1):
+            step["step_number"] = idx
+        execution_plan = filtered_plan
     
     # Log the execution plan
     print("\n=== Main Agent: Created Execution Plan ===")

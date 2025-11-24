@@ -275,6 +275,28 @@ Remember: You MUST call the tools to complete these tasks."""
         elif not get_stm:
             print("[MEMORY] STM module not available, skipping short-term memory retrieval")
         
+        # Step 5: Retrieve travel plan items from database
+        travel_plan_items = []
+        if user_email and session_id:
+            try:
+                from clients.planner_agent_client import PlannerAgentClient
+                plan_result = await PlannerAgentClient.invoke(
+                    "agent_get_plan_items_tool",
+                    user_email=user_email,
+                    session_id=session_id
+                )
+                if plan_result.get("success"):
+                    travel_plan_items = plan_result.get("items", [])
+                    print(f"[MEMORY] Retrieved {len(travel_plan_items)} travel plan items")
+                    if travel_plan_items:
+                        for item in travel_plan_items:
+                            print(f"  Plan: {item.get('title')} ({item.get('type')}) - {item.get('status')}")
+            except Exception as e:
+                print(f"[WARNING] Could not retrieve travel plan items: {e}")
+                travel_plan_items = []
+        else:
+            print("[MEMORY] No user_email or session_id, skipping travel plan retrieval")
+        
         # Combine long-term and short-term memories
         relevant_memories = long_term_memories + short_term_memories
         print(f"[MEMORY] Total memories retrieved: {len(relevant_memories)} ({len(long_term_memories)} long-term, {len(short_term_memories)} short-term)")
@@ -286,9 +308,21 @@ Remember: You MUST call the tools to complete these tasks."""
         print("  Continuing without memory features...")
         relevant_memories = []
     
-    # Update state with relevant memories
+    # Update state with relevant memories and travel plan items
     updated_state = state.copy()
+
+    # Reset transient results/context from previous turns so each user
+    # request starts clean. Planner + STM can still recall past options.
+    updated_state["flight_result"] = None
+    updated_state["hotel_result"] = None
+    updated_state["visa_result"] = None
+    updated_state["tripadvisor_result"] = None
+    updated_state["utilities_result"] = None
+    updated_state["collected_info"] = {}
+    updated_state["context"] = {}
+
     updated_state["relevant_memories"] = relevant_memories
+    updated_state["travel_plan_items"] = travel_plan_items if 'travel_plan_items' in locals() else []
     updated_state["route"] = "rfi_node"  # Always route to RFI after memory
     
     end_time = datetime.now()

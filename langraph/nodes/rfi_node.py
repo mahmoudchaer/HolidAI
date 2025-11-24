@@ -768,9 +768,59 @@ Examples:
         elif final_filtered_message:
             question = final_filtered_message
         
+        # Check for planner intent before routing
+        user_msg_lower = user_message.lower()
+        planner_keywords = [
+            "save", "select", "choose", "want", "like", "add to plan", "add to my plan",
+            "remove", "delete", "cancel", "update", "change", "modify",
+            "show my plan", "what's in my plan", "my plan", "travel plan", "option"
+        ]
+        has_planner_intent = any(keyword in user_msg_lower for keyword in planner_keywords)
+        
         # Route based on validation status
         if status == "complete":
-            # User provided enough info, proceed to memory node (which will route to main agent)
+            # Check if this is a planner request first
+            if has_planner_intent:
+                print("RFI: Information complete, but planner intent detected, routing to Planner Agent")
+                result = {
+                    "route": "planner_agent",
+                "rfi_status": "complete",
+                "rfi_context": "",  # Clear context
+                "needs_user_input": False,  # Clear flag
+                "rfi_missing_fields": None,  # Clear missing fields
+                "rfi_question": None  # Clear question
+            }
+            # Include filtered message if any
+            if final_filtered_message:
+                result["rfi_filtered_message"] = final_filtered_message
+            # IMPORTANT: Update user_message in state with filtered/enriched query
+            # This ensures Main Agent receives the complete context
+            original_message = state.get("user_message", "")
+            # For follow-ups, use enriched_message if provided, otherwise use the combined message
+            if rfi_status == "missing_info" and needs_user_input:
+                # This was a follow-up - use enriched_message which should contain the complete request
+                if enriched_message and enriched_message != original_message:
+                    result["user_message"] = enriched_message
+                    print(f"RFI: Using enriched_message from follow-up: '{enriched_message}'")
+                else:
+                    # Fallback to combined message
+                    result["user_message"] = user_message
+                    print(f"RFI: Using combined message from follow-up: '{user_message}'")
+            else:
+                # Regular flow - update if message was filtered or enriched
+                if enriched_message != original_message:
+                    result["user_message"] = enriched_message
+                    if user_message != original_message:
+                        print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
+                    if enriched_message != user_message:
+                        print(f"RFI: Enriched user_message with STM context: '{enriched_message}'")
+                elif user_message != original_message:
+                    # Only filtered, not enriched
+                    result["user_message"] = user_message
+                    print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
+                return result
+            
+            # User provided enough info, proceed to main agent
             print("RFI: Information complete, routing to Main Agent")
             result = {
                 "route": "main_agent",
@@ -811,6 +861,22 @@ Examples:
             return result
             
         elif status == "missing_info":
+            # Check if this is a planner request (planner can work with incomplete info if results exist)
+            if has_planner_intent:
+                print("RFI: Missing info but planner intent detected, routing to Planner Agent")
+                result = {
+                    "route": "planner_agent",
+                    "rfi_status": "missing_info",
+                    "rfi_context": enriched_message if enriched_message != user_message else user_message,
+                    "rfi_missing_fields": missing_fields,
+                    "rfi_question": question,
+                    "last_response": question,
+                    "needs_user_input": True
+                }
+                if final_filtered_message:
+                    result["rfi_filtered_message"] = final_filtered_message
+                return result
+            
             # Critical info missing, ask user through conversational agent (via memory node)
             print(f"RFI: Missing info - {missing_fields}")
             print(f"RFI: Asking user: {question}")

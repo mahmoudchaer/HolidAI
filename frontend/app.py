@@ -60,6 +60,21 @@ class Chat(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class TravelPlanItem(Base):
+    """Travel plan item model."""
+    __tablename__ = "travel_plan_items"
+
+    email = Column(String, primary_key=True, index=True)
+    session_id = Column(String, primary_key=True, index=True)
+    title = Column(String, primary_key=True, index=True)
+    details = Column(JSONB, nullable=False, default=dict)
+    type = Column(String, nullable=False)
+    status = Column(String, nullable=False, default='not_booked')
+    normalized_key = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 # Database connection - use 127.0.0.1 instead of localhost to avoid IPv6 issues
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -104,6 +119,18 @@ def preload_embedding_model():
 
 # Pre-load model at startup
 preload_embedding_model()
+
+def serialize_plan_item(item: TravelPlanItem) -> dict:
+    """Serialize TravelPlanItem ORM object into dict."""
+    return {
+        "title": item.title,
+        "type": item.type,
+        "status": item.status,
+        "details": item.details or {},
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None
+    }
+
 
 app = Flask(__name__, static_folder='dist', static_url_path='')
 app.secret_key = secrets.token_hex(16)  # Generate a secret key for sessions
@@ -710,6 +737,42 @@ def add_message(session_id):
             "success": False,
             "error": f"Server error: {str(e)}"
         }), 500
+
+
+@app.route("/api/travel-plan", methods=["GET"])
+@require_login
+def get_travel_plan():
+    """Return all saved travel plan items for the given session."""
+    session_id = request.args.get("session_id")
+    if not session_id:
+        return jsonify({
+            "success": False,
+            "error": "session_id is required"
+        }), 400
+
+    user_email = session.get("user_email")
+    db = SessionLocal()
+    try:
+        items = db.query(TravelPlanItem).filter(
+            TravelPlanItem.email == user_email,
+            TravelPlanItem.session_id == session_id
+        ).order_by(TravelPlanItem.created_at.asc()).all()
+
+        serialized_items = [serialize_plan_item(item) for item in items]
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "count": len(serialized_items),
+            "items": serialized_items
+        })
+    except Exception as e:
+        print(f"[ERROR] Could not fetch travel plan items: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Unable to retrieve travel plan items"
+        }), 500
+    finally:
+        db.close()
 
 
 @app.route("/api/book-hotel", methods=["POST"])

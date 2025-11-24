@@ -79,6 +79,10 @@ class AgentState(TypedDict):
         rfi_filtered_message: Message about filtered non-travel parts (if any)
         rfi_ignored_parts: List of non-travel parts that were filtered out
         needs_user_input: Flag indicating we're waiting for user input
+        travel_plan_items: List of travel plan items retrieved from database
+        planner_feedback_message: Feedback for planner validation
+        planner_feedback_retry_count: Counter for planner feedback retries
+        needs_planner: Whether planner operations are needed
     """
     user_message: Annotated[str, reducer]  # Read-only, but needs reducer for parallel execution
     context: Annotated[Dict[str, Any], reducer]
@@ -126,4 +130,8 @@ class AgentState(TypedDict):
     user_email: Annotated[Optional[str], reducer]  # User's email for memory storage
     relevant_memories: Annotated[Optional[List[str]], reducer]  # Relevant memories retrieved for this query
     session_id: Annotated[Optional[str], reducer]  # Session ID for STM access
+    travel_plan_items: Annotated[Optional[List[Dict[str, Any]]], reducer]  # Travel plan items from database
+    planner_feedback_message: Annotated[Optional[str], reducer]  # Feedback for planner validation
+    planner_feedback_retry_count: Annotated[int, reducer]  # Counter for planner feedback retries
+    needs_planner: Annotated[bool, reducer]  # Whether planner operations are needed
 

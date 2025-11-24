@@ -248,11 +248,12 @@ def truncate_large_results(collected_info: dict, max_items: int = 20) -> dict:
     return truncated
 
 
-def get_conversational_agent_prompt(memories: list = None) -> str:
+def get_conversational_agent_prompt(memories: list = None, travel_plan_items: list = None) -> str:
     """Get the system prompt for the Conversational Agent.
     
     Args:
         memories: List of relevant memories about the user
+        travel_plan_items: List of travel plan items from the user's plan
     """
     memory_section = ""
     if memories and len(memories) > 0:
@@ -260,6 +261,14 @@ def get_conversational_agent_prompt(memories: list = None) -> str:
         print(f"[MEMORY] Including {len(memories)} memories in conversational agent prompt")
     else:
         print(f"[MEMORY] No memories to include in conversational agent prompt")
+    
+    plan_section = ""
+    if travel_plan_items and len(travel_plan_items) > 0:
+        import json
+        plan_section = f"\n\nCURRENT TRAVEL PLAN ITEMS ({len(travel_plan_items)} items):\n" + "\n".join([f"- {item.get('title', 'Unknown')} ({item.get('type', 'unknown')}) - Status: {item.get('status', 'unknown')}" for item in travel_plan_items]) + "\n\nWhen responding:\n- If the user asks about their plan, mention these items\n- If you're confirming a save operation, acknowledge what was saved\n- Be natural and conversational about their travel plan"
+        print(f"[PLAN] Including {len(travel_plan_items)} travel plan items in conversational agent prompt")
+    else:
+        print(f"[PLAN] No travel plan items to include in conversational agent prompt")
     
     return """You are a helpful travel assistant that provides friendly, natural, and conversational responses to users about their travel queries.
 
@@ -377,7 +386,7 @@ Your response should start directly with the information, like:
 NOT like:
 "Collected_info: { ... } Based on the information gathered..."
 
-Remember: The JSON is invisible to the user - only show the extracted information in a natural, conversational format.""" + memory_section
+Remember: The JSON is invisible to the user - only show the extracted information in a natural, conversational format.""" + memory_section + plan_section
 
 
 async def conversational_agent_node(state: AgentState) -> AgentState:
@@ -397,6 +406,7 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     rfi_status = state.get("rfi_status")  # Check if query was rejected (unsafe/out_of_scope)
     last_response = state.get("last_response", "")  # May contain rejection message from RFI
     relevant_memories = state.get("relevant_memories") or []  # Relevant memories for this user
+    travel_plan_items = state.get("travel_plan_items", [])  # Travel plan items from database
     
     # Also check context for results
     if context.get("flight_result"):
@@ -459,6 +469,14 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
         updated_state["route"] = "end"
         return updated_state
     
+    # If planner has set a response (e.g., "no results available"), use it directly
+    if last_response and ("No search results available" in last_response or "no results available" in last_response.lower() or "search first" in last_response.lower()):
+        print("Conversational Agent: Using planner's message about no results")
+        updated_state = state.copy()
+        updated_state["last_response"] = last_response
+        updated_state["route"] = "end"
+        return updated_state
+    
     # Prepare messages for LLM
     import json
     
@@ -492,7 +510,7 @@ Please revise your response based on this feedback to fix the issues mentioned."
         print(f"Conversational Agent: Received feedback - {conversational_feedback_message}")
     
     messages = [
-        {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories)},
+        {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories, travel_plan_items=travel_plan_items)},
         {"role": "user", "content": user_content}
     ]
     
@@ -663,7 +681,7 @@ Please revise your response based on this feedback to fix the issues mentioned."
             if "context_length" in error_msg.lower() or "maximum context length" in error_msg.lower():
                 # Try with simplified messages - just pass a summary
                 simplified_messages = [
-                    {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories)},
+                    {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories, travel_plan_items=travel_plan_items)},
                     {
                         "role": "user",
                         "content": f"""User's original message: {user_message}
@@ -778,6 +796,30 @@ The system has collected information from specialized agents. Please provide a h
             if all_flights:
                 # Append structured flight data at the end
                 final_response += f"\n\n[FLIGHT_DATA]{json.dumps(all_flights, ensure_ascii=False)}[/FLIGHT_DATA]"
+    
+    # Store last results in STM for future reference (e.g., when user says "i want option 3")
+    session_id = state.get("session_id")
+    if session_id and collected_info:
+        try:
+            from stm.short_term_memory import store_last_results
+            # Store only non-empty results
+            results_to_store = {}
+            if collected_info.get("flight_result"):
+                results_to_store["flight_result"] = collected_info["flight_result"]
+            if collected_info.get("hotel_result"):
+                results_to_store["hotel_result"] = collected_info["hotel_result"]
+            if collected_info.get("tripadvisor_result"):
+                results_to_store["tripadvisor_result"] = collected_info["tripadvisor_result"]
+            if collected_info.get("visa_result"):
+                results_to_store["visa_result"] = collected_info["visa_result"]
+            if collected_info.get("utilities_result"):
+                results_to_store["utilities_result"] = collected_info["utilities_result"]
+            
+            if results_to_store:
+                store_last_results(session_id, results_to_store)
+                print(f"[CONVERSATIONAL] Stored {len(results_to_store)} result types in STM for future reference")
+        except Exception as e:
+            print(f"[WARNING] Could not store last results in STM: {e}")
     
     updated_state = state.copy()
     updated_state["last_response"] = final_response

@@ -216,3 +216,85 @@ def add_message(session_id: str, user_email: str, role: str, text: str) -> bool:
         traceback.print_exc()
         return False
 
+
+def store_last_results(session_id: str, results: Dict) -> bool:
+    """
+    Store the last search results (flights, hotels, etc.) in STM for later retrieval.
+    
+    Args:
+        session_id: Session identifier
+        results: Dictionary containing flight_result, hotel_result, etc.
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        stm_data = get_stm(session_id)
+        
+        if not stm_data:
+            # Create new STM entry
+            stm_data = {
+                "session_id": session_id,
+                "last_messages": [],
+                "summary": "",
+                "last_results": {},
+                "updated_at": datetime.utcnow().isoformat()
+            }
+        
+        # Store results (only non-empty results)
+        if "last_results" not in stm_data:
+            stm_data["last_results"] = {}
+        
+        # Update with new results (merge, don't replace entirely)
+        # Convert results to JSON-serializable format
+        def make_serializable(obj):
+            """Recursively convert objects to JSON-serializable format."""
+            if isinstance(obj, dict):
+                return {k: make_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [make_serializable(item) for item in obj]
+            elif isinstance(obj, (str, int, float, bool, type(None))):
+                return obj
+            else:
+                # For other types, convert to string
+                return str(obj)
+        
+        for key, value in results.items():
+            if value:  # Only store non-empty results
+                stm_data["last_results"][key] = make_serializable(value)
+        
+        stm_data["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Save back to Redis
+        key = get_stm_key(session_id)
+        redis_client.set(key, json.dumps(stm_data, default=str, ensure_ascii=False))
+        
+        print(f"[STM] Stored last results for session {session_id}: {list(results.keys())}")
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Error storing last results: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def get_last_results(session_id: str) -> Optional[Dict]:
+    """
+    Retrieve the last search results from STM.
+    
+    Args:
+        session_id: Session identifier
+        
+    Returns:
+        Dictionary with last results (flight_result, hotel_result, etc.) or None
+    """
+    try:
+        stm_data = get_stm(session_id)
+        if stm_data:
+            return stm_data.get("last_results", {})
+        return {}
+    except Exception as e:
+        print(f"[ERROR] Error retrieving last results: {e}")
+        return {}
+

@@ -22,6 +22,8 @@ from nodes.conversational_agent_node import conversational_agent_node
 from nodes.conversational_agent_feedback_node import conversational_agent_feedback_node
 from nodes.join_node import join_node
 from nodes.memory_agent_node import memory_agent_node
+from nodes.planner_agent_node import planner_agent_node
+from nodes.planner_agent_feedback_node import planner_agent_feedback_node
 
 
 def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
@@ -66,6 +68,10 @@ def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
         return "join_node"
     elif route == "main_agent":
         return "main_agent"
+    elif route == "planner_agent":
+        return "planner_agent"
+    elif route == "planner_feedback":
+        return "planner_feedback"
     else:
         return "end"
 
@@ -99,6 +105,8 @@ def create_graph() -> StateGraph:
     graph.add_node("join_node", join_node)
     graph.add_node("conversational_agent", conversational_agent_node)
     graph.add_node("conversational_agent_feedback", conversational_agent_feedback_node)
+    graph.add_node("planner_agent", planner_agent_node)
+    graph.add_node("planner_feedback", planner_agent_feedback_node)
     
     # Set entry point - Memory agent runs first!
     graph.set_entry_point("memory_agent")
@@ -107,10 +115,28 @@ def create_graph() -> StateGraph:
     graph.add_edge("memory_agent", "rfi_node")
     
     # RFI node routes based on validation result
+    # Check if planner is needed first, then route accordingly
+    def rfi_route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
+        """Route decision after RFI - check for planner intent first."""
+        user_message = state.get("user_message", "").lower()
+        planner_keywords = [
+            "save", "select", "choose", "want", "like", "add to plan", "add to my plan",
+            "remove", "delete", "cancel", "update", "change", "modify",
+            "show my plan", "what's in my plan", "my plan", "travel plan"
+        ]
+        has_planner_intent = any(keyword in user_message for keyword in planner_keywords)
+        
+        if has_planner_intent:
+            return "planner_agent"
+        
+        # Otherwise use normal route decision
+        return route_decision(state)
+    
     graph.add_conditional_edges(
         "rfi_node",
-        route_decision,
+        rfi_route_decision,
         {
+            "planner_agent": "planner_agent",
             "main_agent": "main_agent",
             "conversational_agent": "conversational_agent",
             "end": END
@@ -237,6 +263,19 @@ def create_graph() -> StateGraph:
     # Conversational agent routes to its feedback for validation
     graph.add_edge("conversational_agent", "conversational_agent_feedback")
     
+    # Planner agent routes to its feedback node
+    graph.add_edge("planner_agent", "planner_feedback")
+    
+    # Planner feedback routes to conversational agent or back to planner for retry
+    graph.add_conditional_edges(
+        "planner_feedback",
+        route_decision,
+        {
+            "planner_agent": "planner_agent",  # retry if feedback says so
+            "conversational_agent": "conversational_agent"  # continue if passed
+        }
+    )
+    
     # Conversational feedback validates the final response
     graph.add_conditional_edges(
         "conversational_agent_feedback",
@@ -312,7 +351,11 @@ async def run(user_message: str, config: dict = None, user_email: str = None, se
         "needs_user_input": False,
         "user_email": user_email,
         "relevant_memories": [],  # Will be populated by memory_agent
-        "session_id": session_id  # Session ID for STM access
+        "session_id": session_id,  # Session ID for STM access
+        "travel_plan_items": [],  # Will be populated by memory_agent
+        "planner_feedback_message": None,
+        "planner_feedback_retry_count": 0,
+        "needs_planner": False
     }
     
     if config is None:
