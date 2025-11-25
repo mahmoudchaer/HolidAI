@@ -2,7 +2,14 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useChatStore, useSidebarStore } from '../store/store'
 
-const ChatSidebar = ({ conversations, onSelectConversation, onNewChat, onDeleteConversation, onRenameConversation }) => {
+const ChatSidebar = ({
+  conversations,
+  onSelectConversation,
+  onNewChat,
+  onDeleteConversation,
+  onRenameConversation,
+  interactionLocked = false,
+}) => {
   const currentConversation = useChatStore((state) => state.currentConversation)
   const leftSidebarOpen = useSidebarStore((state) => state.leftSidebarOpen)
   const [editingId, setEditingId] = useState(null)
@@ -34,14 +41,21 @@ const ChatSidebar = ({ conversations, onSelectConversation, onNewChat, onDeleteC
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: -320, opacity: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 200 }}
-          className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col h-full shadow-lg"
+          className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col h-full shadow-lg relative"
         >
           <div className="p-4 border-b border-slate-200 dark:border-slate-800">
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={onNewChat}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all group"
+              onClick={() => {
+                if (interactionLocked) return
+                onNewChat()
+              }}
+              disabled={interactionLocked}
+              className={`w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold transition-all group ${
+                interactionLocked ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg'
+              }`}
+              title={interactionLocked ? 'Waiting for the current response' : 'Start a new conversation'}
             >
               <motion.span
                 whileHover={{ rotate: 90 }}
@@ -53,7 +67,12 @@ const ChatSidebar = ({ conversations, onSelectConversation, onNewChat, onDeleteC
             </motion.button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3">
+          <div
+            className={`flex-1 overflow-y-auto p-3 ${
+              interactionLocked ? 'pointer-events-none select-none blur-[1px]' : ''
+            }`}
+            aria-disabled={interactionLocked}
+          >
             {conversations.length === 0 ? (
               <div className="text-center text-slate-500 dark:text-slate-400 text-sm py-12 px-4">
                 <div className="text-4xl mb-3">💬</div>
@@ -71,12 +90,21 @@ const ChatSidebar = ({ conversations, onSelectConversation, onNewChat, onDeleteC
                     className={`group relative p-4 rounded-xl transition-all ${
                       currentConversation?.session_id === conv.session_id
                         ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800/80 dark:to-slate-800 border-2 border-blue-200 dark:border-slate-700 shadow-md'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border-2 border-transparent'
+                        : `${
+                            interactionLocked
+                              ? 'border-2 border-transparent opacity-60 cursor-not-allowed pointer-events-none'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border-2 border-transparent'
+                          }`
                     }`}
                     onClick={() => {
-                      if (editingId === conv.session_id) return
+                      if (interactionLocked || editingId === conv.session_id) return
                       onSelectConversation(conv.session_id)
                     }}
+                    title={
+                      interactionLocked
+                        ? 'Finish the current response before switching chats'
+                        : `Open ${conv.title}`
+                    }
                   >
                     {editingId === conv.session_id ? (
                       <div className="flex items-center gap-2">
@@ -172,6 +200,14 @@ const ChatSidebar = ({ conversations, onSelectConversation, onNewChat, onDeleteC
               </div>
             )}
           </div>
+
+          {interactionLocked && (
+            <div className="absolute inset-0 z-20 bg-white/70 dark:bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center text-center px-6 text-sm font-semibold text-slate-600 dark:text-slate-300 pointer-events-auto">
+              <div className="text-4xl mb-3 animate-pulse">✈️</div>
+              <p>Hold tight—your agent is finishing the current plan.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Switching chats is temporarily locked.</p>
+            </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

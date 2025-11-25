@@ -305,6 +305,7 @@ const Chat = () => {
           onNewChat={handleNewChat}
           onDeleteConversation={handleDeleteConversation}
           onRenameConversation={handleRenameConversation}
+          interactionLocked={isLoading}
         />
 
         <div className="flex-1 flex flex-col relative">
