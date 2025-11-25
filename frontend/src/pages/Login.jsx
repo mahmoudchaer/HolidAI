@@ -57,6 +57,17 @@ const Login = () => {
         className="relative z-10 w-full max-w-md px-6"
       >
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8">
+          <div className="flex flex-col items-center gap-3 mb-6">
+            <Link to="/" className="flex items-center gap-3 group">
+              <motion.div whileHover={{ rotate: 10, scale: 1.05 }} className="text-4xl">
+                ✈️
+              </motion.div>
+              <span className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                HolidAI
+              </span>
+            </Link>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-400">Travel assistant</p>
+          </div>
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-800 mb-2">
               Welcome Back

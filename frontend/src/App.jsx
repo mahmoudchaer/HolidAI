@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Chat from './pages/Chat'
 import About from './pages/About'
+import Favourites from './pages/Favourites'
 import Profile from './pages/Profile'
 import Booking from './pages/Booking'
 import { useAuthStore, useThemeStore } from './store/store'
@@ -97,6 +98,14 @@ function App() {
           element={
             <ProtectedRoute>
               <About />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/favourites"
+          element={
+            <ProtectedRoute>
+              <Favourites />
             </ProtectedRoute>
           }
         />

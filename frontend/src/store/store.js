@@ -1,5 +1,28 @@
 import { create } from 'zustand'
 
+const FAVORITES_STORAGE_KEY = 'holidAI-favorites'
+
+const getInitialFavorites = () => {
+  if (typeof window === 'undefined') return []
+  try {
+    const stored = localStorage.getItem(FAVORITES_STORAGE_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    console.warn('Failed to read favorites from storage')
+    return []
+  }
+}
+
+const persistFavorites = (favorites) => {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites))
+    } catch {
+      console.warn('Failed to persist favorites')
+    }
+  }
+}
+
 export const useAuthStore = create((set) => ({
   user: null,
   isAuthenticated: false,
@@ -74,6 +97,37 @@ export const usePlanStore = create((set) => ({
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   clearPlan: () => set({ items: [], sessionId: null, error: null }),
+}))
+
+export const useFavoritesStore = create((set, get) => ({
+  favorites: getInitialFavorites(),
+
+  toggleFavoritePlan: (plan) => {
+    const { favorites } = get()
+    const exists = favorites.some((fav) => fav.sessionId === plan.sessionId)
+    const updated = exists
+      ? favorites.filter((fav) => fav.sessionId !== plan.sessionId)
+      : [
+          ...favorites,
+          {
+            ...plan,
+            savedAt: new Date().toISOString(),
+          },
+        ]
+    persistFavorites(updated)
+    set({ favorites: updated })
+  },
+
+  removeFavorite: (sessionId) => {
+    const updated = get().favorites.filter((fav) => fav.sessionId !== sessionId)
+    persistFavorites(updated)
+    set({ favorites: updated })
+  },
+
+  clearFavorites: () => {
+    persistFavorites([])
+    set({ favorites: [] })
+  },
 }))
 
 export const useSidebarStore = create((set) => ({

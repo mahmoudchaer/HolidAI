@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { usePlanStore } from '../store/store'
+import { motion } from 'framer-motion'
+import { usePlanStore, useFavoritesStore, useChatStore } from '../store/store'
 
 const typeOrder = ['flight', 'hotel', 'restaurant', 'activity']
 
@@ -113,6 +114,9 @@ const PlanSection = ({ label, icon, items }) => (
 
 const PlanSidebar = () => {
   const { items, isLoading, sessionId, error } = usePlanStore()
+  const currentConversation = useChatStore((state) => state.currentConversation)
+  const favorites = useFavoritesStore((state) => state.favorites)
+  const toggleFavoritePlan = useFavoritesStore((state) => state.toggleFavoritePlan)
 
   const groupedItems = useMemo(() => {
     const groups = {}
@@ -131,15 +135,46 @@ const PlanSidebar = () => {
     return [...ordered, ...remaining]
   }, [groupedItems])
 
+  const isCurrentPlanFavorited = useMemo(() => {
+    if (!sessionId) return false
+    return favorites.some((fav) => fav.sessionId === sessionId)
+  }, [favorites, sessionId])
+
+  const handleToggleFavorite = () => {
+    if (!sessionId || items.length === 0) return
+    const snapshot = JSON.parse(JSON.stringify(items))
+    toggleFavoritePlan({
+      sessionId,
+      title: currentConversation?.title || `Plan ${sessionId.slice(0, 6)}`,
+      items: snapshot,
+    })
+  }
+
   return (
     <aside className="hidden xl:flex w-80 border-l border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur px-4 py-6 flex-col overflow-y-auto">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">My Plan</h2>
-        {sessionId ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Session: {sessionId.slice(0, 8)}...</p>
-        ) : (
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Start chatting to build your plan</p>
-        )}
+      <div className="mb-4 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">My Plan</h2>
+          {sessionId ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Session: {sessionId.slice(0, 8)}...
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Start chatting to build your plan</p>
+          )}
+        </div>
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleToggleFavorite}
+          disabled={!sessionId || items.length === 0}
+          className="p-2 rounded-full border border-transparent disabled:opacity-40 disabled:cursor-not-allowed bg-white/70 dark:bg-slate-800/80 hover:border-amber-300 transition-colors shadow-sm"
+          title={isCurrentPlanFavorited ? 'Remove from favourites' : 'Save to favourites'}
+        >
+          <span className={`text-xl ${isCurrentPlanFavorited ? 'text-amber-400' : 'text-slate-400'}`}>
+            {isCurrentPlanFavorited ? '★' : '☆'}
+          </span>
+        </motion.button>
       </div>
 
       {error && (

@@ -15,7 +15,7 @@ const BackgroundSlideshow = () => {
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % images.length)
-    }, 10000) // Change every 10 seconds
+    }, 6000) // Change every 6 seconds for a snappier feel
 
     return () => clearInterval(timer)
   }, [])
@@ -28,7 +28,7 @@ const BackgroundSlideshow = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 1.5 }}
+          transition={{ duration: 1.2 }}
           className="absolute inset-0 w-full h-full"
         >
           <img

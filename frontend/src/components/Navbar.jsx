@@ -57,6 +57,13 @@ const Navbar = () => {
                 About
                 <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 group-hover:w-full transition-all duration-300" />
               </Link>
+              <Link 
+                to="/favourites" 
+                className="text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300 transition-colors relative group"
+              >
+                Favourites
+                <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 group-hover:w-full transition-all duration-300" />
+              </Link>
             </div>
           </div>
 
