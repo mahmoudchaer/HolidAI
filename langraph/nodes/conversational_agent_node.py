@@ -37,7 +37,8 @@ def _parse_price(price):
 def _filter_flights_intelligently(user_message: str, outbound_flights: list, return_flights: list) -> tuple:
     """
     Intelligently filter flights based on user's message intent.
-    Uses LLM to understand filtering criteria, then applies filters.
+    PRIMARY: Uses LLM semantic understanding to determine filter criteria.
+    FALLBACK: Uses rule-based filtering only if LLM fails.
     
     Returns:
         (filtered_outbound, filtered_return) - filtered flight lists
@@ -45,40 +46,49 @@ def _filter_flights_intelligently(user_message: str, outbound_flights: list, ret
     if not outbound_flights and not return_flights:
         return outbound_flights, return_flights
     
-    # Use LLM to understand filtering intent
+    # PRIMARY METHOD: Use LLM semantic understanding to determine filter criteria
     try:
-        filter_prompt = f"""Analyze the user's message and determine if they want to filter flight results.
+        import json
+        
+        filter_prompt = f"""Analyze the user's message and determine what filtering they want for flight results.
 
 User message: "{user_message}"
 
-Determine the filtering criteria from the user's intent:
-1. Do they want ONLY the cheapest option(s)? (e.g., "cheapest one", "cheapest", "lowest price", "cheapest flight", "show me the cheapest")
-2. Do they want direct flights only? (e.g., "direct", "non-stop", "no layovers", "direct flights only")
-3. Do they want morning/afternoon/evening flights? (e.g., "morning flights", "early departure", "afternoon only")
-4. Do they want specific airlines? (e.g., "Emirates only", "not Turkish Airlines", "only MEA")
-5. Do they want flights under a certain price? (e.g., "under $500", "less than $300", "budget under 400")
-6. Do they want shortest duration? (e.g., "fastest", "quickest", "shortest", "fastest option")
+Understand the user's SEMANTIC intent (not just keywords):
+- "cheapest one" / "cheapest" / "lowest price" → They want the cheapest flight(s)
+- "first one" / "first option" → They want the FIRST flight in the list
+- "last one" / "last option" → They want the LAST flight in the list  
+- "more than 31 in legroom" / "legroom over 31" / "legroom greater than 31" → Filter flights where legroom > 31 inches
+- "at least 32 in legroom" / "32 inches or more legroom" → Filter flights where legroom >= 32 inches
+- "direct flights" / "non-stop" / "no layovers" → Filter flights with no layovers
+- "morning flights" / "early departure" → Filter flights departing 00:00-11:59
+- "afternoon flights" → Filter flights departing 12:00-16:59
+- "evening flights" → Filter flights departing 17:00-23:59
+- "under $300" / "less than $300" → Filter flights with price < 300
+- "Emirates only" / "only Emirates" → Filter flights with Emirates airline
+- "shortest duration" / "fastest" → Find flights with minimum total_duration
+- "show me only X" → Filter to ONLY show X (e.g., "show me only flights with more than 31 in legroom")
 
-IMPORTANT:
-- If user says "cheapest one" or similar, they want ONLY the cheapest option(s), not all flights
-- For round-trip: "cheapest one" means cheapest outbound AND cheapest return (keep_count=1 for each)
-- Understand context: "cheapest" after seeing flight results means filter to show only cheapest
-- Be intelligent: understand variations like "show me cheapest", "get cheapest", "lowest price option"
-
-Respond with JSON:
+Return JSON:
 {{
-  "filter_type": "cheapest" | "direct_only" | "morning" | "afternoon" | "evening" | "airline" | "max_price" | "shortest_duration" | "none",
-  "filter_value": "value if needed (e.g., airline name, max price number, etc.)",
+  "needs_filtering": true/false,
+  "reasoning": "explanation of what user wants",
+  "filter_type": "cheapest" | "first" | "last" | "direct_only" | "morning" | "afternoon" | "evening" | "airline" | "max_price" | "shortest_duration" | "legroom_min" | "custom" | "none",
+  "filter_value": "value if needed (e.g., airline name, max price number, min legroom number)",
   "apply_to": "both" | "outbound" | "return",
-  "keep_count": number of results to keep (e.g., 1 for "cheapest one", 3 for "top 3 cheapest")
+  "keep_count": number of results to keep (e.g., 1 for "cheapest one", all for filters)
 }}
 
-If no clear filtering intent, return {{"filter_type": "none"}}."""
+Examples:
+- "cheapest one" → {{"needs_filtering": true, "filter_type": "cheapest", "keep_count": 1}}
+- "more than 31 in legroom" → {{"needs_filtering": true, "filter_type": "legroom_min", "filter_value": 31}}
+- "first one" → {{"needs_filtering": true, "filter_type": "first", "keep_count": 1}}
+- "show me all flights" → {{"needs_filtering": false, "filter_type": "none"}}"""
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes user intent for filtering flight results. Respond only with valid JSON."},
+                {"role": "system", "content": "You are an intelligent assistant that analyzes user intent for filtering flight results. Use semantic understanding, not keyword matching. Respond only with valid JSON."},
                 {"role": "user", "content": filter_prompt}
             ],
             temperature=0.1,
@@ -86,45 +96,66 @@ If no clear filtering intent, return {{"filter_type": "none"}}."""
         )
         
         filter_decision = response.choices[0].message.content
-        import json
         filter_criteria = json.loads(filter_decision)
         
+        needs_filtering = filter_criteria.get("needs_filtering", False)
+        reasoning = filter_criteria.get("reasoning", "")
         filter_type = filter_criteria.get("filter_type", "none")
-        keep_count = filter_criteria.get("keep_count", 1)
+        filter_value = filter_criteria.get("filter_value")
         apply_to = filter_criteria.get("apply_to", "both")
+        keep_count = filter_criteria.get("keep_count", 1)
         
-        print(f"[FILTER] Detected filter type: {filter_type}, keep_count: {keep_count}, apply_to: {apply_to}")
+        print(f"[FILTER] LLM semantic filtering - needs_filtering: {needs_filtering}, filter_type: {filter_type}, reasoning: {reasoning}")
         
-        if filter_type == "none":
+        if not needs_filtering or filter_type == "none":
+            print(f"[FILTER] LLM selected all flights (no filtering needed)")
             return outbound_flights, return_flights
         
         filtered_outbound = outbound_flights.copy() if outbound_flights else []
         filtered_return = return_flights.copy() if return_flights else []
         
-        # Apply filters to outbound
+        # Apply filters based on LLM's semantic understanding
         if apply_to in ["both", "outbound"] and filtered_outbound:
             if filter_type == "cheapest":
-                # Sort by price and keep only the cheapest
                 filtered_outbound.sort(key=lambda f: _parse_price(f.get("price", float('inf'))))
                 filtered_outbound = filtered_outbound[:keep_count]
+            elif filter_type == "first":
+                filtered_outbound = filtered_outbound[:keep_count]
+            elif filter_type == "last":
+                filtered_outbound = filtered_outbound[-keep_count:] if keep_count > 0 else []
             elif filter_type == "direct_only":
-                # Keep only direct flights (no layovers)
                 filtered_outbound = [f for f in filtered_outbound if not f.get("layovers") or len(f.get("layovers", [])) == 0]
             elif filter_type == "shortest_duration":
-                # Sort by duration and keep shortest
                 filtered_outbound.sort(key=lambda f: f.get("total_duration", float('inf')))
                 filtered_outbound = filtered_outbound[:keep_count]
             elif filter_type == "max_price":
-                max_price = float(filter_criteria.get("filter_value", float('inf')))
+                max_price = float(filter_value) if filter_value else float('inf')
                 filtered_outbound = [f for f in filtered_outbound if _parse_price(f.get("price", float('inf'))) <= max_price]
             elif filter_type == "airline":
-                airline_name = filter_criteria.get("filter_value", "").lower()
+                airline_name = (filter_value or "").lower()
                 filtered_outbound = [f for f in filtered_outbound if any(
                     segment.get("airline", "").lower() == airline_name 
                     for segment in f.get("flights", [])
                 )]
+            elif filter_type == "legroom_min":
+                min_legroom = float(filter_value) if filter_value else 0
+                def _meets_legroom_requirement(flight, min_val):
+                    """Check if ALL flight segments have legroom > min_val."""
+                    for segment in flight.get("flights", []):
+                        legroom_str = segment.get("legroom", "")
+                        if legroom_str and " in" in legroom_str:
+                            try:
+                                legroom_val = float(legroom_str.replace(" in", "").strip())
+                                if legroom_val <= min_val:
+                                    return False  # At least one segment doesn't meet requirement
+                            except:
+                                pass
+                        else:
+                            # If legroom info is missing, we can't verify - exclude to be safe
+                            return False
+                    return True  # All segments meet requirement
+                filtered_outbound = [f for f in filtered_outbound if _meets_legroom_requirement(f, min_legroom)]
             elif filter_type in ["morning", "afternoon", "evening"]:
-                # Filter by departure time
                 hour_ranges = {
                     "morning": (0, 12),
                     "afternoon": (12, 17),
@@ -132,38 +163,57 @@ If no clear filtering intent, return {{"filter_type": "none"}}."""
                 }
                 start_hour, end_hour = hour_ranges.get(filter_type, (0, 24))
                 def _get_departure_hour(flight):
-                    """Extract hour from departure time."""
                     try:
                         first_segment = flight.get("flights", [{}])[0]
                         time_str = first_segment.get("departure_airport", {}).get("time", "")
-                        # Handle format like "2025-12-25 05:15" or "05:15"
                         if " " in time_str:
                             time_str = time_str.split(" ")[-1]
-                        hour = int(time_str.split(":")[0])
-                        return hour
+                        return int(time_str.split(":")[0])
                     except:
                         return 0
                 filtered_outbound = [f for f in filtered_outbound if start_hour <= _get_departure_hour(f) < end_hour]
         
-        # Apply filters to return
+        # Apply filters to return flights
         if apply_to in ["both", "return"] and filtered_return:
             if filter_type == "cheapest":
                 filtered_return.sort(key=lambda f: _parse_price(f.get("price", float('inf'))))
                 filtered_return = filtered_return[:keep_count]
+            elif filter_type == "first":
+                filtered_return = filtered_return[:keep_count]
+            elif filter_type == "last":
+                filtered_return = filtered_return[-keep_count:] if keep_count > 0 else []
             elif filter_type == "direct_only":
                 filtered_return = [f for f in filtered_return if not f.get("layovers") or len(f.get("layovers", [])) == 0]
             elif filter_type == "shortest_duration":
                 filtered_return.sort(key=lambda f: f.get("total_duration", float('inf')))
                 filtered_return = filtered_return[:keep_count]
             elif filter_type == "max_price":
-                max_price = float(filter_criteria.get("filter_value", float('inf')))
+                max_price = float(filter_value) if filter_value else float('inf')
                 filtered_return = [f for f in filtered_return if _parse_price(f.get("price", float('inf'))) <= max_price]
             elif filter_type == "airline":
-                airline_name = filter_criteria.get("filter_value", "").lower()
+                airline_name = (filter_value or "").lower()
                 filtered_return = [f for f in filtered_return if any(
                     segment.get("airline", "").lower() == airline_name 
                     for segment in f.get("flights", [])
                 )]
+            elif filter_type == "legroom_min":
+                min_legroom = float(filter_value) if filter_value else 0
+                def _meets_legroom_requirement(flight, min_val):
+                    """Check if ALL flight segments have legroom > min_val."""
+                    for segment in flight.get("flights", []):
+                        legroom_str = segment.get("legroom", "")
+                        if legroom_str and " in" in legroom_str:
+                            try:
+                                legroom_val = float(legroom_str.replace(" in", "").strip())
+                                if legroom_val <= min_val:
+                                    return False  # At least one segment doesn't meet requirement
+                            except:
+                                pass
+                        else:
+                            # If legroom info is missing, we can't verify - exclude to be safe
+                            return False
+                    return True  # All segments meet requirement
+                filtered_return = [f for f in filtered_return if _meets_legroom_requirement(f, min_legroom)]
             elif filter_type in ["morning", "afternoon", "evening"]:
                 hour_ranges = {
                     "morning": (0, 12),
@@ -172,27 +222,71 @@ If no clear filtering intent, return {{"filter_type": "none"}}."""
                 }
                 start_hour, end_hour = hour_ranges.get(filter_type, (0, 24))
                 def _get_departure_hour(flight):
-                    """Extract hour from departure time."""
                     try:
                         first_segment = flight.get("flights", [{}])[0]
                         time_str = first_segment.get("departure_airport", {}).get("time", "")
-                        # Handle format like "2025-12-25 05:15" or "05:15"
                         if " " in time_str:
                             time_str = time_str.split(" ")[-1]
-                        hour = int(time_str.split(":")[0])
-                        return hour
+                        return int(time_str.split(":")[0])
                     except:
                         return 0
                 filtered_return = [f for f in filtered_return if start_hour <= _get_departure_hour(f) < end_hour]
         
-        print(f"[FILTER] Filtered results: {len(filtered_outbound)} outbound, {len(filtered_return)} return")
+        print(f"[FILTER] LLM filtered results: {len(filtered_outbound)} outbound, {len(filtered_return)} return")
         return filtered_outbound, filtered_return
         
     except Exception as e:
-        print(f"[FILTER] Error in intelligent filtering: {e}")
+        print(f"[FILTER] Error in LLM semantic filtering: {e}")
         import traceback
         traceback.print_exc()
-        # Return original if filtering fails
+        # FALLBACK: Use rule-based filtering if LLM fails
+        print(f"[FILTER] Falling back to rule-based filtering")
+        return _filter_flights_rule_based_fallback(user_message, outbound_flights, return_flights)
+
+
+def _filter_flights_rule_based_fallback(user_message: str, outbound_flights: list, return_flights: list) -> tuple:
+    """
+    FALLBACK: Rule-based filtering (only used if LLM semantic filtering fails).
+    This is a backup method, not the primary approach.
+    """
+    if not outbound_flights and not return_flights:
+        return outbound_flights, return_flights
+    
+    try:
+        user_lower = user_message.lower()
+        filtered_outbound = outbound_flights.copy() if outbound_flights else []
+        filtered_return = return_flights.copy() if return_flights else []
+        
+        # Rule-based keyword matching (FALLBACK ONLY)
+        if "cheapest" in user_lower or "lowest price" in user_lower:
+            filtered_outbound.sort(key=lambda f: _parse_price(f.get("price", float('inf'))))
+            filtered_outbound = filtered_outbound[:1]
+            if filtered_return:
+                filtered_return.sort(key=lambda f: _parse_price(f.get("price", float('inf'))))
+                filtered_return = filtered_return[:1]
+        elif "direct" in user_lower or "non-stop" in user_lower:
+            filtered_outbound = [f for f in filtered_outbound if not f.get("layovers") or len(f.get("layovers", [])) == 0]
+            filtered_return = [f for f in filtered_return if not f.get("layovers") or len(f.get("layovers", [])) == 0]
+        elif "morning" in user_lower:
+            def _get_departure_hour(flight):
+                try:
+                    first_segment = flight.get("flights", [{}])[0]
+                    time_str = first_segment.get("departure_airport", {}).get("time", "")
+                    if " " in time_str:
+                        time_str = time_str.split(" ")[-1]
+                    return int(time_str.split(":")[0])
+                except:
+                    return 0
+            filtered_outbound = [f for f in filtered_outbound if 0 <= _get_departure_hour(f) < 12]
+            filtered_return = [f for f in filtered_return if 0 <= _get_departure_hour(f) < 12]
+        # Add more rule-based patterns as fallback only
+        
+        print(f"[FILTER] Rule-based fallback filtered results: {len(filtered_outbound)} outbound, {len(filtered_return)} return")
+        return filtered_outbound, filtered_return
+        
+    except Exception as e:
+        print(f"[FILTER] Error in rule-based fallback: {e}")
+        # Return original if even fallback fails
         return outbound_flights, return_flights
 
 
@@ -433,22 +527,15 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     if context.get("utilities_result"):
         collected_info["utilities_result"] = context.get("utilities_result")
     
-    # CRITICAL: If user is asking about flights (e.g., "cheapest one", "option 3") but we don't have flight_result,
-    # retrieve it from STM (Short-Term Memory) where previous results are stored
-    user_lower = user_message.lower()
-    is_flight_query = any(keyword in user_lower for keyword in [
-        "cheapest", "cheaper", "lowest price", "cheapest one", "cheapest flight",
-        "option", "first one", "second one", "third one", "that flight", "this flight",
-        "direct", "non-stop", "morning", "afternoon", "evening", "shortest", "fastest"
-    ])
-    
-    if is_flight_query and not collected_info.get("flight_result") and session_id:
+    # CRITICAL: Use LLM semantic understanding to determine if we need flight_result from STM
+    # Always retrieve from STM if flight_result is missing (let LLM decide if it's needed)
+    if not collected_info.get("flight_result") and session_id:
         try:
             from stm.short_term_memory import get_last_results
             last_results = get_last_results(session_id)
             if last_results and last_results.get("flight_result"):
                 collected_info["flight_result"] = last_results["flight_result"]
-                print(f"[CONVERSATIONAL] Retrieved flight_result from STM for filtering query: {len(last_results.get('flight_result', {}).get('outbound', []))} outbound flights")
+                print(f"[CONVERSATIONAL] Retrieved flight_result from STM (LLM will determine if filtering needed): {len(last_results.get('flight_result', {}).get('outbound', []))} outbound flights")
         except Exception as e:
             print(f"[CONVERSATIONAL] WARNING: Could not retrieve flight_result from STM: {e}")
     

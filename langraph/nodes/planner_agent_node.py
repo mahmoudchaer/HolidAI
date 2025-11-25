@@ -301,11 +301,13 @@ CRITICAL INSTRUCTIONS:
    - "most expensive" / "expensive one" → Find the item with the HIGHEST price
    - Use your understanding of the context - if user says "last option" after seeing 9 flights, they mean the 9th flight (the one at the end of the list)
 4. If user mentions a hotel name (e.g., "add Le Meridien Fairway", "add meridien fairway"), search the FULL HOTEL DATA for a matching hotel name (case-insensitive, partial matches OK - e.g., "meridien fairway" matches "Le Meridien Fairway")
-5. Extract the COMPLETE flight/hotel object (all fields: flights, price, duration, carbon_emissions, booking_token for flights; name, address, rating, roomTypes, etc. for hotels)
+5. Extract the COMPLETE flight/hotel object (all fields: flights, price, duration, carbon_emissions for flights; name, address, rating, roomTypes, etc. for hotels)
+   - IMPORTANT: Do NOT include booking_link or booking_token in details (these are too long and not needed for storage)
+   - Include: flights, layovers, total_duration, price, type, carbon_emissions, airline_logo, direction, google_flights_url, book_with, booking_price
 6. When calling agent_add_plan_item_tool:
    - For flights: title like "Flight: Beirut to Dubai on Dec 1, 2025 - Emirates EK 958", type: "flight"
    - For hotels: title like "Hotel: Le Meridien Fairway, Dubai", type: "hotel"
-   - details: Pass the COMPLETE flight/hotel object (all fields) - this is critical!
+   - details: Pass the flight/hotel object with essential fields (flights, price, duration, etc.) - exclude booking_link and booking_token
    - status: "not_booked"
 7. When calling agent_delete_plan_item_tool:
    - You need the item's ID from the "Current travel plan items" section
@@ -406,9 +408,10 @@ Remember: You MUST extract and save the COMPLETE flight/hotel object with ALL de
                             key = f"{flight_type}_option_{option_num}"
                             if key in full_flight_data:
                                 print(f"[PLANNER] Extracting complete flight data for {key}")
-                                tool_args["details"] = full_flight_data[key]
-                                # Update title if needed
+                                # Extract flight data (will be cleaned below)
                                 flight = full_flight_data[key]
+                                tool_args["details"] = copy.deepcopy(flight)  # Store original with booking_link
+                                # Update title if needed
                                 if flight.get("flights"):
                                     first_flight = flight["flights"][0]
                                     airline = first_flight.get("airline", "Unknown")
@@ -419,6 +422,43 @@ Remember: You MUST extract and save the COMPLETE flight/hotel object with ALL de
                                     dep_time = dep_airport.get("time", "").split()[0] if dep_airport.get("time") else ""
                                     if not tool_args.get("title") or "option" in tool_args.get("title", "").lower():
                                         tool_args["title"] = f"Flight: {dep_name} to {arr_name} - {airline} ({dep_time})"
+                    
+                    # CRITICAL: Store original details (with booking_link) before cleaning
+                    # We need the original for UI display, but cleaned version for DB storage
+                    original_details = copy.deepcopy(details) if details else None
+                    
+                    # CRITICAL: Clean flight details before passing to tool
+                    # Remove long booking_link and ensure proper structure
+                    if details:
+                        cleaned_details = {}
+                        # Keep essential fields
+                        if "flights" in details:
+                            cleaned_details["flights"] = details["flights"]
+                        if "layovers" in details:
+                            cleaned_details["layovers"] = details["layovers"]
+                        if "total_duration" in details:
+                            cleaned_details["total_duration"] = details["total_duration"]
+                        if "price" in details:
+                            cleaned_details["price"] = details["price"]
+                        if "type" in details:
+                            cleaned_details["type"] = details["type"]
+                        if "carbon_emissions" in details:
+                            cleaned_details["carbon_emissions"] = details["carbon_emissions"]
+                        if "airline_logo" in details:
+                            cleaned_details["airline_logo"] = details["airline_logo"]
+                        if "direction" in details:
+                            cleaned_details["direction"] = details["direction"]
+                        if "google_flights_url" in details:
+                            cleaned_details["google_flights_url"] = details["google_flights_url"]
+                        if "book_with" in details:
+                            cleaned_details["book_with"] = details["book_with"]
+                        if "booking_price" in details:
+                            cleaned_details["booking_price"] = details["booking_price"]
+                        # Explicitly exclude booking_link and booking_token (too long, not needed for storage)
+                        # booking_link is very long and causes issues, booking_token is not needed
+                        
+                        tool_args["details"] = cleaned_details
+                        print(f"[PLANNER] Cleaned flight details: removed booking_link, kept {len(cleaned_details)} essential fields")
                 
                 # Add user_email and session_id to all tool calls
                 tool_args["user_email"] = user_email
@@ -433,15 +473,34 @@ Remember: You MUST extract and save the COMPLETE flight/hotel object with ALL de
                     print(f"[PLANNER] ✓ {msg}")
 
                     # Capture selected items so the UI only shows confirmed options
+                    # IMPORTANT: Use original_details (with booking_link) for UI display, not cleaned_details
                     if tool_name == "agent_add_plan_item_tool":
                         selection_type = tool_args.get("type")
-                        details = tool_args.get("details")
-                        if selection_type == "flight" and details:
-                            _append_selected_result(
-                                "flight_result",
-                                "outbound",
-                                details
-                            )
+                        if selection_type == "flight":
+                            # Try to get original flight with booking_link for UI display
+                            display_details = original_details if original_details else tool_args.get("details")
+                            
+                            # If display_details doesn't have booking_link, try to find it from full_flight_data
+                            if display_details and not display_details.get("booking_link"):
+                                # Try to match by flight number to get original with booking_link
+                                if display_details.get("flights") and len(display_details["flights"]) > 0:
+                                    flight_number = display_details["flights"][0].get("flight_number", "")
+                                    # Search in full_flight_data for matching flight
+                                    for key, original_flight in full_flight_data.items():
+                                        if original_flight.get("flights") and len(original_flight["flights"]) > 0:
+                                            if original_flight["flights"][0].get("flight_number") == flight_number:
+                                                if original_flight.get("booking_link"):
+                                                    # Merge booking_link from original
+                                                    display_details["booking_link"] = original_flight["booking_link"]
+                                                    print(f"[PLANNER] Restored booking_link from full_flight_data for flight {flight_number}")
+                                                    break
+                            
+                            if display_details:
+                                _append_selected_result(
+                                    "flight_result",
+                                    "outbound",
+                                    display_details
+                                )
                         elif selection_type == "hotel" and details:
                             _append_selected_result(
                                 "hotel_result",
