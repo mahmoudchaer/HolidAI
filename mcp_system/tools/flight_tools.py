@@ -1010,40 +1010,10 @@ def fetch_one_way_flights(departure, arrival, date, currency,
     resp = requests.get(BASE_URL, params=params)
     data = resp.json()
 
-    # Debug logging
-    print(f"[FLIGHT TOOLS] API Response status: {resp.status_code}")
-    print(f"[FLIGHT TOOLS] API Response keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
     if "error" in data:
-        print(f"[FLIGHT TOOLS] API Error: {data.get('error')}")
         return {"outbound": []}
-    
-    best_flights = data.get("best_flights", [])
-    other_flights = data.get("other_flights", [])
-    print(f"[FLIGHT TOOLS] best_flights count: {len(best_flights) if isinstance(best_flights, list) else 'N/A'}")
-    print(f"[FLIGHT TOOLS] other_flights count: {len(other_flights) if isinstance(other_flights, list) else 'N/A'}")
-    
-    # Check for flights in various possible response structures
-    flights = best_flights or other_flights or []
-    
-    # If no flights found, check for alternative response structures
-    if not flights:
-        # Check if there's a different structure (e.g., "flights" key)
-        if "flights" in data and isinstance(data["flights"], list):
-            flights = data["flights"]
-            print(f"[FLIGHT TOOLS] Found flights in 'flights' key: {len(flights)}")
-        # Check search_metadata for any hints
-        search_metadata = data.get("search_metadata", {})
-        if search_metadata:
-            print(f"[FLIGHT TOOLS] search_metadata keys: {list(search_metadata.keys())}")
-            if "status" in search_metadata:
-                print(f"[FLIGHT TOOLS] API status: {search_metadata.get('status')}")
-    
-    if not flights:
-        print(f"[FLIGHT TOOLS] ⚠️ WARNING: No flights found in API response. Full response structure: {list(data.keys())}")
-        # Log a sample of the response for debugging (truncated)
-        import json
-        response_sample = json.dumps(data, indent=2, default=str)[:1000]
-        print(f"[FLIGHT TOOLS] Response sample (first 1000 chars): {response_sample}")
+
+    flights = data.get("best_flights") or data.get("other_flights") or []
     
     # Attach booking links to each flight
     if flights:
