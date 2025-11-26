@@ -27,9 +27,11 @@ def get_main_agent_prompt() -> str:
     return """You are the Main Agent, an orchestrator that creates multi-step execution plans for specialized travel agents.
 
 Your role:
-- Analyze user requests and create a sequential execution plan
+- Analyze user requests and create a sequential execution plan using LLM REASONING
 - CRITICAL: You ONLY work with TRAVEL-RELATED queries (flights, hotels, visa, restaurants, weather, currency, eSIM, holidays, date/time)
 - CRITICAL: If the user message contains non-travel parts, IGNORE them completely - only process travel-related parts
+- CRITICAL: Use LLM REASONING to check if data already exists in state/memory before creating execution plans
+- CRITICAL: If data already exists that fulfills the user's request, DO NOT include agents in the plan - return empty execution_plan
 - CRITICAL: Identify dependencies - if one task needs results from another, they MUST be in separate steps
 - Group only truly independent agents in the same step (they'll run in parallel)
 - Place dependent agents in later steps
@@ -48,7 +50,11 @@ Available specialized agents:
   * get_holidays: Get holidays for a country (to avoid booking on holidays)
   * Weather, currency conversion, date/time
   * eSIM bundles for mobile data
-- planner_agent: For managing travel plan items (add/update/delete flights, hotels, activities to user's saved plan)
+
+IMPORTANT ARCHITECTURE NOTE:
+- Plan management (adding/updating/deleting items to user's travel plan) is handled AUTOMATICALLY at the end of the workflow by the final_planner_agent.
+- You should NEVER include planner_agent in execution plans.
+- If the user asks to "add to plan", "save", etc., just proceed with normal search/query agents. The final planner will handle the plan update automatically.
 
 CRITICAL DEPENDENCY RULES:
 1. HOLIDAYS affect booking → must be fetched BEFORE flight/hotel booking
@@ -109,13 +115,83 @@ async def main_agent_node(state: AgentState) -> AgentState:
     user_message = state.get("user_message", "")
     feedback_message = state.get("feedback_message")
     
+    # Get memory/STM context for LLM reasoning
+    relevant_memories = state.get("relevant_memories", [])
+    stm_context = state.get("stm_context", "")  # Short-term memory context from memory_agent
+    
+    # Check what data already exists in state
+    collected_info = state.get("collected_info", {})
+    flight_result = collected_info.get("flight_result") or state.get("flight_result")
+    hotel_result = collected_info.get("hotel_result") or state.get("hotel_result")
+    visa_result = collected_info.get("visa_result") or state.get("visa_result")
+    tripadvisor_result = collected_info.get("tripadvisor_result") or state.get("tripadvisor_result")
+    utilities_result = collected_info.get("utilities_result") or state.get("utilities_result")
+    
+    # Build context about existing data
+    existing_data_context = {
+        "has_flight_data": bool(flight_result and not flight_result.get("error")),
+        "has_hotel_data": bool(hotel_result and not hotel_result.get("error")),
+        "has_visa_data": bool(visa_result and not visa_result.get("error")),
+        "has_tripadvisor_data": bool(tripadvisor_result and not tripadvisor_result.get("error")),
+        "has_utilities_data": bool(utilities_result and not utilities_result.get("error")),
+    }
+    
     # Log the message being used (may be enriched by RFI)
     print(f"[MAIN AGENT] Processing user message: '{user_message}'")
+    print(f"[MAIN AGENT] Existing data: {existing_data_context}")
+    
+    # Build summary of existing flight/hotel data for LLM reasoning
+    flight_summary = ""
+    if flight_result and not flight_result.get("error"):
+        outbound = flight_result.get("outbound", [])
+        returns = flight_result.get("return", [])
+        flight_summary = f"Flight data exists: {len(outbound)} outbound, {len(returns)} return flights available."
+        if outbound:
+            first = outbound[0]
+            dep = first.get("departure_airport", {}).get("id", "?")
+            arr = first.get("arrival_airport", {}).get("id", "?")
+            date = first.get("departure_airport", {}).get("time", "?")
+            flight_summary += f" Example: {dep}→{arr} on {date}."
+    
+    hotel_summary = ""
+    if hotel_result and not hotel_result.get("error"):
+        hotels = hotel_result.get("hotels", [])
+        hotel_summary = f"Hotel data exists: {len(hotels)} hotels available."
     
     # Build user prompt with optional feedback
     user_prompt = f"""Analyze the user's request and create a multi-step execution plan.
 
-User's message: {user_message}"""
+User's message: {user_message}
+
+MEMORY CONTEXT (from previous conversation):
+{stm_context if stm_context else "No recent conversation context available."}
+
+RELEVANT MEMORIES:
+{chr(10).join([f"- {mem}" for mem in relevant_memories]) if relevant_memories else "No relevant memories."}
+
+EXISTING DATA IN STATE (DO NOT RE-FETCH IF ALREADY AVAILABLE):
+- Flight data: {"AVAILABLE" if existing_data_context["has_flight_data"] else "NOT AVAILABLE"}
+  {flight_summary if flight_summary else ""}
+- Hotel data: {"AVAILABLE" if existing_data_context["has_hotel_data"] else "NOT AVAILABLE"}
+  {hotel_summary if hotel_summary else ""}
+- Visa data: {"AVAILABLE" if existing_data_context["has_visa_data"] else "NOT AVAILABLE"}
+- Tripadvisor data: {"AVAILABLE" if existing_data_context["has_tripadvisor_data"] else "NOT AVAILABLE"}
+- Utilities data: {"AVAILABLE" if existing_data_context["has_utilities_data"] else "NOT AVAILABLE"}
+
+CRITICAL REASONING RULES:
+1. Use LLM reasoning to determine if the user's request can be fulfilled with EXISTING data in state/memory.
+2. If the user asks for something that was ALREADY shown in this conversation (check STM context), DO NOT call agents again.
+3. If the user asks to "add to plan" and the data already exists, DO NOT re-fetch - just proceed to conversational_agent.
+4. Only call agents if:
+   - The data is NOT available in state
+   - The user is asking for NEW/Different data (different dates, locations, etc.)
+   - The user explicitly wants to search again
+
+Example reasoning:
+- User: "add the flydubai flight to my plan" + Flight data exists → NO agent call needed, data already available
+- User: "find flights to Paris" + No flight data → Call flight_agent
+- User: "show me hotels in Dubai" + Hotel data exists for Dubai → NO agent call needed
+- User: "find hotels in Paris" + Hotel data exists for Dubai (different city) → Call hotel_agent"""
     
     # If there's feedback from the feedback node, include it
     if feedback_message:
@@ -148,14 +224,15 @@ Respond with a JSON object in this format:
   ]
 }}
 
-Available agent names: flight_agent, hotel_agent, visa_agent, tripadvisor_agent, utilities_agent, planner_agent
+Available agent names: flight_agent, hotel_agent, visa_agent, tripadvisor_agent, utilities_agent
 
-IMPORTANT: Use planner_agent when user wants to:
-- Add items to their travel plan (e.g., "add option 2 to plan", "save hotel X", "add flight Y")
-- Update or delete plan items
-- View their travel plan
+IMPORTANT: 
+- Do NOT include planner_agent in execution plans. Plan management is handled automatically at the end.
+- If user asks to "add to plan" or "save", just proceed with normal agents (flight_agent, hotel_agent, etc.) to get the data.
+- The final_planner_agent will automatically handle adding items to the plan based on user intent.
+- **CRITICAL**: Check the "EXISTING DATA IN STATE" section above. If data is already available, DO NOT include that agent in the plan. Only fetch data that is missing.
 
-If no agents are needed, return an empty execution_plan array."""
+If no agents are needed (all data already exists or no new data needed), return an empty execution_plan array."""
     
     # Prepare messages for LLM to create execution plan
     messages = [
@@ -165,7 +242,7 @@ If no agents are needed, return an empty execution_plan array."""
     
     # Call LLM to create execution plan
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-4.1",
         messages=messages
     )
     

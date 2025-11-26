@@ -375,7 +375,7 @@ async def utilities_agent_feedback_node(state: AgentState) -> AgentState:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             temperature=0.3,
             response_format={"type": "json_object"}

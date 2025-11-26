@@ -116,7 +116,7 @@ def _generate_summary(messages: List[Dict]) -> str:
 Provide a concise summary that captures the main topics, user preferences, and important details:"""
         
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": "You are a summarization assistant. Provide concise, informative summaries."},
                 {"role": "user", "content": prompt}

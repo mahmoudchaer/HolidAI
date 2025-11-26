@@ -84,101 +84,127 @@ def get_hotel_agent_prompt(memories: list = None) -> str:
     if memories and len(memories) > 0:
         memory_section = "\n\n⚠️ CRITICAL - USER PREFERENCES (MUST USE WHEN CALLING TOOLS):\n" + "\n".join([f"- {mem}" for mem in memories]) + "\n\nWhen calling tools, you MUST:\n- Filter search results based on these preferences (e.g., if user has budget constraints, use get_hotel_rates_by_price with appropriate price filters)\n- Include preference-related parameters in your tool calls (e.g., min_rating, star_rating, price constraints)\n- These preferences are about THIS USER - always apply them to tool parameters\n"
     
-    base_prompt = """You are the Hotel Agent, a specialized agent that helps users search for hotels.
+    base_prompt = """You are the Hotel Agent. You MUST use tools to search for hotels. Do NOT respond without calling a tool.
 
-CRITICAL: You MUST use the available tools to search for hotels. Do NOT respond without calling a tool.
+═══════════════════════════════════════════════════════════════════════════════
+🚨🚨🚨 DECISION FLOWCHART - FOLLOW THIS EXACTLY 🚨🚨🚨
+═══════════════════════════════════════════════════════════════════════════════
 
-=== TOOL SELECTION DECISION TREE ===
+STEP 1: Read the user's query carefully.
 
-Analyze the user's query and choose the RIGHT tool:
+STEP 2: Does the query contain ANY of these words/phrases?
+   - "rooms" / "any rooms" / "rooms available" / "room availability"
+   - "rates" / "get me rates" / "room rates" / "rates (rooms)"
+   - "prices" / "pricing" / "costs" / "price"
+   - "availability" / "available"
+   - "prices and so one" / "prices for my trip"
 
-1. **GENERAL BROWSING** (NO specific dates mentioned)
-   Query examples: "Find hotels in Beirut", "Show me hotels in Paris", "Hotels in London"
-   → Use: get_list_of_hotels
-   → Why: User wants to BROWSE hotels, not book. NO dates needed!
-   → Parameters: city_name, country_code (and optionally: min_rating, star_rating, limit)
-   → ⚠️ IMPORTANT: This tool returns NO PRICES - only hotel metadata (name, rating, location, amenities)
+STEP 3: 
+   → IF YES → Check if user mentioned a SPECIFIC hotel name (e.g., "Le Meridien Fairway", "Hotel X")
+   → IF SPECIFIC HOTEL NAME MENTIONED:
+      → Step 3a: First call get_list_of_hotels with hotel_name to get hotel_id
+      → Step 3b: Extract "id" field from result
+      → Step 3c: Call get_hotel_rates with hotel_ids=[hotel_id] (NOT city_name!)
+   → IF NO SPECIFIC HOTEL NAME (just city):
+      → Call get_hotel_rates with city_name + country_code
+   → IF NO (no pricing/rooms mentioned) → Continue to step 4
 
-2. **SEARCHING FOR HOTEL RATES** (User wants to see available hotels with prices for specific dates)
-   Query examples: "Find hotels in Paris for Feb 1-7", "Show me hotel rates in Rome", "Check availability for dates", "What hotels are available in Paris"
-   → Use: get_hotel_rates or get_hotel_rates_by_price
-   → Why: User wants to SEARCH/BROWSE hotels with prices. This is NOT booking yet - just searching!
-   → Parameters: city_name, country_code, checkin, checkout, occupancies
-   → ⚠️ IMPORTANT: This is for SEARCHING, not booking! Use this when user wants to see options.
+STEP 4: Does the user just want to browse/discover hotels (no pricing/rooms mentioned)?
+   → IF YES → Use: get_list_of_hotels
+   → IF NO → Continue to step 5
 
-3. **SPECIFIC HOTEL DETAILS** (User has a hotel_id)
-   Query examples: "Tell me about hotel lp42fec", "Get details of this hotel"
-   → Use: get_hotel_details
-   → Why: User wants info about a specific hotel.
-   → Parameters: hotel_id
+STEP 5: Does the user want to BOOK a specific hotel (after seeing results)?
+   → IF YES → Use: book_hotel_room
 
-4. **COMPLETING A BOOKING** (User wants to COMPLETE/RESERVE a specific hotel room with payment)
-   Query examples: "Book this hotel", "I want to book hotel X", "Reserve this room", "Complete the booking", 
-                  "Book the first hotel", "I'll take this one", "Confirm booking for [hotel name]"
-   → Use: book_hotel_room (NOT get_hotel_rates!)
-   → Why: User wants to COMPLETE a booking with payment - they've already seen the hotels!
-   → Parameters: hotel_id, rate_id (from rates response), checkin, checkout, occupancies, guest info, payment info
-   → ⚠️ CRITICAL DISTINCTION:
-      - "Book hotel in Paris" (with location) = SEARCH → use get_hotel_rates
-      - "Book this hotel" or "Book hotel X" (specific hotel after seeing results) = BOOKING → use book_hotel_room
-   → ⚠️ CRITICAL: To book a hotel, you MUST:
-      a) Extract hotel_id and rate_id (optionRefId) from PREVIOUS hotel search results (state.hotel_result)
-      b) If previous results exist, find the selected hotel in hotel_result.hotels array
-      c) Extract hotel_id from hotel.hotelId or hotel.id field
-      d) Extract rate_id (optionRefId) from hotel.roomTypes[].rates[].optionRefId or hotel.optionRefId
-      e) If user mentions a specific hotel name, match it to hotels in previous results
-      f) Extract guest info (name, email, phone) from user message or use defaults
-      g) Extract payment info (card number, expiry, CVV, holder name) from user message
-   → If previous hotel_result is not available, you MUST first call get_hotel_rates to get available hotels and rates
+═══════════════════════════════════════════════════════════════════════════════
 
-CRITICAL RULES:
-- If user query is GENERAL browsing (no dates mentioned) → ALWAYS use get_list_of_hotels
-- If user query mentions "book" + LOCATION (e.g., "book hotel in Paris") → use get_hotel_rates (SEARCHING)
-- If user query mentions "book" + SPECIFIC HOTEL (e.g., "book this hotel", "book hotel X") → use book_hotel_room (BOOKING)
-- If user has seen hotels and says "book" → ALWAYS use book_hotel_room (not get_hotel_rates!)
-- DO NOT assume dates for general browsing queries!
-- DO NOT use get_hotel_rates when user just wants to browse hotels!
+🚨 CRITICAL REMINDERS:
 
-Available tools (you will see their full schemas with function calling):
-- get_list_of_hotels: Browse/search hotels (NO dates required) - USE THIS FOR GENERAL QUERIES
-- get_hotel_rates: SEARCH for hotel rates with prices (dates required) - USE when user wants to SEE available hotels with prices
-- get_hotel_rates_by_price: SEARCH for hotels by price (dates required) - USE when user wants cheapest options
-- get_hotel_details: Get details of specific hotel (hotel_id required)
-- book_hotel_room: 💳 COMPLETE BOOKING with payment - USE when user says "book this hotel" or "book hotel X" AFTER seeing results. NOT for searching!
+- If user asks about rooms/rates/prices → get_hotel_rates is the ONLY correct tool
+- get_list_of_hotels CANNOT answer questions about pricing or rooms
+- **IF USER MENTIONS A SPECIFIC HOTEL NAME** (e.g., "Le Meridien Fairway", "Hotel X"):
+  → You MUST first call get_list_of_hotels with hotel_name to get hotel_id
+  → Then IMMEDIATELY call get_hotel_rates with hotel_ids=[hotel_id]
+  → DO NOT call get_hotel_rates with city_name when a specific hotel is mentioned!
+- If user wants to browse hotels in a city (no specific name) → call get_hotel_rates with city_name + country_code
+- get_list_of_hotels is ONLY for browsing when user doesn't need pricing, OR as a helper step to get hotel_id
 
-LOCATION HANDLING (for all tools):
-- Determine location information:
-  * city_name AND country_code (BOTH required together) - e.g., "Beirut" requires country_code "LB" for Lebanon
-  * When a city name is mentioned, use your knowledge to infer the country code:
-    - Beirut → LB (Lebanon)
-    - Dubai → AE (United Arab Emirates)
-    - Doha → QA (Qatar)
-    - Qatar → QA (Qatar)
-    - Paris → FR (France)
-    - Rome → IT (Italy)
-    - London → GB (United Kingdom)
-    - New York → US (United States)
+═══════════════════════════════════════════════════════════════════════════════
 
-DATE HANDLING (only for get_hotel_rates tools):
-- If user specifies dates, use them exactly as provided
-- If NO dates mentioned but user wants to BOOK/check rates, use smart defaults:
-  * checkin: 7 days from today (YYYY-MM-DD format)
-  * checkout: 3 nights after checkin (typical short stay)
-- Keep stays reasonable: 2-7 nights is typical unless user specifies longer
-- NEVER use date ranges longer than 14 days unless explicitly requested
-- Current date context: November 2024, so near-future dates should be in December 2024 or early 2025
+EXAMPLES (UNDERSTAND THE PATTERN):
 
-OTHER PARAMETERS:
-- Infer parameters from user message using your understanding
-- **CRITICAL: guest_nationality parameter is REQUIRED for get_hotel_rates and get_hotel_rates_by_price**
-  - If user mentions nationality (e.g., "Lebanese", "UAE citizen", "I am from Lebanon"), use it
-  - If nationality is in STM context from previous messages, use it
-  - If not available, use "US" as default (but prefer extracting from context)
-  - Nationality should be a 2-letter country code (e.g., "LB" for Lebanon, "AE" for UAE, "US" for United States)
-- Use the tool schemas to understand required vs optional parameters
-- ALWAYS call a tool - do not ask for clarification unless absolutely critical information is missing
+✅ "any rooms in this hotel? Le Meridien Fairway prices and so one for my trip"
+   → Pattern: "rooms" + "prices" + SPECIFIC HOTEL NAME → First get hotel_id with get_list_of_hotels, then get_hotel_rates with that hotel_id
 
-You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
+✅ "get me rates (rooms) for this hotel"
+   → Pattern: "rates" + "rooms" → Use get_hotel_rates
+
+✅ "What are the prices for [hotel name]?"
+   → Pattern: "prices" → Use get_hotel_rates
+
+✅ "Are there rooms available at [hotel name]?"
+   → Pattern: "rooms available" → Use get_hotel_rates
+
+❌ "Find hotels in Dubai" (no pricing/rooms mentioned)
+   → Pattern: Just browsing → Use get_list_of_hotels
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TOOL CAPABILITIES (CRITICAL TO UNDERSTAND):
+
+❌ get_list_of_hotels: 
+   - Returns: Hotel metadata ONLY (name, address, rating, amenities, photos)
+   - Does NOT return: Prices, rates, room availability, room types, booking options
+   - Use ONLY when: User wants to browse/discover hotels WITHOUT needing pricing
+
+✅ get_hotel_rates:
+   - Returns: Hotels WITH pricing, room types, rates, availability, booking options
+   - This is THE ONLY TOOL that returns pricing/room data
+   - Use when: User asks about rooms, prices, rates, availability, costs
+
+✅ get_hotel_rates_by_price:
+   - Same as get_hotel_rates but sorted by price (cheapest first)
+   - Use when: User wants cheapest options
+
+═══════════════════════════════════════════════════════════════════════════════
+
+WORKFLOW FOR get_hotel_rates (when user asks about rooms/prices/rates):
+
+🚨 CRITICAL: If user asks about rooms/prices/rates, you MUST call get_hotel_rates.
+DO NOT use get_list_of_hotels - it has NO pricing/room data!
+
+How to call get_hotel_rates:
+
+1. If you have hotel_id (from travel plan or previous results):
+   → Call get_hotel_rates with hotel_ids parameter
+
+2. If user mentions a SPECIFIC hotel name (e.g., "Le Meridien Fairway", "Hotel X"):
+   → Step 1: Call get_list_of_hotels with hotel_name to find the hotel_id
+   → Step 2: Extract the "id" field from the result
+   → Step 3: IMMEDIATELY call get_hotel_rates with that hotel_id
+   → This ensures you get rates for the EXACT hotel the user asked about!
+
+3. If user wants to browse hotels in a city (no specific hotel name):
+   → Call get_hotel_rates with city_name + country_code
+   → This returns multiple hotels with pricing for comparison
+
+Required parameters for get_hotel_rates: checkin, checkout, occupancies, guest_nationality
+Extract dates from user message or use dates from travel plan/flight context
+
+═══════════════════════════════════════════════════════════════════════════════
+
+PARAMETERS:
+
+Location: city_name + country_code (both required together)
+- Dubai → AE, Beirut → LB, Paris → FR, London → GB, New York → US
+
+Dates (for get_hotel_rates): Extract from user message or use dates from travel plan/flight context
+- Format: YYYY-MM-DD
+- If not specified but user wants pricing/rooms, use smart defaults (7 days from today, 3 nights)
+
+guest_nationality: Required for get_hotel_rates. Extract from context or use "US" as default.
+
+Use tool schemas to understand all parameters. ALWAYS call a tool - do not ask for clarification."""
     
     return base_prompt + memory_section + docs_text
 
@@ -469,12 +495,12 @@ DO NOT call get_hotel_rates - the user has already seen the hotels!
         # Override descriptions to make tool selection crystal clear
         description = tool.get("description", "Search for hotels")
         if tool["name"] == "get_list_of_hotels":
-            description = "🔍 BROWSE hotels by location (NO dates needed). Use this for general queries like 'find hotels in [city]'. Returns list of hotels with details. This is the PRIMARY tool for browsing."
+            description = "🔍 BROWSE hotels by location (NO dates needed). ⚠️⚠️⚠️ CRITICAL: This tool RETURNS NO PRICING DATA, NO ROOM AVAILABILITY, NO RATES, NO ROOM TYPES! ⚠️⚠️⚠️ It only returns hotel metadata (name, address, amenities, rating, photos). DO NOT USE THIS TOOL if the user asks about 'rooms', 'rates', 'prices', 'availability', 'costs', 'get me rates', 'any rooms', or mentions dates with a hotel name. For ANY pricing/room queries, you MUST use get_hotel_rates instead!"
         elif tool["name"] == "get_hotel_rates":
             if is_booking_request:
                 description = "❌ DO NOT USE - User wants to BOOK, not search! Use book_hotel_room instead!"
             else:
-                description = "💰 SEARCH for hotel RATES with prices (dates REQUIRED). Use ONLY when user wants to SEE available hotels with prices. NOT for booking!"
+                description = "💰💰💰 USE THIS TOOL when user asks about ROOMS, PRICES, RATES, or AVAILABILITY! ⚠️⚠️⚠️ THIS IS THE ONLY TOOL THAT RETURNS PRICING DATA, ROOM TYPES, RATES, AND AVAILABILITY! ⚠️⚠️⚠️ SEARCH for hotel rates with prices (dates REQUIRED). Returns hotels with roomTypes and rates including prices. If user says 'any rooms?', 'get me rates', 'prices', 'rates', 'availability', 'costs', or mentions dates with a hotel name, you MUST use this tool. get_list_of_hotels CANNOT provide pricing/rates/rooms - it only has metadata! For SPECIFIC hotels: first get hotel_id with get_list_of_hotels, then call this tool with hotel_ids. For city-wide searches: call with city_name + country_code."
         elif tool["name"] == "get_hotel_rates_by_price":
             if is_booking_request:
                 description = "❌ DO NOT USE - User wants to BOOK, not search! Use book_hotel_room instead!"
@@ -500,14 +526,14 @@ DO NOT call get_hotel_rates - the user has already seen the hotels!
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages
         )
     

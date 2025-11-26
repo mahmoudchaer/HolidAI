@@ -59,9 +59,10 @@ const HotelSummary = ({ details }) => {
   if (!details) return null
   return (
     <div className="text-sm text-slate-600 dark:text-slate-300">
-      <div className="font-medium text-slate-800 dark:text-slate-100">{details.name || 'Hotel'}</div>
-      {details.location && <div>{details.location}</div>}
-      {details.date && <div>{formatDateTime(details.date)}</div>}
+      <div className="font-medium text-slate-800 dark:text-slate-100">{details.name || details.hotel_name || 'Hotel'}</div>
+      {(details.location || details.address) && <div>{details.location || details.address}</div>}
+      {(details.date || details.trip_month_year) && <div>{formatDateTime(details.date || details.trip_month_year)}</div>}
+      {details.star_rating && <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">⭐ {details.star_rating} stars</div>}
     </div>
   )
 }
@@ -95,7 +96,7 @@ const SummaryByType = ({ item }) => {
   }
 }
 
-const PlanSection = ({ label, icon, items }) => (
+const PlanSection = ({ label, icon, items, onRemoveItem }) => (
   <div className="mb-6">
     <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200 font-semibold mb-3">
       <span>{icon}</span>
@@ -104,8 +105,17 @@ const PlanSection = ({ label, icon, items }) => (
     </div>
     <div className="space-y-3">
       {items.map((item, idx) => (
-        <div key={`${item.title}-${idx}`} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 p-3 shadow-sm">
+        <div key={`${item.title}-${idx}`} className="group rounded-lg border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 p-3 shadow-sm relative">
           <SummaryByType item={item} />
+          {onRemoveItem && (
+            <button
+              onClick={() => onRemoveItem(item.title)}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-rose-500 hover:text-rose-600 text-sm font-medium"
+              title="Remove item"
+            >
+              ✕
+            </button>
+          )}
         </div>
       ))}
     </div>
@@ -113,7 +123,7 @@ const PlanSection = ({ label, icon, items }) => (
 )
 
 const PlanSidebar = () => {
-  const { items, isLoading, sessionId, error } = usePlanStore()
+  const { items, isLoading, sessionId, error, setItems } = usePlanStore()
   const currentConversation = useChatStore((state) => state.currentConversation)
   const favorites = useFavoritesStore((state) => state.favorites)
   const toggleFavoritePlan = useFavoritesStore((state) => state.toggleFavoritePlan)
@@ -148,6 +158,39 @@ const PlanSidebar = () => {
       title: currentConversation?.title || `Plan ${sessionId.slice(0, 6)}`,
       items: snapshot,
     })
+  }
+
+  const handleRemoveItem = async (title) => {
+    if (!sessionId || !confirm(`Remove "${title}" from your plan?`)) return
+    
+    try {
+      const response = await fetch('/api/travel-plan', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          title: title,
+        }),
+      })
+      
+      const data = await response.json()
+      if (response.ok && data.success) {
+        // Refresh plan items by fetching again
+        const refreshResponse = await fetch(`/api/travel-plan?session_id=${sessionId}`)
+        const refreshData = await refreshResponse.json()
+        if (refreshResponse.ok && refreshData.success) {
+          setItems(refreshData.items, sessionId)
+        }
+      } else {
+        console.error('[PLAN] Error deleting item:', data.error)
+        alert(data.error || 'Failed to remove item')
+      }
+    } catch (err) {
+      console.error('[PLAN] Error deleting item:', err)
+      alert('Failed to remove item')
+    }
   }
 
   return (
@@ -201,6 +244,7 @@ const PlanSidebar = () => {
               label={typeLabels[type] || type.charAt(0).toUpperCase() + type.slice(1)}
               icon={typeIcons[type] || '📝'}
               items={groupedItems[type]}
+              onRemoveItem={handleRemoveItem}
             />
           ))}
         </div>

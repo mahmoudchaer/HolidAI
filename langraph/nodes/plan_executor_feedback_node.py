@@ -39,7 +39,8 @@ Available agents to validate:
 - visa_agent: Checks visa requirements
 - tripadvisor_agent: Searches locations, attractions, restaurants
 - utilities_agent: Handles weather, currency, eSIM, holidays, date/time
-- planner_agent: Manages travel plan items (add/update/delete flights, hotels, activities)
+
+NOTE: planner_agent is NOT part of execution plans. Plan management is handled automatically at the end by final_planner_agent.
 
 VALIDATION RULES:
 
@@ -148,7 +149,7 @@ async def plan_executor_feedback_node(state: AgentState) -> AgentState:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             temperature=0.3,
             response_format={"type": "json_object"}

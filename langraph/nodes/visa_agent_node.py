@@ -214,14 +214,14 @@ Focus on the visa requirement check described above."""
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             tools=functions,
             tool_choice="required"  # Force tool call when tools are available
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages
         )
     
@@ -234,13 +234,33 @@ Focus on the visa requirement check described above."""
             import json
             args = json.loads(tool_call.function.arguments)
             
+            # Extract parameters for comparison
+            requested_nationality = args.get("nationality", "").strip()
+            requested_leaving_from = args.get("leaving_from", "").strip()
+            requested_going_to = args.get("going_to", "").strip()
+            
+            # Check if we already have a valid result for the same parameters
+            existing_visa_result = state.get("visa_result")
+            if existing_visa_result and not existing_visa_result.get("error"):
+                existing_nationality = existing_visa_result.get("nationality", "").strip()
+                existing_leaving_from = existing_visa_result.get("leaving_from", "").strip()
+                existing_going_to = existing_visa_result.get("going_to", "").strip()
+                
+                # Normalize for comparison (case-insensitive)
+                if (requested_nationality.lower() == existing_nationality.lower() and
+                    requested_leaving_from.lower() == existing_leaving_from.lower() and
+                    requested_going_to.lower() == existing_going_to.lower()):
+                    print(f"✅ VISA DEDUP: Already have valid result for {requested_nationality} -> {requested_going_to}, skipping tool call")
+                    # Return existing result without calling tool again
+                    return updated_state
+            
             # Call the visa tool via MCP
             try:
                 visa_result = await VisaAgentClient.invoke(
                     "get_traveldoc_requirement_tool",
-                    nationality=args.get("nationality", ""),
-                    leaving_from=args.get("leaving_from", ""),
-                    going_to=args.get("going_to", "")
+                    nationality=requested_nationality,
+                    leaving_from=requested_leaving_from,
+                    going_to=requested_going_to
                 )
                 
                 # Format the response

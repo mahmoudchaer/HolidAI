@@ -250,9 +250,42 @@ async def planner_agent_node(state: AgentState) -> AgentState:
         # Prepare messages for LLM
         prompt = get_planner_agent_prompt()
         
-        # Build context about available results - include FULL details for extraction
+        # Build context about available results - include ONLY essential details for saving
         results_context = ""
-        full_flight_data = {}  # Store full flight data for extraction
+        full_flight_data = {}  # Store MINIMAL flight data for extraction (no booking links, no redundant fields)
+        
+        def _strip_flight_to_essentials(flight):
+            """Strip flight data to only essential fields needed for saving."""
+            import copy
+            stripped = copy.deepcopy(flight)
+            # Keep only essential fields
+            essential_fields = {
+                "flights": stripped.get("flights", []),  # Keep flight segments (needed for airports, times)
+                "price": stripped.get("price"),
+                "total_duration": stripped.get("total_duration"),
+                "type": stripped.get("type", "One way"),
+                "google_flights_url": stripped.get("google_flights_url"),  # Keep for reference but not booking_link
+                "direction": stripped.get("direction"),
+                "airline_logo": stripped.get("airline_logo"),  # Keep for display
+            }
+            # Remove booking_link, booking_token, and other large/unnecessary fields
+            # Also clean flight segments to remove unnecessary details
+            if essential_fields.get("flights"):
+                cleaned_segments = []
+                for segment in essential_fields["flights"]:
+                    cleaned_seg = {
+                        "airline": segment.get("airline"),
+                        "flight_number": segment.get("flight_number"),
+                        "departure_airport": segment.get("departure_airport"),
+                        "arrival_airport": segment.get("arrival_airport"),
+                        "duration": segment.get("duration"),
+                        "travel_class": segment.get("travel_class"),
+                        "airplane": segment.get("airplane"),
+                        "legroom": segment.get("legroom"),
+                    }
+                    cleaned_segments.append(cleaned_seg)
+                essential_fields["flights"] = cleaned_segments
+            return essential_fields
         
         if collected_info.get("flight_result"):
             flight_result = collected_info["flight_result"]
@@ -277,21 +310,22 @@ async def planner_agent_node(state: AgentState) -> AgentState:
                     flight_number_str = " ".join(flight_numbers) if flight_numbers else "N/A"
                     position_label = " (LAST)" if i == len(outbound) else " (FIRST)" if i == 1 else ""
                     results_context += f"  Option {i}{position_label}: {airline} {flight_number_str} - {departure} to {arrival} - ${price}\n"
-                    # Store full flight data for extraction (by both number and semantic position)
-                    full_flight_data[f"outbound_option_{i}"] = flight
+                    # Store STRIPPED flight data (essential fields only, no booking links)
+                    stripped_flight = _strip_flight_to_essentials(flight)
+                    full_flight_data[f"outbound_option_{i}"] = stripped_flight
                     if i == 1:
-                        full_flight_data["outbound_first"] = flight
+                        full_flight_data["outbound_first"] = stripped_flight
                     if i == len(outbound):
-                        full_flight_data["outbound_last"] = flight
+                        full_flight_data["outbound_last"] = stripped_flight
                     # Also index by flight number for easy lookup (e.g., "ME 229", "VF 1628")
                     for fn in flight_numbers:
                         # Normalize flight number (remove spaces, uppercase)
                         fn_key = fn.replace(" ", "").upper()
-                        full_flight_data[f"flight_{fn_key}"] = flight
+                        full_flight_data[f"flight_{fn_key}"] = stripped_flight
                         # Also store with airline prefix (e.g., "ME229", "ME 229")
                         if airline:
                             airline_prefix = airline.upper().replace(" ", "")
-                            full_flight_data[f"flight_{airline_prefix}_{fn_key}"] = flight
+                            full_flight_data[f"flight_{airline_prefix}_{fn_key}"] = stripped_flight
             
             if return_flights:
                 results_context += f"Return flights ({len(return_flights)} options, numbered 1 to {len(return_flights)}):\n"
@@ -310,19 +344,20 @@ async def planner_agent_node(state: AgentState) -> AgentState:
                     flight_number_str = " ".join(flight_numbers) if flight_numbers else "N/A"
                     position_label = " (LAST)" if i == len(return_flights) else " (FIRST)" if i == 1 else ""
                     results_context += f"  Option {i}{position_label}: {airline} {flight_number_str} - {departure} to {arrival} - ${price}\n"
-                    # Store full flight data for extraction (by both number and semantic position)
-                    full_flight_data[f"return_option_{i}"] = flight
+                    # Store STRIPPED flight data (essential fields only, no booking links)
+                    stripped_flight = _strip_flight_to_essentials(flight)
+                    full_flight_data[f"return_option_{i}"] = stripped_flight
                     if i == 1:
-                        full_flight_data["return_first"] = flight
+                        full_flight_data["return_first"] = stripped_flight
                     if i == len(return_flights):
-                        full_flight_data["return_last"] = flight
+                        full_flight_data["return_last"] = stripped_flight
                     # Also index by flight number for easy lookup
                     for fn in flight_numbers:
                         fn_key = fn.replace(" ", "").upper()
-                        full_flight_data[f"flight_{fn_key}"] = flight
+                        full_flight_data[f"flight_{fn_key}"] = stripped_flight
                         if airline:
                             airline_prefix = airline.upper().replace(" ", "")
-                            full_flight_data[f"flight_{airline_prefix}_{fn_key}"] = flight
+                            full_flight_data[f"flight_{airline_prefix}_{fn_key}"] = stripped_flight
         
         full_hotel_data = {}  # Store full hotel data for extraction
         if collected_info.get("hotel_result"):
@@ -527,7 +562,7 @@ Remember: You MUST extract and save the COMPLETE flight/hotel object with ALL de
         
         # Use faster temperature and potentially shorter max_tokens for simple selections
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             tools=functions if functions else None,
             tool_choice="auto" if functions else None,

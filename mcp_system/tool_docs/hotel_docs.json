@@ -183,19 +183,20 @@
   },
 
   "get_list_of_hotels": {
-    "description": "Search and retrieve a list of hotels based on various criteria WITHOUT requiring specific dates. This is the PRIMARY tool for general hotel browsing, finding hotels in a city, or searching by name. Use this when users want to browse hotels or get hotel information without booking specific rooms. Returns hotel metadata including names, addresses, ratings, amenities, images, and more. NO dates required – perfect for general browsing.",
+    "description": "Search and retrieve a list of hotels based on various criteria WITHOUT requiring specific dates. This tool is ONLY for general hotel browsing when the user does NOT need pricing, room availability, or rates. Returns hotel metadata including names, addresses, ratings, amenities, images. ⚠️ CRITICAL: This tool returns NO PRICING DATA, NO ROOM AVAILABILITY, NO RATES. If user asks about 'rooms', 'prices', 'rates', 'availability', or 'costs', you MUST use get_hotel_rates instead. NO dates required – perfect for general browsing only.",
     "use_cases": [
-      "User wants to browse hotels in a city (e.g., 'Find hotels in Beirut', 'Show me hotels in Paris')",
-      "User wants to search hotels by name (e.g., 'Find Hilton hotels in London')",
-      "User wants hotels in a specific area (geo-based search)",
-      "User wants hotels with specific ratings or star ratings",
-      "General hotel exploration WITHOUT specific booking dates"
+      "User wants to browse hotels in a city WITHOUT asking about prices/rooms (e.g., 'Find hotels in Beirut', 'Show me hotels in Paris')",
+      "User wants to search hotels by name WITHOUT asking about prices/rooms (e.g., 'Find Hilton hotels in London')",
+      "User wants hotels in a specific area WITHOUT asking about prices/rooms (geo-based search)",
+      "User wants hotels with specific ratings WITHOUT asking about prices/rooms",
+      "General hotel exploration WITHOUT specific booking dates AND WITHOUT asking about pricing/rooms"
     ],
     "important_notes": [
       "NO DATES REQUIRED – This tool is for browsing, not booking",
-      "Use get_hotel_rates when user wants to BOOK or check AVAILABILITY (dates required)",
-      "Use get_hotel_details when you have a specific hotel_id and want full details",
-      "This tool returns general hotel information, not room availability or pricing"
+      "⚠️ CRITICAL: This tool returns NO PRICING DATA, NO ROOM AVAILABILITY, NO RATES",
+      "⚠️ If user asks about 'rooms', 'prices', 'rates', 'availability', 'costs', or mentions dates → Use get_hotel_rates instead!",
+      "Use get_hotel_rates when user wants PRICING, ROOM AVAILABILITY, or RATES (dates required)",
+      "Use get_hotel_details when you have a specific hotel_id and want full details (still no pricing)"
     ],
     "inputs": {
       "country_code": "string – optional – Country code in ISO-2 format (e.g., 'LB' for Lebanon, 'FR' for France, 'US' for USA)",

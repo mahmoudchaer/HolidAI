@@ -74,17 +74,31 @@ def remove_flight_redundant_fields(flights: list) -> list:
             }
             cleaned_flight["flights"].append(cleaned_segment)
         
+        # CRITICAL: Preserve booking links and Google Flights URLs - NEVER remove them!
+        # Store them before filtering None values
+        original_booking_link = flight.get("booking_link")
+        original_google_flights_url = flight.get("google_flights_url")
+        original_book_with = flight.get("book_with")
+        original_booking_price = flight.get("booking_price")
+        
         # Remove None values (but keep empty strings for URLs)
-        # CRITICAL: Always preserve google_flights_url even if it seems None
-        # (it might be set later or we want to ensure it's always present)
         cleaned_flight = {k: v for k, v in cleaned_flight.items() if v is not None}
         
-        # Ensure google_flights_url is always present (use fallback if missing)
-        if not cleaned_flight.get("google_flights_url"):
-            # Try to get it from original flight
-            original_url = flight.get("google_flights_url")
-            if original_url:
-                cleaned_flight["google_flights_url"] = original_url
+        # CRITICAL: Always restore booking links if they exist in original (even if None was filtered out)
+        # These are essential for user to book flights - MUST be preserved!
+        # Use "is not None" instead of truthy check to preserve empty strings if needed
+        if original_booking_link is not None:
+            cleaned_flight["booking_link"] = original_booking_link
+        if original_google_flights_url is not None:
+            cleaned_flight["google_flights_url"] = original_google_flights_url
+        if original_book_with is not None:
+            cleaned_flight["book_with"] = original_book_with
+        if original_booking_price is not None:
+            cleaned_flight["booking_price"] = original_booking_price
+        
+        # Ensure google_flights_url is always present if it was in the original (even if empty string)
+        if original_google_flights_url is not None and not cleaned_flight.get("google_flights_url"):
+            cleaned_flight["google_flights_url"] = original_google_flights_url
         
         cleaned.append(cleaned_flight)
     
@@ -112,12 +126,12 @@ async def summarize_hotel_results(raw_hotels: list, user_message: str, step_cont
 
 
 async def summarize_flight_results(raw_flights: list, user_message: str, step_context: str) -> dict:
-    """Summarize flight results by removing redundant fields and limiting to 10."""
+    """Summarize flight results by removing redundant fields and limiting to 5 per direction (10 total max)."""
     if not raw_flights:
         return {"flights": [], "count": 0}
     
-    # Remove redundant fields and limit to 10
-    cleaned_flights = remove_flight_redundant_fields(raw_flights[:10])
+    # Limit to 5 flights per direction (for round-trip: 5 outbound + 5 return = 10 total max)
+    cleaned_flights = remove_flight_redundant_fields(raw_flights[:5])
     
     return {
         "flights": cleaned_flights,

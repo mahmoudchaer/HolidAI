@@ -290,6 +290,159 @@ def _filter_flights_rule_based_fallback(user_message: str, outbound_flights: lis
         return outbound_flights, return_flights
 
 
+def remove_urls_from_flights(flight_result: dict) -> tuple:
+    """Remove URLs from flight data and replace with simple IDs.
+    
+    Args:
+        flight_result: Flight result dictionary with URLs
+        
+    Returns:
+        tuple: (flight_result_without_urls, url_mapping)
+        - flight_result_without_urls: Flight data with IDs instead of URLs
+        - url_mapping: Dict mapping flight_id -> {booking_link, google_flights_url}
+    """
+    import copy
+    if not flight_result or not isinstance(flight_result, dict):
+        return flight_result, {}
+    
+    cleaned = copy.deepcopy(flight_result)
+    url_mapping = {}
+    flight_counter = 1
+    
+    # Process outbound flights
+    if "outbound" in cleaned and isinstance(cleaned["outbound"], list):
+        for flight in cleaned["outbound"]:
+            flight_id = f"F{flight_counter}"
+            flight_counter += 1
+            
+            # ALWAYS store in mapping (even if no URLs, so we can track the flight)
+            booking_link = flight.get("booking_link")
+            google_flights_url = flight.get("google_flights_url")
+            
+            # CRITICAL: If flight has no Google Flights URL, generate one from flight data
+            if not google_flights_url:
+                # Try to extract route info from flight segments
+                flights_segments = flight.get("flights", [])
+                if flights_segments:
+                    first_segment = flights_segments[0]
+                    last_segment = flights_segments[-1]
+                    dep_airport = first_segment.get("departure_airport", {})
+                    arr_airport = last_segment.get("arrival_airport", {})
+                    dep_code = dep_airport.get("id") if isinstance(dep_airport, dict) else None
+                    arr_code = arr_airport.get("id") if isinstance(arr_airport, dict) else None
+                    dep_time = dep_airport.get("time") if isinstance(dep_airport, dict) else None
+                    
+                    if dep_code and arr_code:
+                        # Extract date from departure time (format: "2026-01-09 22:45")
+                        date_str = None
+                        if dep_time and isinstance(dep_time, str):
+                            date_str = dep_time.split()[0] if " " in dep_time else None
+                        
+                        # Generate Google Flights URL
+                        from urllib.parse import quote
+                        if date_str:
+                            query = f"Flights from {dep_code} to {arr_code} on {date_str}"
+                            google_flights_url = (
+                                f"https://www.google.com/travel/flights"
+                                f"?q={quote(query)}"
+                                f"&hl=en&gl=us&curr=USD"
+                            )
+                        else:
+                            query = f"Flights from {dep_code} to {arr_code}"
+                            google_flights_url = (
+                                f"https://www.google.com/travel/flights"
+                                f"?q={quote(query)}"
+                                f"&hl=en&gl=us&curr=USD"
+                            )
+                        print(f"[CONVERSATIONAL] Generated fallback Google Flights URL for {flight_id}: {dep_code}→{arr_code}")
+            
+            url_mapping[flight_id] = {
+                "booking_link": booking_link,
+                "google_flights_url": google_flights_url,
+                "book_with": flight.get("book_with")
+            }
+            # Debug: Log URL status
+            if booking_link or google_flights_url:
+                print(f"[CONVERSATIONAL] Flight {flight_id} URLs - booking: {bool(booking_link)}, google: {bool(google_flights_url)}")
+            else:
+                print(f"[CONVERSATIONAL] WARNING: Flight {flight_id} has NO URLs at all!")
+            
+            # Replace URLs with ID
+            flight["flight_id"] = flight_id
+            if "booking_link" in flight:
+                del flight["booking_link"]
+            if "google_flights_url" in flight:
+                del flight["google_flights_url"]
+            # Keep book_with for display, but remove if it's just for booking_link
+    
+    # Process return flights
+    if "return" in cleaned and isinstance(cleaned["return"], list):
+        for flight in cleaned["return"]:
+            flight_id = f"F{flight_counter}"
+            flight_counter += 1
+            
+            # ALWAYS store in mapping (even if no URLs, so we can track the flight)
+            booking_link = flight.get("booking_link")
+            google_flights_url = flight.get("google_flights_url")
+            
+            # CRITICAL: If flight has no Google Flights URL, generate one from flight data
+            if not google_flights_url:
+                # Try to extract route info from flight segments
+                flights_segments = flight.get("flights", [])
+                if flights_segments:
+                    first_segment = flights_segments[0]
+                    last_segment = flights_segments[-1]
+                    dep_airport = first_segment.get("departure_airport", {})
+                    arr_airport = last_segment.get("arrival_airport", {})
+                    dep_code = dep_airport.get("id") if isinstance(dep_airport, dict) else None
+                    arr_code = arr_airport.get("id") if isinstance(arr_airport, dict) else None
+                    dep_time = dep_airport.get("time") if isinstance(dep_airport, dict) else None
+                    
+                    if dep_code and arr_code:
+                        # Extract date from departure time (format: "2026-01-09 22:45")
+                        date_str = None
+                        if dep_time and isinstance(dep_time, str):
+                            date_str = dep_time.split()[0] if " " in dep_time else None
+                        
+                        # Generate Google Flights URL
+                        from urllib.parse import quote
+                        if date_str:
+                            query = f"Flights from {dep_code} to {arr_code} on {date_str}"
+                            google_flights_url = (
+                                f"https://www.google.com/travel/flights"
+                                f"?q={quote(query)}"
+                                f"&hl=en&gl=us&curr=USD"
+                            )
+                        else:
+                            query = f"Flights from {dep_code} to {arr_code}"
+                            google_flights_url = (
+                                f"https://www.google.com/travel/flights"
+                                f"?q={quote(query)}"
+                                f"&hl=en&gl=us&curr=USD"
+                            )
+                        print(f"[CONVERSATIONAL] Generated fallback Google Flights URL for {flight_id}: {dep_code}→{arr_code}")
+            
+            url_mapping[flight_id] = {
+                "booking_link": booking_link,
+                "google_flights_url": google_flights_url,
+                "book_with": flight.get("book_with")
+            }
+            # Debug: Log URL status
+            if booking_link or google_flights_url:
+                print(f"[CONVERSATIONAL] Flight {flight_id} URLs - booking: {bool(booking_link)}, google: {bool(google_flights_url)}")
+            else:
+                print(f"[CONVERSATIONAL] WARNING: Flight {flight_id} has NO URLs at all!")
+            
+            # Replace URLs with ID
+            flight["flight_id"] = flight_id
+            if "booking_link" in flight:
+                del flight["booking_link"]
+            if "google_flights_url" in flight:
+                del flight["google_flights_url"]
+    
+    return cleaned, url_mapping
+
+
 def truncate_large_results(collected_info: dict, max_items: int = 20) -> dict:
     """Truncate large result arrays to avoid context overflow.
     
@@ -323,12 +476,17 @@ def truncate_large_results(collected_info: dict, max_items: int = 20) -> dict:
                 truncated["utilities_result"]["truncated"] = True
                 truncated["utilities_result"]["total_bundles"] = len(bundles)
     
-    # Truncate flight options if present
+    # Truncate flight options if present (limit to 5 per direction)
     if "flight_result" in truncated and isinstance(truncated["flight_result"], dict):
         if "outbound" in truncated["flight_result"] and isinstance(truncated["flight_result"]["outbound"], list):
             outbound = truncated["flight_result"]["outbound"]
-            if len(outbound) > max_items:
-                truncated["flight_result"]["outbound"] = outbound[:max_items]
+            if len(outbound) > 5:  # Hard limit: 5 outbound flights max
+                truncated["flight_result"]["outbound"] = outbound[:5]
+                truncated["flight_result"]["truncated"] = True
+        if "return" in truncated["flight_result"] and isinstance(truncated["flight_result"]["return"], list):
+            return_flights = truncated["flight_result"]["return"]
+            if len(return_flights) > 5:  # Hard limit: 5 return flights max
+                truncated["flight_result"]["return"] = return_flights[:5]
                 truncated["flight_result"]["truncated"] = True
     
     # Truncate TripAdvisor locations if present
@@ -386,29 +544,33 @@ IMPORTANT:
 - Do NOT say you don't have information if it's provided in the collected_info section - ALWAYS check the collected_info JSON before saying information is unavailable
 
 - For flight_result: If it has an "outbound" array with items, those are outbound flight options. If it has a "return" array, those are return flight options.
-  🚫 **ABSOLUTE RULE**: NEVER mention booking, booking links, or "Book here" in your text for flights. Flight cards automatically show booking buttons.
+  🚨 **CRITICAL - ALWAYS INCLUDE MAIN FLIGHT INFO**: When presenting flights, you MUST ALWAYS include:
+    * **Price** - The flight price (e.g., "$450" or "450 USD")
+    * **Origin and Destination** - Where the flight departs from and arrives to (e.g., "Dubai → Paris" or "from Dubai to Paris")
+    * **Airline** - The airline name (e.g., "Emirates", "Qatar Airways")
+    * **Departure and Arrival Times** - When the flight departs and arrives (e.g., "departing at 10:30 AM, arriving at 3:45 PM")
+    * **Duration** - Flight duration if available (e.g., "8h 15m")
+    * **Flight ID** - Each flight has a "flight_id" field (e.g., "F1", "F2"). Use this ID ONCE per flight as a booking placeholder.
+  ⚠️ **IMPORTANT**: You do NOT need to include every detail (like legroom, aircraft type, seat class, airport IDs, etc.) unless the user specifically asks for them. Focus on the main information above.
+  ⚠️ **BOOKING LINKS - CRITICAL**: 
+    * When presenting a flight, mention the flight_id ONCE at the end of that flight's description
+    * Format: "Flight details... Price: $450. Book: F1" or "Flight details... You can book this flight: F1"
+    * DO NOT mention the flight_id multiple times for the same flight - this will cause duplicate booking buttons
+    * DO NOT include URLs or booking links in your text - just use the flight_id as a placeholder
+    * The system will automatically replace "F1", "F2", etc. with actual booking buttons
+    * Example: "Emirates flight from Dubai to Paris, $450, departs 10:30 AM. Book: F1"
   ⚠️ IMPORTANT FOR ROUND-TRIP FLIGHTS: 
     * For round-trip flights, the system makes TWO separate one-way calls
     * "outbound" array contains flights from origin to destination (e.g., Beirut → Paris)
     * "return" array contains flights from destination back to origin (e.g., Paris → Beirut)
     * Each array is independent - they are NOT combined packages
-    * The frontend will display them in separate sections: "Outbound Flights" and "Return Flights"
     * DO NOT combine them or say "round-trip package" - they are separate one-way flights
+    * Present outbound and return flights separately, each with their own booking links
   ⚠️ IMPORTANT FOR AIRLINE LOGOS: Each flight segment may have an "airline_logo" field with an image URL
     * If a segment has "airline_logo", include it in markdown format BEFORE the airline name
     * Format like: "![Airline](logo_url) **Airline Name** Flight XX"
     * This will display the airline logo in the chat
-  ⚠️⚠️⚠️ CRITICAL - ABSOLUTELY NO BOOKING LINKS IN TEXT FOR FLIGHTS ⚠️⚠️⚠️:
-    * **NEVER** include "booking_link" or "google_flights_url" fields in your text response
-    * **NEVER** write "Book it here", "Book your flight here", "You can book here", or ANY booking-related text
-    * **NEVER** create markdown links like [Book Flight](url) or [Book Now](url) for flights
-    * **NEVER** mention booking at all - the frontend automatically displays "Book Now" and "View on Google Flights" buttons on each flight card
-    * **ONLY** describe flight details: airline, departure/arrival times, duration, price, aircraft, legroom
-    * **STOP** after describing the flight - do NOT add any booking information
-    * Example GOOD: "Emirates direct flight, departing at 10:10 AM, arriving at 4:35 PM. Duration 8h 25m. Price: $659."
-    * Example BAD: "Emirates flight... Price: $659. You can book your flight here: [Book Flight](url)"
-    * Example BAD: "Emirates flight... Price: $659. Book it [here](url)"
-    * **REMEMBER**: Flight cards automatically show booking buttons - you must NEVER mention booking in text
+  Example good response: "I found an Emirates flight from Dubai to Paris for $450. It departs at 10:30 AM and arrives at 3:45 PM, with a duration of 8h 15m. Book: F1"
   Only report an error if the result has "error": true AND no outbound flights data.
 
 - For visa_result: **CRITICAL**: Check the "result" field FIRST - if it has content (even if "error": true), that contains the visa requirement information. You MUST present ALL available visa information in detail:
@@ -609,7 +771,15 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     import json
     
     # Truncate large results to avoid context overflow
-    truncated_info = truncate_large_results(collected_info, max_items=20)
+    # For flights: limit to 5 per direction (already done in summarizer, but ensure here too)
+    truncated_info = truncate_large_results(collected_info, max_items=5)  # Reduced from 20 to 5 for flights
+    
+    # CRITICAL: Remove URLs from flights and replace with IDs to reduce context size
+    flight_url_mapping = {}
+    if truncated_info.get("flight_result"):
+        flight_result_cleaned, flight_url_mapping = remove_urls_from_flights(truncated_info["flight_result"])
+        truncated_info["flight_result"] = flight_result_cleaned
+        print(f"[CONVERSATIONAL] Removed URLs from flights, created {len(flight_url_mapping)} ID mappings")
     
     # CRITICAL: If user is choosing/selecting an option, don't include flight/hotel/restaurant results in the prompt
     # This prevents the LLM from re-showing all options when user just wants confirmation
@@ -801,8 +971,9 @@ Please revise your response based on this feedback to fix the issues mentioned."
     if not (tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error") and tripadvisor_result.get("data")):
         import traceback
         try:
+            # Call OpenAI API (direct call - OpenAI client handles its own timeouts)
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 messages=messages,
                 temperature=0.7
             )
@@ -812,6 +983,82 @@ Please revise your response based on this feedback to fix the issues mentioned."
             
             # Clean the response to remove any JSON/Collected_info references
             final_response = clean_response(raw_response)
+            
+            # Replace flight IDs with actual booking URLs in the response
+            if flight_url_mapping:
+                import re
+                # Step 1: Remove any raw URLs that leaked through (long http/https links not in markdown)
+                url_pattern = r'(?<!\[)(?<!\]\()https?://[^\s\)]+(?!\))'
+                final_response = re.sub(url_pattern, '', final_response)
+                
+                # Step 2: Clean up any duplicate booking button patterns
+                # Remove patterns like "Book Now | View on Google Flights" that appear multiple times
+                duplicate_buttons = r'(\[Book Now\]\([^\)]+\)\s*\|\s*\[View on Google Flights\]\([^\)]+\)\s*){2,}'
+                final_response = re.sub(duplicate_buttons, lambda m: m.group(0).split('|')[0] + ' | ' + m.group(0).split('|')[1] if '|' in m.group(0) else m.group(0), final_response)
+                
+                # Step 3: Replace each flight ID ONCE with booking links
+                replaced_count = 0
+                for flight_id, urls in flight_url_mapping.items():
+                    # Skip if no URLs available
+                    if not urls.get("booking_link") and not urls.get("google_flights_url"):
+                        print(f"[CONVERSATIONAL] Skipping {flight_id} - no URLs available")
+                        continue
+                    
+                    booking_links = []
+                    if urls.get("booking_link"):
+                        booking_links.append(f'[Book Now]({urls["booking_link"]})')
+                    if urls.get("google_flights_url"):
+                        booking_links.append(f'[View on Google Flights]({urls["google_flights_url"]})')
+                    
+                    if not booking_links:
+                        continue
+                    
+                    links_text = f'{" | ".join(booking_links)}'
+                    
+                    # Check if this flight ID is in the response
+                    if flight_id not in final_response:
+                        continue
+                    
+                    # Check if this flight ID already has booking links immediately after it (within 50 chars)
+                    id_pos = final_response.find(flight_id)
+                    if id_pos != -1:
+                        # Check only the immediate area after the flight ID (50 chars)
+                        after_context = final_response[id_pos + len(flight_id):id_pos + len(flight_id) + 50]
+                        if '[Book Now]' in after_context:
+                            # Already has links very close, skip to avoid duplicates
+                            print(f"[CONVERSATIONAL] Skipping {flight_id} - already has links nearby")
+                            continue
+                    
+                    # Replace flight ID with booking links (only first occurrence)
+                    # Try patterns in order of specificity
+                    patterns = [
+                        rf'Book:\s*{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                        rf'book:\s*{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                        rf'Use flight_id\s+{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                        rf'Use\s+{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                        rf'{re.escape(flight_id)}\s+for booking',
+                        rf'\b{re.escape(flight_id)}\b(?=\s|$|\.|,|\n)'  # Standalone
+                    ]
+                    
+                    replaced = False
+                    for pattern in patterns:
+                        if re.search(pattern, final_response, re.IGNORECASE):
+                            final_response = re.sub(pattern, links_text, final_response, count=1, flags=re.IGNORECASE)
+                            replaced = True
+                            replaced_count += 1
+                            print(f"[CONVERSATIONAL] Replaced {flight_id} using pattern: {pattern[:30]}...")
+                            break
+                    
+                    # If still not replaced, insert links after the flight ID
+                    if not replaced:
+                        id_pos = final_response.find(flight_id)
+                        if id_pos != -1:
+                            # Insert booking links right after the flight ID
+                            final_response = final_response[:id_pos + len(flight_id)] + f' {links_text}' + final_response[id_pos + len(flight_id):]
+                            replaced_count += 1
+                            print(f"[CONVERSATIONAL] Inserted links after {flight_id} (fallback)")
+                
+                print(f"[CONVERSATIONAL] Replaced {replaced_count} out of {len(flight_url_mapping)} flight IDs with booking URLs")
             
             # Check if booking intent is present and add booking URL
             hotel_result = collected_info.get("hotel_result")
@@ -855,14 +1102,79 @@ The system has collected information from specialized agents. Please provide a h
                 ]
                 
                 try:
+                    # Call OpenAI API (direct call - simplified messages)
                     response = client.chat.completions.create(
-                        model="gpt-4.1-mini",
+                        model="gpt-4.1",
                         messages=simplified_messages,
                         temperature=0.7
                     )
                     message = response.choices[0].message
                     raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
                     final_response = clean_response(raw_response)
+                    
+                    # Replace flight IDs with actual booking URLs in the response (simplified path)
+                    if flight_url_mapping:
+                        import re
+                        # Step 1: Remove raw URLs (not in markdown)
+                        url_pattern = r'(?<!\]\()https?://[^\s\)]+(?!\))'
+                        final_response = re.sub(url_pattern, '', final_response)
+                        
+                        # Step 2: Remove duplicate booking buttons
+                        duplicate_pattern = r'(\[Book Now\]\([^\)]+\)\s*\|\s*\[View on Google Flights\]\([^\)]+\)\s*){2,}'
+                        final_response = re.sub(duplicate_pattern, r'\1', final_response)
+                        
+                        # Step 3: Replace each flight ID ONCE
+                        replaced_count = 0
+                        for flight_id, urls in flight_url_mapping.items():
+                            # Skip if no URLs available
+                            if not urls.get("booking_link") and not urls.get("google_flights_url"):
+                                continue
+                            
+                            booking_links = []
+                            if urls.get("booking_link"):
+                                booking_links.append(f'[Book Now]({urls["booking_link"]})')
+                            if urls.get("google_flights_url"):
+                                booking_links.append(f'[View on Google Flights]({urls["google_flights_url"]})')
+                            
+                            if not booking_links:
+                                continue
+                            
+                            if flight_id not in final_response:
+                                continue
+                            
+                            links_text = f'{" | ".join(booking_links)}'
+                            
+                            # Check if already has links very close (within 50 chars)
+                            id_pos = final_response.find(flight_id)
+                            if id_pos != -1:
+                                after_context = final_response[id_pos + len(flight_id):id_pos + len(flight_id) + 50]
+                                if '[Book Now]' in after_context:
+                                    continue  # Already has links
+                            
+                            # Try patterns in order
+                            patterns = [
+                                rf'Book:\s*{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                                rf'book:\s*{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                                rf'Use flight_id\s+{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                                rf'Use\s+{re.escape(flight_id)}(?=\s|$|\.|,|\n)',
+                                rf'{re.escape(flight_id)}\s+for booking',
+                                rf'\b{re.escape(flight_id)}\b(?=\s|$|\.|,|\n)'
+                            ]
+                            
+                            replaced = False
+                            for pattern in patterns:
+                                if re.search(pattern, final_response, re.IGNORECASE):
+                                    final_response = re.sub(pattern, links_text, final_response, count=1, flags=re.IGNORECASE)
+                                    replaced = True
+                                    replaced_count += 1
+                                    break
+                            
+                            # Fallback: insert after flight ID
+                            if not replaced:
+                                id_pos = final_response.find(flight_id)
+                                if id_pos != -1:
+                                    final_response = final_response[:id_pos + len(flight_id)] + f' {links_text}' + final_response[id_pos + len(flight_id):]
+                                    replaced_count += 1
                     
                     # Check if booking intent is present and add booking URL (for simplified path too)
                     hotel_result = collected_info.get("hotel_result")
@@ -1003,19 +1315,8 @@ The system has collected information from specialized agents. Please provide a h
                             flight["google_flights_url"] = google_flights_fallback
                     all_flights.extend(filtered_return)
                 
-                if all_flights:
-                    # Append structured flight data at the end
-                    try:
-                        flight_json = json.dumps(all_flights, ensure_ascii=False)
-                        json_size = len(flight_json)
-                        print(f"[CONVERSATIONAL] Flight JSON size: {json_size:,} bytes ({json_size/1024:.1f} KB)")
-                        if json_size > 500000:  # 500KB
-                            print(f"[CONVERSATIONAL] ⚠️ WARNING: Flight JSON is very large ({json_size/1024:.1f} KB)")
-                        final_response += f"\n\n[FLIGHT_DATA]{flight_json}[/FLIGHT_DATA]"
-                    except Exception as e:
-                        print(f"[CONVERSATIONAL] ⚠️ ERROR serializing flight data: {e}")
-                        import traceback
-                        traceback.print_exc()
+                # Flight data is stored in state and can be accessed by conversational agent when needed
+                # No need to append flight cards to response - flight info is in state.flight_result
     
     # Store last results in STM for future reference (e.g., when user says "i want option 3")
     session_id = state.get("session_id")

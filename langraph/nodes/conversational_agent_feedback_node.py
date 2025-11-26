@@ -65,7 +65,7 @@ VALIDATION RULES:
    - Contradictory information (e.g., says "no visa required" when data shows visa is required)
    - Empty or generic response when specific data was available
    - Missing links when eSIM bundles or other bookable items were provided
-   - **IMPORTANT**: For FLIGHTS, do NOT require booking links in text - flight cards automatically display booking buttons
+   - **IMPORTANT**: For FLIGHTS, booking links and Google Flights URLs are available in flight data and can be included in text when relevant
    - **IMPORTANT**: Only require links for eSIM bundles and hotel bookings (when _booking_intent is true)
 
 Respond with JSON:
@@ -115,14 +115,13 @@ Validation: {
   "suggested_fix": "Add clickable markdown links for each eSIM bundle using [text](url) format"
 }
 
-Example 4b - Flight with booking link in text (REGENERATE):
+Example 4b - Flight with booking link (PASS):
 User: "Find flights to Dubai"
-Collected: {"flight_result": {"outbound": [{"airline": "Emirates", "price": 270, "booking_link": "https://..."}]}}
-Response: "I found Emirates flight for $270. You can book here: [Book Flight](url)"
+Collected: {"flight_result": {"outbound": [{"airline": "Emirates", "price": 270, "booking_link": "https://...", "google_flights_url": "https://..."}]}}
+Response: "I found Emirates flight for $270. You can [book here](booking_link) or [view on Google Flights](google_flights_url)"
 Validation: {
-  "validation_status": "need_regenerate",
-  "feedback_message": "Response includes booking link in text, but flight cards automatically display booking buttons",
-  "suggested_fix": "Remove all booking links and booking mentions from text. Flight cards automatically show 'Book Now' and 'View on Google Flights' buttons - no need to mention booking in text."
+  "validation_status": "pass",
+  "feedback_message": "Response properly includes booking links from flight data"
 }
 
 Example 5 - Contradictory information (REGENERATE):
@@ -248,7 +247,7 @@ async def conversational_agent_feedback_node(state: AgentState) -> AgentState:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             temperature=0.3,
             response_format={"type": "json_object"}
@@ -264,9 +263,9 @@ async def conversational_agent_feedback_node(state: AgentState) -> AgentState:
         
         # Route based on validation status
         if status == "pass":
-            # Response is good, end the workflow
+            # Response is good, route to final planner agent
             return {
-                "route": "end",
+                "route": "final_planner_agent",
                 "conversational_feedback_message": None,
                 "conversational_feedback_retry_count": 0
             }

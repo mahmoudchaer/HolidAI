@@ -471,7 +471,7 @@ async def rfi_node(state: AgentState) -> AgentState:
             ]
             
             safety_response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 messages=safety_messages,
                 temperature=0.3,
                 response_format={"type": "json_object"}
@@ -741,7 +741,7 @@ Examples:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             temperature=0.3,
             response_format={"type": "json_object"}
@@ -782,43 +782,21 @@ Examples:
             "find hotel options", "find flight options"
         ]
         
-        # If it's clearly a search request, skip planner
-        is_search_request = any(phrase in user_msg_lower for phrase in search_phrases)
-        
-        # Planner keywords for plan management operations (only if not a search request)
-        planner_keywords = [
-            "save", "select", "choose", "want", "like", "add to plan", "add to my plan",
-            "remove", "delete", "cancel", "update", "change", "modify",
-            "show my plan", "what's in my plan", "my plan", "travel plan", "my saved plan"
-        ]
-        
-        # Only check for planner intent if it's NOT a search request
-        has_planner_intent = not is_search_request and any(keyword in user_msg_lower for keyword in planner_keywords)
+        # NOTE: Planner intent is now handled by FINAL PLANNER AGENT at the end of the graph.
+        # RFI should NEVER route directly to a planner node; it only decides between main_agent and conversational_agent.
         
         # Route based on validation status
         if status == "complete":
-            # Check if this is a planner request first (but not if it's a search request)
-            if has_planner_intent:
-                print("RFI: Information complete, but planner intent detected, routing to Planner Agent")
-                result = {
-                    "route": "planner_agent",
-                    "rfi_status": "complete",
-                    "rfi_context": "",  # Clear context
-                    "needs_user_input": False,  # Clear flag
-                    "rfi_missing_fields": None,  # Clear missing fields
-                    "rfi_question": None  # Clear question
-                }
-            else:
-                # User provided enough info, proceed to main agent
-                print("RFI: Information complete, routing to Main Agent")
-                result = {
-                    "route": "main_agent",
-                    "rfi_status": "complete",
-                    "rfi_context": "",  # Clear context
-                    "needs_user_input": False,  # Clear flag
-                    "rfi_missing_fields": None,  # Clear missing fields
-                    "rfi_question": None  # Clear question
-                }
+            # User provided enough info, proceed to main agent
+            print("RFI: Information complete, routing to Main Agent")
+            result = {
+                "route": "main_agent",
+                "rfi_status": "complete",
+                "rfi_context": "",  # Clear context
+                "needs_user_input": False,  # Clear flag
+                "rfi_missing_fields": None,  # Clear missing fields
+                "rfi_question": None  # Clear question
+            }
             
             # Include filtered message if any
             if final_filtered_message:
@@ -854,23 +832,6 @@ Examples:
             return result
             
         elif status == "missing_info":
-            # Check if this is a planner request (planner can work with incomplete info if results exist)
-            # But NOT if it's a search request - search requests should go to main_agent even with missing info
-            if has_planner_intent and not is_search_request:
-                print("RFI: Missing info but planner intent detected, routing to Planner Agent")
-                result = {
-                    "route": "planner_agent",
-                    "rfi_status": "missing_info",
-                    "rfi_context": enriched_message if enriched_message != user_message else user_message,
-                    "rfi_missing_fields": missing_fields,
-                    "rfi_question": question,
-                    "last_response": question,
-                    "needs_user_input": True
-                }
-                if final_filtered_message:
-                    result["rfi_filtered_message"] = final_filtered_message
-                return result
-            
             # Critical info missing, ask user through conversational agent (via memory node)
             print(f"RFI: Missing info - {missing_fields}")
             print(f"RFI: Asking user: {question}")

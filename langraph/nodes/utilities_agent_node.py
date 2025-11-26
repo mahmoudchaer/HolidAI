@@ -242,7 +242,7 @@ Focus ONLY on the current task described above. Do NOT add extra operations not 
     # Call LLM with function calling - require tool use when functions are available
     if functions:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages,
             tools=functions,
             tool_choice="required",  # Force tool call when tools are available
@@ -250,7 +250,7 @@ Focus ONLY on the current task described above. Do NOT add extra operations not 
         )
     else:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=messages
         )
     

@@ -776,6 +776,60 @@ def get_travel_plan():
         db.close()
 
 
+@app.route("/api/travel-plan", methods=["DELETE"])
+@require_login
+def delete_travel_plan_item():
+    """Delete a travel plan item."""
+    data = request.get_json()
+    if not data:
+        return jsonify({
+            "success": False,
+            "error": "Request body is required"
+        }), 400
+    
+    session_id = data.get("session_id")
+    title = data.get("title")
+    
+    if not session_id or not title:
+        return jsonify({
+            "success": False,
+            "error": "session_id and title are required"
+        }), 400
+
+    user_email = session.get("user_email")
+    db = SessionLocal()
+    try:
+        item = db.query(TravelPlanItem).filter(
+            TravelPlanItem.email == user_email,
+            TravelPlanItem.session_id == session_id,
+            TravelPlanItem.title == title
+        ).first()
+        
+        if not item:
+            return jsonify({
+                "success": False,
+                "error": f"Plan item '{title}' not found"
+            }), 404
+        
+        db.delete(item)
+        db.commit()
+        
+        print(f"[API] Deleted plan item - session_id: {session_id[:8]}..., title: {title}, user: {user_email}")
+        return jsonify({
+            "success": True,
+            "message": f"Successfully deleted plan item: {title}"
+        })
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Could not delete travel plan item: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Unable to delete travel plan item: {str(e)}"
+        }), 500
+    finally:
+        db.close()
+
+
 @app.route("/api/book-hotel", methods=["POST"])
 @require_login
 def book_hotel():
