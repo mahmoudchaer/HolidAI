@@ -16,6 +16,16 @@ playwright>=1.48.0
 # Dependencies for utilities tools
 pytz>=2023.3  # Timezone support for date/time tool
 
+# Dependencies for memory tools
+qdrant-client>=1.9.0  # Qdrant vector database for long-term memory
+sentence-transformers>=2.7.0  # Sentence transformers for embeddings
+numpy>=1.26.0  # NumPy for vector operations
+openai>=1.0.0  # OpenAI for memory extraction and LLM calls
+
+# Database dependencies for planner tools
+psycopg2-binary>=2.9.9  # PostgreSQL adapter
+sqlalchemy>=2.0.0  # Database ORM
+
 # Note: Flight tools use SerpAPI via direct HTTP requests (requests library), no separate package needed
 # Note: Hotel tools use LiteAPI via direct HTTP requests (httpx library)
 

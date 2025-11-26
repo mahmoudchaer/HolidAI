@@ -1,23 +1,24 @@
 """Base client for MCP agent communication."""
 
 import httpx
+import os
 from typing import List, Dict, Any, Optional
 
 
 class BaseAgentClient:
     """Base client for communicating with MCP server."""
     
-    def __init__(self, name: str, allowed_tools: List[str], server_url: str = "http://localhost:8090"):
+    def __init__(self, name: str, allowed_tools: List[str], server_url: str = None):
         """Initialize the agent client.
         
         Args:
             name: Agent name
             allowed_tools: List of tool names this agent can use
-            server_url: MCP server URL
+            server_url: MCP server URL (defaults to MCP_SERVER_URL env var or http://localhost:8090)
         """
         self.name = name
         self.allowed_tools = allowed_tools
-        self.server_url = server_url
+        self.server_url = server_url or os.getenv("MCP_SERVER_URL", "http://localhost:8090")
         self._client: Optional[httpx.AsyncClient] = None
     
     async def _get_client(self) -> httpx.AsyncClient:

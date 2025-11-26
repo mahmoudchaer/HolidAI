@@ -9,7 +9,18 @@ import json
 import sys
 import os
 import traceback
+from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load .env file from project root (works both locally and in Docker)
+project_root = Path(__file__).parent.parent.parent
+env_path = project_root / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    # Fallback to current directory
+    load_dotenv()
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

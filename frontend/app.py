@@ -30,7 +30,13 @@ from graph import run
 # STM is in project root, which is already in sys.path
 from stm.short_term_memory import add_message as stm_add_message, clear_stm as stm_clear_stm
 
-load_dotenv()
+# Load .env file from project root (works both locally and in Docker)
+env_path = project_root / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    # Fallback to current directory
+    load_dotenv()
 
 # Database setup
 class Base(DeclarativeBase):
@@ -1147,5 +1153,6 @@ class LogCapture:
 if __name__ == "__main__":
     # Disable reloader to prevent issues with ML model loading
     # The model is pre-loaded at startup, so reloader isn't needed
-    socketio.run(app, debug=True, port=5000, use_reloader=False, allow_unsafe_werkzeug=True)
+    # Bind to 0.0.0.0 to allow access from outside the container
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
 
