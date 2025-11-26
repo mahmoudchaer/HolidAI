@@ -53,6 +53,12 @@ VALIDATION RULES:
    - Does the operation match what the user requested?
    - Would the user be satisfied with this result?
 
+5. Duplicate Handling:
+   - If an item was "updated" instead of "added", this is ACCEPTABLE - it means the item already existed
+   - "Updated" is a valid outcome when adding items that already exist in the plan
+   - Do NOT retry if items were successfully updated (this is correct behavior)
+   - Only retry if items were NOT added/updated when they should have been
+
 Respond with JSON:
 {
   "validation_status": "pass" | "need_retry",
@@ -95,6 +101,22 @@ Response: {
   "validation_status": "need_retry",
   "feedback_message": "User requested to save a flight but no planner operation was performed",
   "suggested_action": "Call agent_add_plan_item_tool to save the flight"
+}
+
+Example 5 - Updated instead of added (PASS - this is acceptable):
+User: "Add 2 restaurants to my plan"
+Result: One restaurant was added, one was updated (already existed)
+Response: {
+  "validation_status": "pass",
+  "feedback_message": "Both restaurants were successfully processed - one was added, one was updated (already existed). This is correct behavior."
+}
+
+Example 6 - All items updated (PASS - acceptable if items already existed):
+User: "Add 2 restaurants to my plan"
+Result: Both restaurants were updated (both already existed)
+Response: {
+  "validation_status": "pass",
+  "feedback_message": "Both restaurants were updated successfully. They already existed in the plan, which is acceptable."
 }"""
 
 

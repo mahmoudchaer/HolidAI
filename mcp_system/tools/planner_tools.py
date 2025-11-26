@@ -80,6 +80,55 @@ def _fingerprint_title(title: str) -> str:
     return cleaned
 
 
+def _sanitize_unicode_data(data):
+    """Recursively sanitize Unicode characters in data structures to prevent PostgreSQL errors.
+    
+    This function:
+    - Removes null bytes (\u0000) which PostgreSQL cannot handle
+    - Ensures all strings are properly encoded
+    - Fixes any invalid Unicode escape sequences
+    - Handles corrupted Unicode sequences like \u0000f6 -> \u00f6
+    """
+    if isinstance(data, dict):
+        return {k: _sanitize_unicode_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [_sanitize_unicode_data(item) for item in data]
+    elif isinstance(data, str):
+        # Remove null bytes which PostgreSQL cannot handle
+        # Also fix corrupted Unicode sequences like \u0000f6 -> \u00f6
+        cleaned = data
+        
+        # Remove null bytes (most critical - PostgreSQL cannot handle these)
+        if '\x00' in cleaned:
+            cleaned = cleaned.replace('\x00', '')
+        
+        # Fix corrupted Unicode escape sequences in JSON strings
+        # Pattern: \u0000 followed by hex digits should be \u00XX
+        import re
+        # This pattern matches \u0000 followed by exactly 2 hex digits
+        pattern = r'\\u0000([0-9a-fA-F]{2})'
+        def fix_unicode_escape(match):
+            hex_part = match.group(1)
+            return f'\\u00{hex_part}'
+        cleaned = re.sub(pattern, fix_unicode_escape, cleaned)
+        
+        # Ensure it's valid UTF-8
+        try:
+            # Try encoding to ensure it's valid
+            cleaned.encode('utf-8')
+            return cleaned
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            # If encoding fails, try to fix it by removing problematic characters
+            try:
+                cleaned = cleaned.encode('utf-8', errors='replace').decode('utf-8')
+                return cleaned
+            except Exception:
+                # Last resort: return a safe string
+                return cleaned if isinstance(cleaned, str) else str(cleaned)
+    else:
+        return data
+
+
 def generate_normalized_key(details: Optional[Dict], item_type: str, title: str = "") -> str:
     """Generate deterministic key for plan items."""
     canonical_details = _canonicalize_value(details or {})
@@ -162,6 +211,21 @@ def register_planner_tools(mcp):
                 pass  # Table might already exist
             
             details = details or {}
+            # Sanitize Unicode characters to prevent PostgreSQL errors
+            details = _sanitize_unicode_data(details)
+            # Also sanitize title to prevent any issues
+            if isinstance(title, str):
+                title = title.replace('\x00', '')
+            
+            # Round-trip through JSON to ensure proper encoding before storing in PostgreSQL
+            # This catches any remaining encoding issues
+            try:
+                details_json = json.dumps(details, ensure_ascii=False)
+                details = json.loads(details_json)
+            except (TypeError, ValueError, UnicodeEncodeError) as e:
+                print(f"[WARNING] JSON round-trip failed, using sanitized data directly: {e}")
+                # If JSON round-trip fails, use the sanitized data as-is
+            
             normalized_key = generate_normalized_key(details, type, title)
 
             db = SessionLocal()
@@ -253,7 +317,8 @@ def register_planner_tools(mcp):
                     }
                 
                 if details is not None:
-                    item.details = details
+                    # Sanitize Unicode characters to prevent PostgreSQL errors
+                    item.details = _sanitize_unicode_data(details)
                 if status is not None:
                     item.status = status
 

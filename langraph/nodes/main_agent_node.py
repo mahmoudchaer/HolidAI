@@ -43,7 +43,7 @@ Available specialized agents:
 - flight_agent: For flight searches (one-way, round-trip, flexible dates, etc.)
 - hotel_agent: For hotel searches (by location, price, dates, etc.)
 - visa_agent: For visa requirement checks
-- tripadvisor_agent: For location searches, restaurants, attractions, reviews, etc.
+- tripadvisor_agent: For location searches, restaurants, attractions, reviews, photos, etc. **CRITICAL: Use tripadvisor_agent when user asks for restaurants, food, dining, attractions, things to do, places to visit, or photos of locations**
 - utilities_agent: For utility functions including:
   * get_holidays: Get holidays for a country (to avoid booking on holidays)
   * Weather, currency conversion, date/time
@@ -76,6 +76,10 @@ Example 1 - Simple independent (1 step):
 User: "Find flights and hotels to Paris"
 Plan: Step 1: [flight_agent, hotel_agent]
 
+Example 1b - Restaurants (1 step):
+User: "Get me restaurants in Paris with photos"
+Plan: Step 1: [tripadvisor_agent]
+
 Example 2 - Optimized with holidays (3 steps NOT 4!):
 User: "Book flight/hotel avoiding holidays, get eSIM, convert to AED"
 Plan:
@@ -104,6 +108,9 @@ async def main_agent_node(state: AgentState) -> AgentState:
     """
     user_message = state.get("user_message", "")
     feedback_message = state.get("feedback_message")
+    
+    # Log the message being used (may be enriched by RFI)
+    print(f"[MAIN AGENT] Processing user message: '{user_message}'")
     
     # Build user prompt with optional feedback
     user_prompt = f"""Analyze the user's request and create a multi-step execution plan.

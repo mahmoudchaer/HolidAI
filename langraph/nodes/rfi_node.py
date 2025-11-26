@@ -784,58 +784,32 @@ Examples:
                 print("RFI: Information complete, but planner intent detected, routing to Planner Agent")
                 result = {
                     "route": "planner_agent",
-                "rfi_status": "complete",
-                "rfi_context": "",  # Clear context
-                "needs_user_input": False,  # Clear flag
-                "rfi_missing_fields": None,  # Clear missing fields
-                "rfi_question": None  # Clear question
-            }
-            # Include filtered message if any
-            if final_filtered_message:
-                result["rfi_filtered_message"] = final_filtered_message
-            # IMPORTANT: Update user_message in state with filtered/enriched query
-            # This ensures Main Agent receives the complete context
-            original_message = state.get("user_message", "")
-            # For follow-ups, use enriched_message if provided, otherwise use the combined message
-            if rfi_status == "missing_info" and needs_user_input:
-                # This was a follow-up - use enriched_message which should contain the complete request
-                if enriched_message and enriched_message != original_message:
-                    result["user_message"] = enriched_message
-                    print(f"RFI: Using enriched_message from follow-up: '{enriched_message}'")
-                else:
-                    # Fallback to combined message
-                    result["user_message"] = user_message
-                    print(f"RFI: Using combined message from follow-up: '{user_message}'")
+                    "rfi_status": "complete",
+                    "rfi_context": "",  # Clear context
+                    "needs_user_input": False,  # Clear flag
+                    "rfi_missing_fields": None,  # Clear missing fields
+                    "rfi_question": None  # Clear question
+                }
             else:
-                # Regular flow - update if message was filtered or enriched
-                if enriched_message != original_message:
-                    result["user_message"] = enriched_message
-                    if user_message != original_message:
-                        print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
-                    if enriched_message != user_message:
-                        print(f"RFI: Enriched user_message with STM context: '{enriched_message}'")
-                elif user_message != original_message:
-                    # Only filtered, not enriched
-                    result["user_message"] = user_message
-                    print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
-                return result
+                # User provided enough info, proceed to main agent
+                print("RFI: Information complete, routing to Main Agent")
+                result = {
+                    "route": "main_agent",
+                    "rfi_status": "complete",
+                    "rfi_context": "",  # Clear context
+                    "needs_user_input": False,  # Clear flag
+                    "rfi_missing_fields": None,  # Clear missing fields
+                    "rfi_question": None  # Clear question
+                }
             
-            # User provided enough info, proceed to main agent
-            print("RFI: Information complete, routing to Main Agent")
-            result = {
-                "route": "main_agent",
-                "rfi_status": "complete",
-                "rfi_context": "",  # Clear context
-                "needs_user_input": False,  # Clear flag
-                "rfi_missing_fields": None,  # Clear missing fields
-                "rfi_question": None  # Clear question
-            }
             # Include filtered message if any
             if final_filtered_message:
                 result["rfi_filtered_message"] = final_filtered_message
+            
             # IMPORTANT: Update user_message in state with filtered/enriched query
             # This ensures Main Agent receives the complete context
             original_message = state.get("user_message", "")
+            
             # For follow-ups, use enriched_message if provided, otherwise use the combined message
             if rfi_status == "missing_info" and needs_user_input:
                 # This was a follow-up - use enriched_message which should contain the complete request
@@ -858,6 +832,7 @@ Examples:
                     # Only filtered, not enriched
                     result["user_message"] = user_message
                     print(f"RFI: Updated user_message in state from '{original_message}' to filtered query: '{user_message}'")
+            
             return result
             
         elif status == "missing_info":

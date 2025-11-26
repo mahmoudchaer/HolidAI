@@ -851,12 +851,24 @@ The system has collected information from specialized agents. Please provide a h
     
     # Add structured data markers for frontend rendering
     # This allows the frontend to display rich UI components for flights and locations
+    # CRITICAL: Only show tripadvisor_result if user is searching/browsing, not when confirming an add operation
     if collected_info.get("tripadvisor_result"):
         tripadvisor_result = collected_info["tripadvisor_result"]
         print(f"[CONVERSATIONAL] DEBUG: tripadvisor_result exists: {tripadvisor_result is not None}")
         print(f"[CONVERSATIONAL] DEBUG: tripadvisor_result type: {type(tripadvisor_result)}")
         
-        if isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error"):
+        # Check if user is just confirming an add operation (not searching)
+        user_msg_lower = user_message.lower()
+        add_keywords = ["add", "added", "save", "saved", "select", "selected", "choose", "chosen", "to my plan", "to the plan"]
+        search_keywords = ["find", "search", "show", "get", "list", "recommend", "suggest", "browse"]
+        
+        is_add_operation = any(keyword in user_msg_lower for keyword in add_keywords)
+        is_search_operation = any(keyword in user_msg_lower for keyword in search_keywords)
+        
+        # Only show location data if user is searching/browsing, not when confirming an add
+        if is_add_operation and not is_search_operation:
+            print(f"[CONVERSATIONAL] User is confirming add operation, excluding tripadvisor_result from response")
+        elif isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error"):
             locations = tripadvisor_result.get("data", [])
             print(f"[CONVERSATIONAL] DEBUG: locations count: {len(locations) if locations else 0}, type: {type(locations)}")
             
@@ -881,74 +893,120 @@ The system has collected information from specialized agents. Please provide a h
     if collected_info.get("flight_result"):
         flight_result = collected_info["flight_result"]
         if isinstance(flight_result, dict) and not flight_result.get("error"):
-            import json
-            # Flight agent now makes 2 separate calls for round-trip, so we just use what we have
-            outbound_flights = flight_result.get("outbound", [])
-            return_flights = flight_result.get("return", [])
+            # CRITICAL: Check if user's query is about hotels/restaurants - if so, exclude flight results
+            # This prevents showing flights when user is asking about hotels or restaurants
+            user_msg_lower = user_message.lower()
+            hotel_keywords = ["hotel", "hotels", "accommodation", "accommodations", "stay", "staying", "lodging", "room", "rooms", "reservation", "book hotel", "add hotel"]
+            restaurant_keywords = ["restaurant", "restaurants", "dining", "dine", "eat", "food", "cuisine", "meal", "add restaurant", "add restaurants"]
+            flight_keywords = ["flight", "flights", "fly", "flying", "airline", "airlines", "ticket", "tickets", "departure", "arrival", "airport"]
             
-            print(f"[CONVERSATIONAL] Flight results: {len(outbound_flights)} outbound, {len(return_flights)} return")
+            # Check if query is primarily about hotels/restaurants (not flights)
+            hotel_intent = any(keyword in user_msg_lower for keyword in hotel_keywords)
+            restaurant_intent = any(keyword in user_msg_lower for keyword in restaurant_keywords)
+            flight_intent = any(keyword in user_msg_lower for keyword in flight_keywords)
             
-            # Intelligently filter flights based on user's message intent
-            filtered_outbound, filtered_return = _filter_flights_intelligently(
-                user_message, outbound_flights, return_flights
-            )
-            
-            # Combine both outbound and return flights for display
-            all_flights = []
-            
-            # Get Google Flights URL from first flight (if available) to use as fallback
-            google_flights_fallback = None
-            if filtered_outbound and len(filtered_outbound) > 0:
-                google_flights_fallback = filtered_outbound[0].get("google_flights_url")
-            elif filtered_return and len(filtered_return) > 0:
-                google_flights_fallback = filtered_return[0].get("google_flights_url")
-            
-            if filtered_outbound:
-                # Ensure outbound flights are marked and have Google Flights URL
-                for flight in filtered_outbound:
-                    if not flight.get("direction"):
-                        flight["direction"] = "outbound"
-                    if not flight.get("type"):
-                        flight["type"] = "Outbound flight"
-                    # Ensure Google Flights URL is present
-                    if not flight.get("google_flights_url") and google_flights_fallback:
-                        flight["google_flights_url"] = google_flights_fallback
-                all_flights.extend(filtered_outbound)
-            if filtered_return:
-                # Ensure return flights are marked and have Google Flights URL
-                for flight in filtered_return:
-                    if not flight.get("direction"):
-                        flight["direction"] = "return"
-                    if not flight.get("type"):
-                        flight["type"] = "Return flight"
-                    # Ensure Google Flights URL is present
-                    if not flight.get("google_flights_url") and google_flights_fallback:
-                        flight["google_flights_url"] = google_flights_fallback
-                all_flights.extend(filtered_return)
-            
-            if all_flights:
-                # Append structured flight data at the end
-                try:
-                    flight_json = json.dumps(all_flights, ensure_ascii=False)
-                    json_size = len(flight_json)
-                    print(f"[CONVERSATIONAL] Flight JSON size: {json_size:,} bytes ({json_size/1024:.1f} KB)")
-                    if json_size > 500000:  # 500KB
-                        print(f"[CONVERSATIONAL] ⚠️ WARNING: Flight JSON is very large ({json_size/1024:.1f} KB)")
-                    final_response += f"\n\n[FLIGHT_DATA]{flight_json}[/FLIGHT_DATA]"
-                except Exception as e:
-                    print(f"[CONVERSATIONAL] ⚠️ ERROR serializing flight data: {e}")
-                    import traceback
-                    traceback.print_exc()
+            # If user is asking about hotels/restaurants and NOT about flights, skip flight results
+            if (hotel_intent or restaurant_intent) and not flight_intent:
+                print(f"[CONVERSATIONAL] User query is about hotels/restaurants, excluding flight results from response")
+            else:
+                import json
+                # Flight agent now makes 2 separate calls for round-trip, so we just use what we have
+                outbound_flights = flight_result.get("outbound", [])
+                return_flights = flight_result.get("return", [])
+                
+                print(f"[CONVERSATIONAL] Flight results: {len(outbound_flights)} outbound, {len(return_flights)} return")
+                
+                # Intelligently filter flights based on user's message intent
+                filtered_outbound, filtered_return = _filter_flights_intelligently(
+                    user_message, outbound_flights, return_flights
+                )
+                
+                # Combine both outbound and return flights for display
+                all_flights = []
+                
+                # Get Google Flights URL from first flight (if available) to use as fallback
+                google_flights_fallback = None
+                if filtered_outbound and len(filtered_outbound) > 0:
+                    google_flights_fallback = filtered_outbound[0].get("google_flights_url")
+                elif filtered_return and len(filtered_return) > 0:
+                    google_flights_fallback = filtered_return[0].get("google_flights_url")
+                
+                if filtered_outbound:
+                    # Ensure outbound flights are marked and have Google Flights URL
+                    for flight in filtered_outbound:
+                        if not flight.get("direction"):
+                            flight["direction"] = "outbound"
+                        if not flight.get("type"):
+                            flight["type"] = "Outbound flight"
+                        # Ensure Google Flights URL is present
+                        if not flight.get("google_flights_url") and google_flights_fallback:
+                            flight["google_flights_url"] = google_flights_fallback
+                    all_flights.extend(filtered_outbound)
+                if filtered_return:
+                    # Ensure return flights are marked and have Google Flights URL
+                    for flight in filtered_return:
+                        if not flight.get("direction"):
+                            flight["direction"] = "return"
+                        if not flight.get("type"):
+                            flight["type"] = "Return flight"
+                        # Ensure Google Flights URL is present
+                        if not flight.get("google_flights_url") and google_flights_fallback:
+                            flight["google_flights_url"] = google_flights_fallback
+                    all_flights.extend(filtered_return)
+                
+                if all_flights:
+                    # Append structured flight data at the end
+                    try:
+                        flight_json = json.dumps(all_flights, ensure_ascii=False)
+                        json_size = len(flight_json)
+                        print(f"[CONVERSATIONAL] Flight JSON size: {json_size:,} bytes ({json_size/1024:.1f} KB)")
+                        if json_size > 500000:  # 500KB
+                            print(f"[CONVERSATIONAL] ⚠️ WARNING: Flight JSON is very large ({json_size/1024:.1f} KB)")
+                        final_response += f"\n\n[FLIGHT_DATA]{flight_json}[/FLIGHT_DATA]"
+                    except Exception as e:
+                        print(f"[CONVERSATIONAL] ⚠️ ERROR serializing flight data: {e}")
+                        import traceback
+                        traceback.print_exc()
     
     # Store last results in STM for future reference (e.g., when user says "i want option 3")
     session_id = state.get("session_id")
     if session_id and collected_info:
         try:
-            from stm.short_term_memory import store_last_results
+            from stm.short_term_memory import store_last_results, get_last_results
             # Store only non-empty results
             results_to_store = {}
+            
+            # CRITICAL: Preserve full flight list when storing selected flights
+            # If collected_info has a flight_result with only 1 flight, it's likely a selected flight
+            # In that case, preserve the original full list from STM instead of overwriting it
             if collected_info.get("flight_result"):
-                results_to_store["flight_result"] = collected_info["flight_result"]
+                flight_result = collected_info["flight_result"]
+                outbound_count = len(flight_result.get("outbound", [])) if isinstance(flight_result, dict) else 0
+                return_count = len(flight_result.get("return", [])) if isinstance(flight_result, dict) else 0
+                total_flights = outbound_count + return_count
+                
+                # If only 1 flight, it's likely a selected flight - preserve original full list
+                if total_flights == 1:
+                    existing_results = get_last_results(session_id)
+                    existing_flight_result = existing_results.get("flight_result")
+                    if existing_flight_result:
+                        existing_outbound = existing_flight_result.get("outbound", [])
+                        existing_return = existing_flight_result.get("return", [])
+                        existing_total = len(existing_outbound) + len(existing_return)
+                        # If existing list has more flights, preserve it
+                        if existing_total > 1:
+                            print(f"[CONVERSATIONAL] Preserving full flight list ({existing_total} flights) instead of overwriting with selected flight (1 flight)")
+                            results_to_store["flight_result"] = existing_flight_result
+                        else:
+                            # Both have 1 flight, use the new one
+                            results_to_store["flight_result"] = flight_result
+                    else:
+                        # No existing results, store what we have
+                        results_to_store["flight_result"] = flight_result
+                else:
+                    # Multiple flights - this is a full search result, store it
+                    results_to_store["flight_result"] = flight_result
+            
             if collected_info.get("hotel_result"):
                 results_to_store["hotel_result"] = collected_info["hotel_result"]
             if collected_info.get("tripadvisor_result"):
