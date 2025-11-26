@@ -264,6 +264,8 @@ def register_planner_tools(mcp):
                     )
                     db.add(new_item)
                     db.commit()
+                    db.refresh(new_item)  # Ensure the item is fully committed
+                    print(f"[PLANNER TOOL] ✓ Successfully added plan item to database: {title} (session_id: {session_id[:8]}..., email: {user_email})")
                     return {
                         "success": True,
                         "message": f"Successfully added plan item: {title}",
@@ -430,6 +432,8 @@ def register_planner_tools(mcp):
                     query = query.filter(TravelPlanItem.status == status)
                 
                 items = query.order_by(TravelPlanItem.created_at.desc()).all()
+                
+                print(f"[PLANNER TOOL] Retrieved {len(items)} plan items from database (session_id: {session_id[:8]}..., email: {user_email})")
                 
                 result = []
                 for item in items:

@@ -759,6 +759,7 @@ def get_travel_plan():
         ).order_by(TravelPlanItem.created_at.asc()).all()
 
         serialized_items = [serialize_plan_item(item) for item in items]
+        print(f"[API] Travel plan request - session_id: {session_id[:8]}..., user: {user_email}, found {len(serialized_items)} items")
         return jsonify({
             "success": True,
             "session_id": session_id,

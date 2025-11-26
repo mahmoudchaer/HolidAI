@@ -91,7 +91,7 @@ const Chat = () => {
     }
   }
 
-  const fetchPlanItems = useCallback(async (targetSessionId, { silent = false } = {}) => {
+  const fetchPlanItems = useCallback(async (targetSessionId, { silent = false, retry = false } = {}) => {
     if (!targetSessionId) {
       clearPlan()
       return
@@ -100,11 +100,18 @@ const Chat = () => {
     if (!silent) setPlanLoadingState(true)
 
     try {
+      // Add a small delay if retrying to allow database commit to complete
+      if (retry) {
+        await new Promise(resolve => setTimeout(resolve, 300))
+      }
+      
       const response = await fetch(`/api/travel-plan?session_id=${targetSessionId}`)
       const data = await response.json()
       if (response.ok && data.success) {
+        console.log(`[PLAN] Fetched ${data.items.length} plan items for session ${targetSessionId.slice(0, 8)}...`)
         setPlanItemsState(data.items, targetSessionId)
       } else {
+        console.error(`[PLAN] Error fetching plan items:`, data.error)
         setPlanErrorState(data.error || 'Unable to load travel plan')
       }
     } catch (err) {
@@ -229,7 +236,19 @@ const Chat = () => {
         }
 
         if (activeSessionId) {
-          fetchPlanItems(activeSessionId, { silent: true })
+          // Fetch plan items with a delay to ensure database commit is complete
+          // Retry multiple times to handle any timing issues with database commits
+          setTimeout(() => {
+            fetchPlanItems(activeSessionId, { silent: true, retry: true })
+          }, 300)
+          // Retry again after a longer delay to ensure we get the latest data
+          setTimeout(() => {
+            fetchPlanItems(activeSessionId, { silent: true, retry: true })
+          }, 1000)
+          // Final retry after 2 seconds
+          setTimeout(() => {
+            fetchPlanItems(activeSessionId, { silent: true, retry: true })
+          }, 2000)
         }
         
         // Load conversations in background without affecting current state

@@ -154,6 +154,21 @@ async def planner_agent_feedback_node(state: AgentState) -> AgentState:
             "route": "conversational_agent"
         }
     
+    # Fast path: Skip validation for simple "option X" requests if operation was successful
+    # This saves an API call for common, straightforward operations
+    import re
+    user_msg_lower = user_message.lower()
+    is_simple_option = bool(re.search(r'(?:choose|select|want|take|pick|i\'ll choose|i\'ll take|i will choose|i will take)\s+(?:option\s+)?(?:number\s+)?(?:nb\s+)?(?:#\s+)?(\d+)', user_msg_lower))
+    
+    if is_simple_option and last_response and ("successfully" in last_response.lower() or "added" in last_response.lower() or "saved" in last_response.lower()):
+        # Simple operation that appears successful - skip validation to save time
+        print("Planner Feedback: Simple option selection with successful result, skipping validation for speed")
+        return {
+            "planner_feedback_message": None,
+            "planner_feedback_retry_count": 0,
+            "route": "conversational_agent"
+        }
+    
     # Prepare validation context
     validation_context = {
         "user_request": user_message,

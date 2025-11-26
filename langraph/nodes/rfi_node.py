@@ -770,16 +770,34 @@ Examples:
         
         # Check for planner intent before routing
         user_msg_lower = user_message.lower()
+        
+        # CRITICAL: Exclude search requests - these should NOT trigger planner
+        search_phrases = [
+            "see hotel options", "see flight options", "see options",
+            "show hotel options", "show flight options", "show options",
+            "find hotels", "find flights", "search for hotels", "search for flights",
+            "what hotels are available", "what flights are available",
+            "hotel options", "flight options", "available hotels", "available flights",
+            "let's see", "show me hotels", "show me flights", "i want to see",
+            "find hotel options", "find flight options"
+        ]
+        
+        # If it's clearly a search request, skip planner
+        is_search_request = any(phrase in user_msg_lower for phrase in search_phrases)
+        
+        # Planner keywords for plan management operations (only if not a search request)
         planner_keywords = [
             "save", "select", "choose", "want", "like", "add to plan", "add to my plan",
             "remove", "delete", "cancel", "update", "change", "modify",
-            "show my plan", "what's in my plan", "my plan", "travel plan", "option"
+            "show my plan", "what's in my plan", "my plan", "travel plan", "my saved plan"
         ]
-        has_planner_intent = any(keyword in user_msg_lower for keyword in planner_keywords)
+        
+        # Only check for planner intent if it's NOT a search request
+        has_planner_intent = not is_search_request and any(keyword in user_msg_lower for keyword in planner_keywords)
         
         # Route based on validation status
         if status == "complete":
-            # Check if this is a planner request first
+            # Check if this is a planner request first (but not if it's a search request)
             if has_planner_intent:
                 print("RFI: Information complete, but planner intent detected, routing to Planner Agent")
                 result = {
@@ -837,7 +855,8 @@ Examples:
             
         elif status == "missing_info":
             # Check if this is a planner request (planner can work with incomplete info if results exist)
-            if has_planner_intent:
+            # But NOT if it's a search request - search requests should go to main_agent even with missing info
+            if has_planner_intent and not is_search_request:
                 print("RFI: Missing info but planner intent detected, routing to Planner Agent")
                 result = {
                     "route": "planner_agent",

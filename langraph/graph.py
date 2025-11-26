@@ -117,12 +117,30 @@ def create_graph() -> StateGraph:
     # RFI node routes based on validation result
     # Check if planner is needed first, then route accordingly
     def rfi_route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
-        """Route decision after RFI - check for planner intent first."""
+        """Route decision after RFI - check for planner intent first, but exclude search requests."""
         user_message = state.get("user_message", "").lower()
+        
+        # CRITICAL: Exclude search requests - these should NOT trigger planner
+        search_phrases = [
+            "see hotel options", "see flight options", "see options",
+            "show hotel options", "show flight options", "show options",
+            "find hotels", "find flights", "search for hotels", "search for flights",
+            "what hotels are available", "what flights are available",
+            "hotel options", "flight options", "available hotels", "available flights",
+            "let's see", "show me hotels", "show me flights", "i want to see",
+            "find hotel options", "find flight options"
+        ]
+        
+        # If it's clearly a search request, skip planner and route to main_agent
+        is_search_request = any(phrase in user_message for phrase in search_phrases)
+        if is_search_request:
+            return "main_agent"
+        
+        # Planner keywords for plan management operations
         planner_keywords = [
             "save", "select", "choose", "want", "like", "add to plan", "add to my plan",
             "remove", "delete", "cancel", "update", "change", "modify",
-            "show my plan", "what's in my plan", "my plan", "travel plan"
+            "show my plan", "what's in my plan", "my plan", "travel plan", "my saved plan"
         ]
         has_planner_intent = any(keyword in user_message for keyword in planner_keywords)
         

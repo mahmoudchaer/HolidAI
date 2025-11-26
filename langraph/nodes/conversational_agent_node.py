@@ -514,6 +514,15 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     relevant_memories = state.get("relevant_memories") or []  # Relevant memories for this user
     travel_plan_items = state.get("travel_plan_items", [])  # Travel plan items from database
     session_id = state.get("session_id")
+    needs_planner = state.get("needs_planner", False)  # Check if planner agent was called
+    
+    # Detect if user is choosing/selecting an option (add operation)
+    user_msg_lower = user_message.lower()
+    is_choosing_option = any(phrase in user_msg_lower for phrase in [
+        "choose option", "select option", "want option", "option number", "option nb", 
+        "option #", "i'll take option", "i'll choose option", "i will choose option",
+        "i will take option", "add option", "save option"
+    ])
     
     # Also check context for results
     if context.get("flight_result"):
@@ -602,10 +611,40 @@ async def conversational_agent_node(state: AgentState) -> AgentState:
     # Truncate large results to avoid context overflow
     truncated_info = truncate_large_results(collected_info, max_items=20)
     
+    # CRITICAL: If user is choosing/selecting an option, don't include flight/hotel/restaurant results in the prompt
+    # This prevents the LLM from re-showing all options when user just wants confirmation
+    display_info = truncated_info.copy() if truncated_info else {}
+    if is_choosing_option or needs_planner:
+        # Remove flight, hotel, and tripadvisor results to prevent re-showing all options
+        if "flight_result" in display_info:
+            del display_info["flight_result"]
+            print(f"[CONVERSATIONAL] Removed flight_result from prompt (user is choosing an option)")
+        if "hotel_result" in display_info:
+            del display_info["hotel_result"]
+            print(f"[CONVERSATIONAL] Removed hotel_result from prompt (user is choosing an option)")
+        if "tripadvisor_result" in display_info:
+            del display_info["tripadvisor_result"]
+            print(f"[CONVERSATIONAL] Removed tripadvisor_result from prompt (user is choosing an option)")
+    
+    # Add special instruction if user is choosing an option
+    special_instruction = ""
+    if is_choosing_option or needs_planner:
+        special_instruction = """
+⚠️⚠️⚠️ CRITICAL - USER IS CHOOSING/SELECTING AN OPTION ⚠️⚠️⚠️:
+- The user has chosen/selected an option (e.g., "I will choose option 2", "I want option 3", "save restaurant option 1")
+- The planner agent has already added the selected item to their travel plan
+- Your response should ONLY confirm what was added - DO NOT re-show all search results
+- DO NOT list all flights/hotels/restaurants again - just acknowledge the addition
+- DO NOT generate TripAdvisor greetings like "Here are some great restaurants!" - the user is CONFIRMING a selection, not searching
+- Example good response: "Perfect! I've added option 2 to your travel plan." or "Great! I've saved that restaurant to your plan."
+- Example bad response: "Here are all the flight options again: [lists all flights]" or "Here are some great restaurants in Lebanon!"
+- Keep your response SHORT and focused on confirming the addition"""
+    
     user_content = f"""User's original message: {user_message}
+{special_instruction}
 
 Below is the data collected from specialized agents (THIS IS FOR YOUR REFERENCE ONLY - DO NOT INCLUDE IT IN YOUR RESPONSE):
-{json.dumps(truncated_info, indent=2, ensure_ascii=False) if truncated_info else "No information was collected from specialized agents."}
+{json.dumps(display_info, indent=2, ensure_ascii=False) if display_info else "No information was collected from specialized agents."}
 
 IMPORTANT INSTRUCTIONS:
 - Extract the relevant information from the JSON above
@@ -613,6 +652,7 @@ IMPORTANT INSTRUCTIONS:
 - DO NOT include "Collected_info:", "Based on the information gathered", or any JSON structure in your response
 - Start your response directly with the information (e.g., "I've found some great options..." or "Here's what I found...")
 - The user should never see the JSON data - only the formatted information
+- **CRITICAL**: If the user is choosing/selecting an option (e.g., "I will choose option 2"), just confirm the addition - DO NOT re-show all search results. Simply acknowledge what was added to their plan.
 - **If there are errors in the collected data (error: true), explain the specific error to the user in a helpful way, including the error_message and suggestion if available**
 - For eSIM bundles: ALWAYS include clickable links using markdown format [text](url) for each bundle's purchase link
 - If data was truncated (indicated by "truncated": true or "limited": true), mention that more options are available
@@ -722,8 +762,9 @@ Please revise your response based on this feedback to fix the issues mentioned."
     final_response = ""
     
     # CRITICAL: For TripAdvisor results ONLY, skip LLM and generate greeting directly
+    # BUT: Skip this greeting if user is choosing/selecting an option (they're confirming, not searching)
     tripadvisor_result = collected_info.get("tripadvisor_result")
-    if tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error"):
+    if tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error") and not (is_choosing_option or needs_planner):
         locations = tripadvisor_result.get("data", [])
         if locations and len(locations) > 0:
             # Skip LLM entirely - just generate a simple greeting
@@ -751,6 +792,10 @@ Please revise your response based on this feedback to fix the issues mentioned."
         else:
             # No locations, proceed with normal LLM call
             tripadvisor_result = None
+    elif is_choosing_option or needs_planner:
+        # User is choosing an option - don't generate TripAdvisor greeting, let LLM handle confirmation
+        print(f"[CONVERSATIONAL] User is choosing/selecting an option, skipping TripAdvisor greeting")
+        tripadvisor_result = None  # Set to None so LLM handles the response
     
     # Call LLM to generate response (skip if we already generated TripAdvisor greeting)
     if not (tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error") and tripadvisor_result.get("data")):
@@ -905,8 +950,12 @@ The system has collected information from specialized agents. Please provide a h
             restaurant_intent = any(keyword in user_msg_lower for keyword in restaurant_keywords)
             flight_intent = any(keyword in user_msg_lower for keyword in flight_keywords)
             
+            # CRITICAL: If user is choosing/selecting an option (planner operation), don't re-show all results
+            # This prevents showing all flights again when user just wants to confirm their selection
+            if is_choosing_option or needs_planner:
+                print(f"[CONVERSATIONAL] User is choosing/selecting an option (planner operation), excluding flight results from response to avoid re-showing all options")
             # If user is asking about hotels/restaurants and NOT about flights, skip flight results
-            if (hotel_intent or restaurant_intent) and not flight_intent:
+            elif (hotel_intent or restaurant_intent) and not flight_intent:
                 print(f"[CONVERSATIONAL] User query is about hotels/restaurants, excluding flight results from response")
             else:
                 import json
