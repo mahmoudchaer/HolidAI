@@ -23,6 +23,7 @@ from nodes.conversational_agent_feedback_node import conversational_agent_feedba
 from nodes.final_planner_agent_node import final_planner_agent_node
 from nodes.join_node import join_node
 from nodes.memory_agent_node import memory_agent_node
+from node_wrapper import wrap_node
 
 
 def route_decision(state: AgentState) -> Union[str, List[str], Literal["end"]]:
@@ -82,27 +83,27 @@ def create_graph() -> StateGraph:
     # Create the graph
     graph = StateGraph(AgentState)
     
-    # Add nodes - main workflow nodes
-    graph.add_node("memory_agent", memory_agent_node)  # Memory agent - handles memory retrieval and storage FIRST
-    graph.add_node("rfi_node", rfi_node)  # RFI node - validates logical completeness
-    graph.add_node("main_agent", main_agent_node)
-    graph.add_node("feedback", feedback_node)
-    graph.add_node("plan_executor", plan_executor_node)
-    graph.add_node("plan_executor_feedback", plan_executor_feedback_node)
-    graph.add_node("visa_agent", visa_agent_node)
-    graph.add_node("visa_agent_feedback", visa_agent_feedback_node)
-    graph.add_node("flight_agent", flight_agent_node)
-    graph.add_node("flight_agent_feedback", flight_agent_feedback_node)
-    graph.add_node("hotel_agent", hotel_agent_node)
-    graph.add_node("hotel_agent_feedback", hotel_agent_feedback_node)
-    graph.add_node("tripadvisor_agent", tripadvisor_agent_node)
-    graph.add_node("tripadvisor_agent_feedback", tripadvisor_agent_feedback_node)
-    graph.add_node("utilities_agent", utilities_agent_node)
-    graph.add_node("utilities_agent_feedback", utilities_agent_feedback_node)
-    graph.add_node("join_node", join_node)
-    graph.add_node("conversational_agent", conversational_agent_node)
-    graph.add_node("conversational_agent_feedback", conversational_agent_feedback_node)
-    graph.add_node("final_planner_agent", final_planner_agent_node)
+    # Add nodes - main workflow nodes (wrapped for logging)
+    graph.add_node("memory_agent", wrap_node(memory_agent_node, "memory_agent"))
+    graph.add_node("rfi_node", wrap_node(rfi_node, "rfi_node"))
+    graph.add_node("main_agent", wrap_node(main_agent_node, "main_agent"))
+    graph.add_node("feedback", wrap_node(feedback_node, "feedback"))
+    graph.add_node("plan_executor", wrap_node(plan_executor_node, "plan_executor"))
+    graph.add_node("plan_executor_feedback", wrap_node(plan_executor_feedback_node, "plan_executor_feedback"))
+    graph.add_node("visa_agent", wrap_node(visa_agent_node, "visa_agent"))
+    graph.add_node("visa_agent_feedback", wrap_node(visa_agent_feedback_node, "visa_agent_feedback"))
+    graph.add_node("flight_agent", wrap_node(flight_agent_node, "flight_agent"))
+    graph.add_node("flight_agent_feedback", wrap_node(flight_agent_feedback_node, "flight_agent_feedback"))
+    graph.add_node("hotel_agent", wrap_node(hotel_agent_node, "hotel_agent"))
+    graph.add_node("hotel_agent_feedback", wrap_node(hotel_agent_feedback_node, "hotel_agent_feedback"))
+    graph.add_node("tripadvisor_agent", wrap_node(tripadvisor_agent_node, "tripadvisor_agent"))
+    graph.add_node("tripadvisor_agent_feedback", wrap_node(tripadvisor_agent_feedback_node, "tripadvisor_agent_feedback"))
+    graph.add_node("utilities_agent", wrap_node(utilities_agent_node, "utilities_agent"))
+    graph.add_node("utilities_agent_feedback", wrap_node(utilities_agent_feedback_node, "utilities_agent_feedback"))
+    graph.add_node("join_node", wrap_node(join_node, "join_node"))
+    graph.add_node("conversational_agent", wrap_node(conversational_agent_node, "conversational_agent"))
+    graph.add_node("conversational_agent_feedback", wrap_node(conversational_agent_feedback_node, "conversational_agent_feedback"))
+    graph.add_node("final_planner_agent", wrap_node(final_planner_agent_node, "final_planner_agent"))
     
     # Set entry point - Memory agent runs first!
     graph.set_entry_point("memory_agent")

@@ -241,9 +241,35 @@ If no agents are needed (all data already exists or no new data needed), return 
     ]
     
     # Call LLM to create execution plan
+    session_id = state.get("session_id", "unknown")
+    user_email = state.get("user_email")
+    llm_start_time = time.time()
+    
     response = client.chat.completions.create(
         model="gpt-4.1",
         messages=messages
+    )
+    
+    llm_latency_ms = (time.time() - llm_start_time) * 1000
+    
+    # Log LLM call
+    prompt_preview = str(messages[-1].get("content", "")) if messages else ""
+    response_preview = response.choices[0].message.content if response.choices[0].message.content else ""
+    token_usage = {
+        "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') and response.usage else None,
+        "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') and response.usage else None,
+        "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') and response.usage else None
+    } if hasattr(response, 'usage') and response.usage else None
+    
+    log_llm_call(
+        session_id=session_id,
+        user_email=user_email,
+        agent_name="main_agent",
+        model="gpt-4.1",
+        prompt_preview=prompt_preview,
+        response_preview=response_preview,
+        token_usage=token_usage,
+        latency_ms=llm_latency_ms
     )
     
     message = response.choices[0].message

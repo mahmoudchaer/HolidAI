@@ -3,9 +3,11 @@
 import sys
 import os
 import json
+import time
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
+from agent_logger import log_llm_call
 
 # Add paths for imports
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "mcp_system"))

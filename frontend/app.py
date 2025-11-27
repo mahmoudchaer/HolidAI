@@ -3,6 +3,7 @@
 import asyncio
 import sys
 import os
+import time
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_from_directory
@@ -965,6 +966,9 @@ def chat():
         old_stdout = sys.stdout
         sys.stdout = log_capture
         
+        # Track interaction start time
+        interaction_start_time = time.time()
+        
         try:
             result = run_async(run(
                 user_message=user_message,
@@ -976,6 +980,32 @@ def chat():
         
         response = result.get("last_response", "No response generated")
         agents_called = result.get("agents_called", [])
+        
+        # Calculate interaction latency
+        interaction_latency_ms = (time.time() - interaction_start_time) * 1000
+        
+        # Log user interaction
+        try:
+            # Import agent_logger from langraph
+            import sys
+            from pathlib import Path
+            langraph_path = Path(__file__).parent.parent / "langraph"
+            sys.path.insert(0, str(langraph_path))
+            from agent_logger import log_interaction
+            
+            # Extract token usage if available (would need to be passed from graph)
+            token_usage = None  # Could be extracted from result if available
+            
+            log_interaction(
+                session_id=session_id,
+                user_email=user_email,
+                user_message=user_message,
+                agent_response=response,
+                latency_ms=interaction_latency_ms,
+                token_usage=token_usage
+            )
+        except Exception as e:
+            print(f"[WARNING] Could not log interaction: {e}")
         
         # Emit completion
         emit_agent_activity("success", "Response ready!", "All agents completed")

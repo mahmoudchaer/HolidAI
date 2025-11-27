@@ -3,9 +3,11 @@
 import sys
 import os
 import json
+import time
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
+from agent_logger import log_llm_call
 
 # Add paths for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -470,11 +472,37 @@ async def rfi_node(state: AgentState) -> AgentState:
                 {"role": "user", "content": f"User message: {user_message}{safety_memory_context}{safety_stm_context}\n\nCheck if this message is safe and within the travel assistant's scope. If the message is vague but the context shows it's travel-related (e.g., 'get cheapest one' after flight search), mark it as in_scope=True."}
             ]
             
+            session_id = state.get("session_id", "unknown")
+            user_email = state.get("user_email")
+            llm_start_time = time.time()
+            
             safety_response = client.chat.completions.create(
                 model="gpt-4.1",
                 messages=safety_messages,
                 temperature=0.3,
                 response_format={"type": "json_object"}
+            )
+            
+            llm_latency_ms = (time.time() - llm_start_time) * 1000
+            
+            # Log LLM call
+            prompt_preview = str(safety_messages[-1].get("content", "")) if safety_messages else ""
+            response_preview = safety_response.choices[0].message.content if safety_response.choices[0].message.content else ""
+            token_usage = {
+                "prompt_tokens": safety_response.usage.prompt_tokens if hasattr(safety_response, 'usage') and safety_response.usage else None,
+                "completion_tokens": safety_response.usage.completion_tokens if hasattr(safety_response, 'usage') and safety_response.usage else None,
+                "total_tokens": safety_response.usage.total_tokens if hasattr(safety_response, 'usage') and safety_response.usage else None
+            } if hasattr(safety_response, 'usage') and safety_response.usage else None
+            
+            log_llm_call(
+                session_id=session_id,
+                user_email=user_email,
+                agent_name="rfi_node",
+                model="gpt-4.1",
+                prompt_preview=prompt_preview,
+                response_preview=response_preview,
+                token_usage=token_usage,
+                latency_ms=llm_latency_ms
             )
             
             safety_result = json.loads(safety_response.choices[0].message.content)
@@ -740,11 +768,37 @@ Examples:
     ]
     
     try:
+        session_id = state.get("session_id", "unknown")
+        user_email = state.get("user_email")
+        llm_start_time = time.time()
+        
         response = client.chat.completions.create(
             model="gpt-4.1",
             messages=messages,
             temperature=0.3,
             response_format={"type": "json_object"}
+        )
+        
+        llm_latency_ms = (time.time() - llm_start_time) * 1000
+        
+        # Log LLM call
+        prompt_preview = str(messages[-1].get("content", "")) if messages else ""
+        response_preview = response.choices[0].message.content if response.choices[0].message.content else ""
+        token_usage = {
+            "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') and response.usage else None,
+            "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') and response.usage else None,
+            "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') and response.usage else None
+        } if hasattr(response, 'usage') and response.usage else None
+        
+        log_llm_call(
+            session_id=session_id,
+            user_email=user_email,
+            agent_name="rfi_node",
+            model="gpt-4.1",
+            prompt_preview=prompt_preview,
+            response_preview=response_preview,
+            token_usage=token_usage,
+            latency_ms=llm_latency_ms
         )
         
         validation_result = json.loads(response.choices[0].message.content)

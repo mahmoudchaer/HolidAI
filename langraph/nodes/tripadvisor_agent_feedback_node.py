@@ -3,9 +3,11 @@
 import sys
 import os
 import json
+import time
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
+from agent_logger import log_llm_call, log_feedback_failure
 
 # Add paths for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -144,11 +146,37 @@ Do these results make logical sense? If yes, pass. Only retry if results are cle
     ]
     
     try:
+        session_id = state.get("session_id", "unknown")
+        user_email = state.get("user_email")
+        llm_start_time = time.time()
+        
         response = client.chat.completions.create(
             model="gpt-4.1",
             messages=messages,
             temperature=0.2,  # Lower temperature for more consistent decisions
             response_format={"type": "json_object"}
+        )
+        
+        llm_latency_ms = (time.time() - llm_start_time) * 1000
+        
+        # Log LLM call
+        prompt_preview = str(messages[-1].get("content", "")) if messages else ""
+        response_preview = response.choices[0].message.content if response.choices[0].message.content else ""
+        token_usage = {
+            "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') and response.usage else None,
+            "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') and response.usage else None,
+            "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') and response.usage else None
+        } if hasattr(response, 'usage') and response.usage else None
+        
+        log_llm_call(
+            session_id=session_id,
+            user_email=user_email,
+            agent_name="tripadvisor_agent_feedback",
+            model="gpt-4.1",
+            prompt_preview=prompt_preview,
+            response_preview=response_preview,
+            token_usage=token_usage,
+            latency_ms=llm_latency_ms
         )
         
         validation_result = json.loads(response.choices[0].message.content)
@@ -158,6 +186,15 @@ Do these results make logical sense? If yes, pass. Only retry if results are cle
         
         print(f"TripAdvisor Feedback: Status = {status}")
         print(f"TripAdvisor Feedback: {feedback_msg}")
+        
+        # Log feedback failure if status indicates failure
+        if status != "pass":
+            log_feedback_failure(
+                session_id=session_id,
+                user_email=user_email,
+                feedback_node="tripadvisor_agent_feedback",
+                reason=f"Status: {status}, Message: {feedback_msg}"
+            )
         
         # Route based on validation status
         if status == "pass":
