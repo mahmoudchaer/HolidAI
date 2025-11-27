@@ -140,6 +140,7 @@ async def flight_agent_node(state: AgentState) -> AgentState:
     print(f"[{start_time.strftime('%H:%M:%S.%f')[:-3]}] 🛫 FLIGHT AGENT STARTED")
     
     user_message = state.get("user_message", "")
+    flight_feedback_message = state.get("flight_feedback_message", "")
     all_memories = state.get("relevant_memories", [])
     
     # Filter memories to only include flight-related ones
@@ -171,6 +172,16 @@ Focus on the flight search task described above."""
     else:
         # Fallback to user message if no step context
         agent_message = user_message
+    
+    # Add feedback message if this is a retry
+    if flight_feedback_message:
+        print(f"[FLIGHT AGENT] Retry with feedback: {flight_feedback_message}")
+        agent_message = f"""{agent_message}
+
+⚠️ PREVIOUS ATTEMPT FAILED - PLEASE CORRECT AND RETRY:
+{flight_feedback_message}
+
+IMPORTANT: Review the tool documentation carefully and ensure all parameters are correct before calling the tool again."""
     
     # Always use LLM to extract parameters from user message
     # LLM has access to tool documentation and can intelligently extract parameters
@@ -422,6 +433,11 @@ Focus on the flight search task described above."""
                 else:
                     # Single one-way call
                     flight_result = await FlightAgentClient.invoke(tool_name, **args)
+                    
+                    # Check for validation errors immediately
+                    if flight_result.get("error") and flight_result.get("error_code") == "VALIDATION_ERROR":
+                        print(f"[FLIGHT AGENT] ⚠️ VALIDATION_ERROR detected: {flight_result.get('error_message')}")
+                        print(f"[FLIGHT AGENT] Error will be handled by feedback node for retry")
                     
                     # Transform flexible tool response format to standard format
                     # agent_get_flights_flexible_tool returns {"flights": [...]} but we need {"outbound": [...]}

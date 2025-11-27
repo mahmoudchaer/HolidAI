@@ -49,6 +49,9 @@ VALIDATION RULES:
    - If only partial info → empty results are ACCEPTABLE
 
 2. Result structure validation:
+   - If error=true, check error_code:
+     * VALIDATION_ERROR → ALWAYS retry (parameters need correction)
+     * Other error codes → may be acceptable depending on context
    - If error=true, must have error_message explaining the issue
    - If error=false AND user provided dates, should have flight data
    - Flight data should include: airline, price, times, route
@@ -59,9 +62,11 @@ VALIDATION RULES:
    - Dates should be reasonable
 
 4. Error legitimacy:
+   - **CRITICAL**: If error_code is "VALIDATION_ERROR" → ALWAYS retry (this means parameters were wrong)
    - Valid: no flights found for those dates, invalid dates, API timeout
    - Valid: empty results if user didn't provide dates
    - Invalid: error with complete user input for no reason
+   - **VALIDATION_ERROR examples**: Invalid trip_type (e.g., "round" instead of "round-trip"), missing required params, invalid date format
 
 5. Alignment check:
    - If user gave dates, results should match
@@ -109,6 +114,15 @@ Response: {
   "feedback_message": "Error properly reported - invalid date format"
 }
 
+Example 6 - Validation error (ALWAYS RETRY):
+User: "Find flights from BEY to DXB"
+Result: {"error": true, "error_code": "VALIDATION_ERROR", "error_message": "Invalid trip type: 'round'. Must be 'one-way' or 'round-trip'."}
+Response: {
+  "validation_status": "need_retry",
+  "feedback_message": "Tool validation error: Invalid trip type 'round'. The tool requires 'one-way' or 'round-trip'.",
+  "suggested_action": "Correct the trip_type parameter to 'one-way' or 'round-trip' and retry the search"
+}
+
 Example 5 - Missing required data with specific dates (RETRY):
 User: "Find flights from Dubai to Beirut on December 25, 2025"
 Result: {"error": false, "outbound": [{"airline": "Emirates"}]} (missing price)
@@ -146,12 +160,37 @@ async def flight_agent_feedback_node(state: AgentState) -> AgentState:
         print("Flight Feedback: No flight result to validate")
         return {}
     
+    # CRITICAL: Check for validation errors immediately - these should ALWAYS trigger retry
+    if flight_result.get("error") and flight_result.get("error_code") == "VALIDATION_ERROR":
+        error_message = flight_result.get("error_message", "")
+        suggestion = flight_result.get("suggestion", "")
+        print(f"Flight Feedback: VALIDATION_ERROR detected - {error_message}")
+        print(f"Flight Feedback: Automatically triggering retry with feedback")
+        
+        # Create detailed feedback message for the agent
+        feedback_msg = f"Tool validation error occurred: {error_message}"
+        if suggestion:
+            feedback_msg += f"\n\nSuggestion: {suggestion}"
+        feedback_msg += "\n\nPlease correct the parameters and retry. Common issues:\n"
+        feedback_msg += "- trip_type must be 'one-way' or 'round-trip' (not 'round' or other variations)\n"
+        feedback_msg += "- All required parameters must be provided\n"
+        feedback_msg += "- Date format must be YYYY-MM-DD\n"
+        feedback_msg += "- Airport codes should be valid IATA codes"
+        
+        return {
+            "flight_result": None,
+            "flight_feedback_message": feedback_msg,
+            "flight_feedback_retry_count": flight_feedback_retry_count + 1
+        }
+    
     # Prepare validation context (truncate large data to avoid token limits)
     validation_context = {
         "user_request": user_message,
         "result_summary": {
             "has_error": flight_result.get("error", False),
+            "error_code": flight_result.get("error_code", ""),
             "error_message": flight_result.get("error_message", ""),
+            "suggestion": flight_result.get("suggestion", ""),
             "outbound_count": len(flight_result.get("outbound", [])),
             "return_count": len(flight_result.get("return", [])),
             "sample_outbound": flight_result.get("outbound", [])[:2] if flight_result.get("outbound") else [],

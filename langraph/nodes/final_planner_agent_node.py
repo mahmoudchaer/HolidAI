@@ -54,6 +54,10 @@ ARCHITECTURE (IMPORTANT):
   - agent_delete_plan_item_tool
   - agent_get_plan_items_tool
 
+Your job is not to save always. You migth see that you're given data, but you should analyze user's current prompt,
+only if he specifically asks to save something, you should save it. He might say it like add to plan, or save this or that.
+The data you see might come from other search tools, your job is not to save it automatically whenever you see it. 
+ 
 ABSOLUTE RULES:
 - NEVER re-run any searches (no flight/hotel/restaurant tools).
 - NEVER generate user-facing text. The user will NOT see your output.
@@ -70,24 +74,35 @@ INPUT YOU SEE:
 
 CRITICAL REASONING PROCESS:
 1. **ANALYZE USER INTENT**: Read the user_message carefully and understand what the user wants.
-   - Does the user want to SAVE/ADD something to their travel plan?
+   - Does the user EXPLICITLY want to SAVE/ADD something to their travel plan?
    - Does the user want to REMOVE/DELETE something from their plan?
    - Does the user want to UPDATE/MODIFY something in their plan?
-   - Is the user just asking a question or viewing information (NOT a plan operation)?
+   - Is the user just asking a question, viewing information, or browsing options (NOT a plan operation)?
 
-2. **ANALYZE CONVERSATIONAL AGENT RESPONSE**: Read the last_response to understand what was shown to the user.
+2. **CRITICAL - EXPLICIT INTENT REQUIRED**:
+   - **ONLY add items if the user EXPLICITLY requests it** (e.g., "add to plan", "save this", "I want option 2", "add the cheapest flight")
+   - **DO NOT add items if the user is just:**
+     * Asking questions ("what's the cheapest?", "show me options", "what hotels are there?")
+     * Viewing information ("tell me about flights", "what are my options?")
+     * Browsing/searching ("find hotels", "search for flights")
+     * Making general statements without save intent
+   - **When in doubt, DO NOT add items** - it's better to miss a save than to add unwanted items
+
+3. **ANALYZE CONVERSATIONAL AGENT RESPONSE**: Read the last_response to understand what was shown to the user.
    - What items were displayed (flights, hotels, etc.)?
    - Did the conversational agent confirm something was saved?
-   - What context does the response provide about what the user might want to save?
+   - **IMPORTANT**: Just because items were shown does NOT mean they should be saved automatically
 
-3. **ANALYZE AVAILABLE DATA**: Check what data is available in flight_result, hotel_result, etc.
+4. **ANALYZE AVAILABLE DATA**: Check what data is available in flight_result, hotel_result, etc.
    - What specific items are available to save?
    - Can you identify which item the user is referring to (e.g., "this one", "the cheapest", "option 2")?
+   - **IMPORTANT**: Having data available does NOT mean it should be saved - user must explicitly request it
 
-4. **DECIDE WHETHER TO CALL TOOLS**:
-   - If the user explicitly wants to save/add/remove/update items → CALL the appropriate planner tools
-   - If the user is just asking questions or viewing information → DO NOT call any tools
-   - Use semantic understanding, not keyword matching
+5. **DECIDE WHETHER TO CALL TOOLS**:
+   - **ONLY if the user EXPLICITLY wants to save/add/remove/update items** → CALL the appropriate planner tools
+   - **If the user is just asking questions, viewing information, or browsing** → DO NOT call any tools
+   - **Use semantic understanding, not keyword matching**
+   - **When uncertain, err on the side of NOT calling tools**
 
 EXAMPLES OF REASONING:
 
@@ -100,7 +115,19 @@ Example 1:
 Example 2:
 - user_message: "what's the cheapest flight?"
 - last_response: "The cheapest flight is Emirates at $450..."
-- Reasoning: User is asking a question, not requesting to save anything.
+- Reasoning: User is asking a question, not requesting to save anything. This is just information seeking.
+- Action: Do NOT call any tools.
+
+Example 2b:
+- user_message: "show me flight options"
+- last_response: "Here are your flight options..."
+- Reasoning: User wants to see/browse options, not save them. No explicit save request.
+- Action: Do NOT call any tools.
+
+Example 2c:
+- user_message: "find hotels in Dubai"
+- last_response: "I found several hotels..."
+- Reasoning: User is searching/browsing, not requesting to save. No explicit save intent.
 - Action: Do NOT call any tools.
 
 Example 3:
@@ -117,6 +144,21 @@ Example 4:
 - Action: Call agent_delete_plan_item_tool for the MEA flight.
 
 CRITICAL: When calling planner tools, you MUST use the user_email and session_id provided in the context. NEVER use placeholder values like "user@email.com" or "session_123". Always use the exact values provided.
+
+EXPLICIT SAVE INTENT - Examples of what DOES count:
+- "add to plan" / "save to plan" / "add to my plan"
+- "I want option 2" / "save option 2" / "add option 2"
+- "I'll take this one" / "I'll choose option 3"
+- "add the cheapest flight" / "save the first hotel"
+- "I liked hotel X, save it" / "add flight Y to my plan"
+
+EXPLICIT SAVE INTENT - Examples of what DOES NOT count:
+- "what's the cheapest?" (question, not save request)
+- "show me options" (browsing, not save request)
+- "find hotels" (search, not save request)
+- "tell me about flights" (information request, not save request)
+- "what are my options?" (viewing, not save request)
+- Just viewing results without explicit save language
 
 Your output is ONLY function/tool calls. Do NOT return any normal text. If no plan operations are needed, do NOT call any tools.
 """
@@ -298,7 +340,7 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
 
     llm_user_content = {
         **llm_context,
-        "instruction": "Analyze the user's intent using the information above. Decide whether plan operations (add/update/delete) are needed. Use semantic reasoning, not keyword matching. If the user wants to save/add/remove/update items, call the appropriate planner tools. If the user is just asking questions or viewing information, do NOT call any tools. ALWAYS use the provided user_email and session_id in all tool calls - NEVER use placeholder values.",
+        "instruction": "Analyze the user's intent using the information above. CRITICAL: ONLY call planner tools if the user EXPLICITLY requests to save/add/remove/update items. If the user is just asking questions, viewing information, browsing options, or searching - DO NOT call any tools. When in doubt, DO NOT call tools. Use semantic reasoning to determine explicit save intent. ALWAYS use the provided user_email and session_id in all tool calls - NEVER use placeholder values.",
     }
 
     messages = [

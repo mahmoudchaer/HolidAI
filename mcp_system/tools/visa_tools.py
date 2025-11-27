@@ -12,7 +12,7 @@ async def get_traveldoc_requirement(nationality: str, leaving_from: str, going_t
     a clean, readable structured summary of the results.
     """
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=False, slow_mo=300)
+        browser = await pw.chromium.launch(headless=True, slow_mo=300)
         context = await browser.new_context()
         page = await context.new_page()
 
