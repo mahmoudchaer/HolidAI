@@ -261,18 +261,18 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
         """Strip a single flight to essentials."""
         import copy
         stripped = copy.deepcopy(flight)
-        # Remove large/unnecessary fields
+        # Remove large/unnecessary fields (don't send long links to LLM)
         stripped.pop("booking_link", None)
         stripped.pop("booking_token", None)
         stripped.pop("book_with", None)
         stripped.pop("booking_price", None)
+        stripped.pop("google_flights_url", None)  # Don't send long URLs to LLM
         # Keep only essential fields
         essential = {
             "flights": stripped.get("flights", []),
             "price": stripped.get("price"),
             "total_duration": stripped.get("total_duration"),
             "type": stripped.get("type", "One way"),
-            "google_flights_url": stripped.get("google_flights_url"),  # Keep for reference
             "direction": stripped.get("direction"),
             "airline_logo": stripped.get("airline_logo"),
         }
@@ -540,16 +540,18 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
                     }
                     
                     # Create proper structure: details.flights = [flight_data], details.price at top level
+                    # Preserve booking links for UI display
                     args["details"] = {
                         "flights": [flight_data],
                         "price": details.get("price"),
                         "total_duration": details.get("duration") or details.get("total_duration"),
                         "type": details.get("type", "One way"),
                         "google_flights_url": details.get("google_flights_url"),
+                        "booking_link": details.get("booking_link"),  # Keep for UI
                         "book_with": details.get("book_with"),
                         "booking_price": details.get("booking_price")
                     }
-                    print(f"[FINAL PLANNER] Fixed flight data structure: converted string airports to objects")
+                    print(f"[FINAL PLANNER] Fixed flight data structure: converted string airports to objects, preserved booking links")
                 else:
                     # Flights array exists, but check if airports are strings inside segments
                     flights = details.get("flights", [])

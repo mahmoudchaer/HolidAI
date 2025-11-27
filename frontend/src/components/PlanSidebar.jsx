@@ -42,6 +42,9 @@ const FlightSummary = ({ details }) => {
   const last = segments[segments.length - 1] || first
   const departure = first.departure_airport || {}
   const arrival = last.arrival_airport || {}
+  const bookingLink = details.booking_link
+  const googleFlightsUrl = details.google_flights_url
+  
   return (
     <div className="text-sm text-slate-600 dark:text-slate-300">
       <div className="font-medium text-slate-800 dark:text-slate-100">
@@ -51,6 +54,32 @@ const FlightSummary = ({ details }) => {
       <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
         {segments.length > 0 && segments[0].airline ? segments[0].airline : 'Flight'} · {details.price ? `$${details.price}` : 'Price TBD'}
       </div>
+      
+      {/* Show booking links if available */}
+      {(bookingLink || googleFlightsUrl) && (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {bookingLink && (
+            <a
+              href={bookingLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+            >
+              Book Now →
+            </a>
+          )}
+          {googleFlightsUrl && (
+            <a
+              href={googleFlightsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-md transition-colors"
+            >
+              View on Google Flights →
+            </a>
+          )}
+        </div>
+      )}
     </div>
   )
 }

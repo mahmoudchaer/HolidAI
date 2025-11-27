@@ -258,17 +258,16 @@ async def planner_agent_node(state: AgentState) -> AgentState:
             """Strip flight data to only essential fields needed for saving."""
             import copy
             stripped = copy.deepcopy(flight)
-            # Keep only essential fields
+            # Keep only essential fields (don't send long links to LLM)
             essential_fields = {
                 "flights": stripped.get("flights", []),  # Keep flight segments (needed for airports, times)
                 "price": stripped.get("price"),
                 "total_duration": stripped.get("total_duration"),
                 "type": stripped.get("type", "One way"),
-                "google_flights_url": stripped.get("google_flights_url"),  # Keep for reference but not booking_link
                 "direction": stripped.get("direction"),
                 "airline_logo": stripped.get("airline_logo"),  # Keep for display
             }
-            # Remove booking_link, booking_token, and other large/unnecessary fields
+            # Remove booking_link, booking_token, google_flights_url, and other large/unnecessary fields
             # Also clean flight segments to remove unnecessary details
             if essential_fields.get("flights"):
                 cleaned_segments = []
@@ -1029,7 +1028,7 @@ Remember: You MUST extract and save the COMPLETE flight/hotel object with ALL de
                     original_details = copy.deepcopy(details) if details else None
                     
                     # CRITICAL: Clean flight details before passing to tool
-                    # Remove long booking_link and ensure proper structure
+                    # Keep booking links for UI display, but they won't be sent to LLM (already stripped from context)
                     if details:
                         cleaned_details = {}
                         # Keep essential fields
@@ -1049,17 +1048,19 @@ Remember: You MUST extract and save the COMPLETE flight/hotel object with ALL de
                             cleaned_details["airline_logo"] = details["airline_logo"]
                         if "direction" in details:
                             cleaned_details["direction"] = details["direction"]
+                        # Keep booking links for UI display (stored in DB but not sent to LLM)
                         if "google_flights_url" in details:
                             cleaned_details["google_flights_url"] = details["google_flights_url"]
+                        if "booking_link" in details:
+                            cleaned_details["booking_link"] = details["booking_link"]
                         if "book_with" in details:
                             cleaned_details["book_with"] = details["book_with"]
                         if "booking_price" in details:
                             cleaned_details["booking_price"] = details["booking_price"]
-                        # Explicitly exclude booking_link and booking_token (too long, not needed for storage)
-                        # booking_link is very long and causes issues, booking_token is not needed
+                        # booking_token is not needed
                         
                         tool_args["details"] = cleaned_details
-                        print(f"[PLANNER] Cleaned flight details: removed booking_link, kept {len(cleaned_details)} essential fields")
+                        print(f"[PLANNER] Prepared flight details: kept booking links for UI, {len(cleaned_details)} fields total")
                 
                 # If adding a hotel, ensure we have complete details
                 original_hotel_details = None  # Initialize for UI display
