@@ -5,11 +5,13 @@ import re
 import httpx
 import json
 import requests
+import time
 from datetime import datetime
 from typing import Dict, Optional, List
 from pathlib import Path
 from dotenv import load_dotenv
 from tools.doc_loader import get_doc
+from tools.api_logger import log_api_call
 from bs4 import BeautifulSoup
 
 # Load environment variables from .env file in main directory
@@ -42,6 +44,7 @@ def register_utilities_tools(mcp):
         try:
             # Try OpenWeatherMap first if API key is available
             if WEATHER_API_KEY:
+                start_time = time.time()
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     params = {
                         "q": location,
@@ -49,8 +52,20 @@ def register_utilities_tools(mcp):
                         "units": "metric"  # Use metric for Celsius
                     }
                     response = await client.get(WEATHER_API_URL, params=params)
+                    response_time_ms = (time.time() - start_time) * 1000
                     response.raise_for_status()
                     data = response.json()
+                    
+                    # Log API call
+                    log_api_call(
+                        service="weather",
+                        endpoint="/weather",
+                        method="GET",
+                        request_payload=params,
+                        response_status=response.status_code,
+                        response_time_ms=response_time_ms,
+                        success=True
+                    )
                     
                     return {
                         "error": False,
@@ -72,11 +87,24 @@ def register_utilities_tools(mcp):
                     }
             else:
                 # Fallback to wttr.in (free, no key needed)
+                start_time = time.time()
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     url = f"https://wttr.in/{location}?format=j1"
                     response = await client.get(url)
+                    response_time_ms = (time.time() - start_time) * 1000
                     response.raise_for_status()
                     data = response.json()
+                    
+                    # Log API call (wttr.in is free but still an external API)
+                    log_api_call(
+                        service="weather",
+                        endpoint="/weather",
+                        method="GET",
+                        request_payload={"location": location, "source": "wttr.in"},
+                        response_status=response.status_code,
+                        response_time_ms=response_time_ms,
+                        success=True
+                    )
                     
                     current = data.get("current_condition", [{}])[0]
                     return {
@@ -98,15 +126,37 @@ def register_utilities_tools(mcp):
                         }
                     }
         except httpx.HTTPStatusError as e:
+            error_msg = f"Could not fetch weather data for '{location}'. Please check the location name and try again."
+            log_api_call(
+                service="weather",
+                endpoint="/weather",
+                method="GET",
+                request_payload={"location": location},
+                response_status=e.response.status_code if hasattr(e, 'response') else None,
+                response_time_ms=None,
+                success=False,
+                error_message=error_msg
+            )
             return {
                 "error": True,
-                "error_message": f"Could not fetch weather data for '{location}'. Please check the location name and try again.",
+                "error_message": error_msg,
                 "error_code": "API_ERROR"
             }
         except Exception as e:
+            error_msg = f"Error fetching weather: {str(e)}"
+            log_api_call(
+                service="weather",
+                endpoint="/weather",
+                method="GET",
+                request_payload={"location": location},
+                response_status=None,
+                response_time_ms=None,
+                success=False,
+                error_message=error_msg
+            )
             return {
                 "error": True,
-                "error_message": f"Error fetching weather: {str(e)}",
+                "error_message": error_msg,
                 "error_code": "UNEXPECTED_ERROR"
             }
     
@@ -1579,35 +1629,76 @@ def register_utilities_tools(mcp):
             }
             
             # Make API request
+            start_time = time.time()
             async with httpx.AsyncClient(timeout=15.0) as client:
                 try:
                     response = await client.get(CALENDARIFIC_API_URL, params=params)
+                    response_time_ms = (time.time() - start_time) * 1000
                     response.raise_for_status()
                     data = response.json()
+                    
+                    # Log API call
+                    success = data.get("meta", {}).get("code") == 200
+                    error_msg = None
+                    if not success:
+                        error_msg = data.get("meta", {}).get("error", "Unknown error")
+                    
+                    log_api_call(
+                        service="holidays",
+                        endpoint="/holidays",
+                        method="GET",
+                        request_payload=params,
+                        response_status=response.status_code,
+                        response_time_ms=response_time_ms,
+                        success=success,
+                        error_message=error_msg
+                    )
                 except httpx.HTTPStatusError as e:
+                    error_msg = None
                     if e.response.status_code == 401:
-                        return {
-                            "error": True,
-                            "error_message": "Invalid Calendarific API key. Please check your CALENDARIFIC_API_KEY in .env file.",
-                            "error_code": "API_KEY_INVALID"
-                        }
+                        error_msg = "Invalid Calendarific API key. Please check your CALENDARIFIC_API_KEY in .env file."
+                        error_code = "API_KEY_INVALID"
                     elif e.response.status_code == 429:
-                        return {
-                            "error": True,
-                            "error_message": "Calendarific API rate limit exceeded. Please try again later.",
-                            "error_code": "RATE_LIMIT_EXCEEDED"
-                        }
+                        error_msg = "Calendarific API rate limit exceeded. Please try again later."
+                        error_code = "RATE_LIMIT_EXCEEDED"
                     else:
-                        return {
-                            "error": True,
-                            "error_message": f"Calendarific API error: HTTP {e.response.status_code}",
-                            "error_code": "API_ERROR",
-                            "details": e.response.text[:200] if hasattr(e.response, 'text') else str(e)
-                        }
+                        error_msg = f"Calendarific API error: HTTP {e.response.status_code}"
+                        error_code = "API_ERROR"
+                    
+                    log_api_call(
+                        service="holidays",
+                        endpoint="/holidays",
+                        method="GET",
+                        request_payload=params,
+                        response_status=e.response.status_code,
+                        response_time_ms=None,
+                        success=False,
+                        error_message=error_msg
+                    )
+                    
+                    result = {
+                        "error": True,
+                        "error_message": error_msg,
+                        "error_code": error_code
+                    }
+                    if error_code == "API_ERROR":
+                        result["details"] = e.response.text[:200] if hasattr(e.response, 'text') else str(e)
+                    return result
                 except Exception as e:
+                    error_msg = f"Error calling Calendarific API: {str(e)}"
+                    log_api_call(
+                        service="holidays",
+                        endpoint="/holidays",
+                        method="GET",
+                        request_payload=params,
+                        response_status=None,
+                        response_time_ms=None,
+                        success=False,
+                        error_message=error_msg
+                    )
                     return {
                         "error": True,
-                        "error_message": f"Error calling Calendarific API: {str(e)}",
+                        "error_message": error_msg,
                         "error_code": "API_ERROR"
                     }
             

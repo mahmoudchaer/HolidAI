@@ -2,10 +2,12 @@
 
 import os
 import httpx
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 from tools.doc_loader import get_doc
+from tools.api_logger import log_api_call
 
 # Load environment variables from .env file in main directory
 # Get the project root directory (2 levels up from mcp_system/tools/)
@@ -400,11 +402,42 @@ def _make_api_call(
         # Make API request with timeout
         # Use a timeout object that allows for longer read times
         timeout_config = httpx.Timeout(timeout, connect=10.0, read=timeout, write=10.0, pool=10.0)
+        start_time = time.time()
         with httpx.Client(timeout=timeout_config) as client:
             if method.upper() == "GET":
                 response = client.get(f"{BASE_URL}{endpoint}", params=params)
             else:
                 response = client.post(f"{BASE_URL}{endpoint}", json=params)
+            response_time_ms = (time.time() - start_time) * 1000
+            
+            # Log API call
+            success = response.status_code == 200
+            error_msg = None
+            if response.status_code == 200:
+                try:
+                    api_response = response.json()
+                    if "errors" in api_response or "error" in api_response:
+                        error_info = api_response.get("errors") or api_response.get("error", {})
+                        if isinstance(error_info, list) and len(error_info) > 0:
+                            error_msg = error_info[0].get("message", "Unknown error")
+                        elif isinstance(error_info, dict):
+                            error_msg = error_info.get("message", "Unknown error")
+                        else:
+                            error_msg = str(error_info) if error_info else "Unknown error"
+                        success = False
+                except:
+                    pass
+            
+            log_api_call(
+                service="activities",
+                endpoint=endpoint,
+                method=method.upper(),
+                request_payload=params if method.upper() == "POST" else params,
+                response_status=response.status_code,
+                response_time_ms=response_time_ms,
+                success=success,
+                error_message=error_msg
+            )
             
             # Handle 400 Bad Request
             if response.status_code == 400:

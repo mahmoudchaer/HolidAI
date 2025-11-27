@@ -3,12 +3,14 @@
 import os
 import re
 import requests
+import time
 from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from tools.doc_loader import get_doc
+from tools.api_logger import log_api_call
 
 # SerpAPI configuration
 API_KEY = os.getenv("SERPAPI_KEY", "5ace04863364568bc6e013757ecaea56d0dc7d3e66401e9553d9e5e21c259453")
@@ -743,9 +745,23 @@ def fetch_booking_details(
 
     try:
         # Use very short timeout to avoid blocking (3 seconds max)
+        start_time = time.time()
         resp = requests.get(BASE_URL, params=params, timeout=3)
+        response_time_ms = (time.time() - start_time) * 1000
         resp.raise_for_status()
         data = resp.json()
+        
+        # Log API call
+        log_api_call(
+            service="flights",
+            endpoint="/booking_details",
+            method="GET",
+            request_payload=params,
+            response_status=resp.status_code,
+            response_time_ms=response_time_ms,
+            success=resp.status_code == 200 and "error" not in data,
+            error_message=data.get("error") if "error" in data else None
+        )
         
         # Check if response has error
         if "error" in data:
@@ -753,11 +769,44 @@ def fetch_booking_details(
         
         return data
     except requests.exceptions.Timeout:
-        return {"error": "Request timeout"}  # Don't raise, just return error
+        error_msg = "Request timeout"
+        log_api_call(
+            service="flights",
+            endpoint="/booking_details",
+            method="GET",
+            request_payload=params,
+            response_status=None,
+            response_time_ms=3000,
+            success=False,
+            error_message=error_msg
+        )
+        return {"error": error_msg}  # Don't raise, just return error
     except requests.exceptions.RequestException as e:
-        return {"error": f"Request failed: {str(e)}"}  # Don't raise, just return error
+        error_msg = f"Request failed: {str(e)}"
+        log_api_call(
+            service="flights",
+            endpoint="/booking_details",
+            method="GET",
+            request_payload=params,
+            response_status=None,
+            response_time_ms=None,
+            success=False,
+            error_message=error_msg
+        )
+        return {"error": error_msg}  # Don't raise, just return error
     except Exception as e:
-        return {"error": f"Booking details fetch failed: {e}"}  # Don't raise, just return error
+        error_msg = f"Booking details fetch failed: {e}"
+        log_api_call(
+            service="flights",
+            endpoint="/booking_details",
+            method="GET",
+            request_payload=params,
+            response_status=None,
+            response_time_ms=None,
+            success=False,
+            error_message=error_msg
+        )
+        return {"error": error_msg}  # Don't raise, just return error
 
 
 def _extract_booking_links(booking_details):
@@ -1039,8 +1088,22 @@ def fetch_one_way_flights(departure, arrival, date, currency,
         "api_key": API_KEY,
     }
 
+    start_time = time.time()
     resp = requests.get(BASE_URL, params=params)
+    response_time_ms = (time.time() - start_time) * 1000
     data = resp.json()
+
+    # Log API call
+    log_api_call(
+        service="flights",
+        endpoint="/search",
+        method="GET",
+        request_payload=params,
+        response_status=resp.status_code,
+        response_time_ms=response_time_ms,
+        success=resp.status_code == 200 and "error" not in data,
+        error_message=data.get("error") if "error" in data else None
+    )
 
     if "error" in data:
         return {"outbound": []}
@@ -1088,8 +1151,22 @@ def fetch_round_trip_flights(departure, arrival, dep_date, arr_date, currency,
         "api_key": API_KEY,
     }
 
+    start_time = time.time()
     resp = requests.get(BASE_URL, params=params)
+    response_time_ms = (time.time() - start_time) * 1000
     data = resp.json()
+
+    # Log API call
+    log_api_call(
+        service="flights",
+        endpoint="/search",
+        method="GET",
+        request_payload=params,
+        response_status=resp.status_code,
+        response_time_ms=response_time_ms,
+        success=resp.status_code == 200 and "error" not in data,
+        error_message=data.get("error") if "error" in data else None
+    )
 
     if "error" in data:
         return {"outbound": [], "return": []}, {"outbound": [], "return": []}

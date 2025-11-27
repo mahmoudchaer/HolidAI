@@ -4,11 +4,13 @@ import os
 import json
 import httpx
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 from tools.doc_loader import get_doc
+from tools.api_logger import log_api_call
 
 # Load environment variables from .env file in main directory
 # Get the project root directory (2 levels up from mcp_system/tools/)
@@ -260,6 +262,7 @@ def _make_api_call(request_payload: Dict, top_k: Optional[int] = None, sort_by: 
         print(f"[HOTEL API] currency: {request_payload.get('currency')}")
         
         # Make API request
+        start_time = time.time()
         with httpx.Client(timeout=12.0) as client:
             response = client.post(
                 API_ENDPOINT,
@@ -269,6 +272,7 @@ def _make_api_call(request_payload: Dict, top_k: Optional[int] = None, sort_by: 
                     "X-API-Key": API_KEY
                 }
             )
+            response_time_ms = (time.time() - start_time) * 1000
             
             # Handle 204 No Content
             if response.status_code == 204:
@@ -476,6 +480,7 @@ def _make_hotel_details_api_call(hotel_id: str, language: Optional[str] = None, 
             params["timeout"] = timeout
         
         # Make API request
+        start_time = time.time()
         with httpx.Client(timeout=timeout + 2.0) as client:
             response = client.get(
                 HOTEL_DETAILS_ENDPOINT,
@@ -484,6 +489,7 @@ def _make_hotel_details_api_call(hotel_id: str, language: Optional[str] = None, 
                     "X-API-Key": API_KEY
                 }
             )
+            response_time_ms = (time.time() - start_time) * 1000
             
             # Handle 400 Bad Request
             if response.status_code == 400:
@@ -518,6 +524,29 @@ def _make_hotel_details_api_call(hotel_id: str, language: Optional[str] = None, 
             
             # Handle 200 OK
             api_response = response.json()
+            
+            # Log API call after parsing response
+            success = response.status_code == 200 and not ("errors" in api_response or "error" in api_response)
+            error_msg = None
+            if not success and response.status_code == 200:
+                error_info = api_response.get("errors") or api_response.get("error", {})
+                if isinstance(error_info, list) and len(error_info) > 0:
+                    error_msg = error_info[0].get("message", "Unknown error")
+                elif isinstance(error_info, dict):
+                    error_msg = error_info.get("message", "Unknown error")
+                else:
+                    error_msg = str(error_info) if error_info else "Unknown error"
+            
+            log_api_call(
+                service="hotels",
+                endpoint="/hotel/details",
+                method="GET",
+                request_payload=params,
+                response_status=response.status_code,
+                response_time_ms=response_time_ms,
+                success=success,
+                error_message=error_msg
+            )
             
             # Check if response has errors
             if "errors" in api_response or "error" in api_response:
@@ -677,12 +706,15 @@ def _make_hotels_list_api_call(
             "Accept": "application/json"
         }
         
+        start_time = time.time()
         with httpx.Client(timeout=timeout) as client:
             response = client.get(
                 HOTELS_LIST_ENDPOINT,
                 params=params,
                 headers=headers
             )
+            response_time_ms = (time.time() - start_time) * 1000
+            
             
             # Check for HTTP errors
             if response.status_code == 401:
@@ -715,6 +747,29 @@ def _make_hotels_list_api_call(
             
             # Parse response
             data = response.json()
+            
+            # Log API call
+            success = response.status_code == 200 and not ("errors" in data or "error" in data)
+            error_msg = None
+            if not success and response.status_code == 200:
+                error_info = data.get("errors") or data.get("error", {})
+                if isinstance(error_info, list) and len(error_info) > 0:
+                    error_msg = error_info[0].get("message", "Unknown error")
+                elif isinstance(error_info, dict):
+                    error_msg = error_info.get("message", "Unknown error")
+                else:
+                    error_msg = str(error_info) if error_info else "Unknown error"
+            
+            log_api_call(
+                service="hotels",
+                endpoint="/hotels/list",
+                method="GET",
+                request_payload=params,
+                response_status=response.status_code,
+                response_time_ms=response_time_ms,
+                success=success,
+                error_message=error_msg
+            )
             
             return {
                 "error": False,
@@ -877,6 +932,7 @@ def _make_booking_api_call(booking_payload: Dict) -> Dict:
         print(f"[HOTEL BOOKING API] Payload (sanitized): {json.dumps({k: v if k != 'payment' else '***HIDDEN***' for k, v in booking_payload.items()}, indent=2)}")
         
         # Make API request
+        start_time = time.time()
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
                 BOOKING_ENDPOINT,
@@ -887,8 +943,30 @@ def _make_booking_api_call(booking_payload: Dict) -> Dict:
                     "Accept": "application/json"
                 }
             )
+            response_time_ms = (time.time() - start_time) * 1000
             
             print(f"[HOTEL BOOKING API] Response Status: {response.status_code}")
+            
+            # Log API call
+            success = response.status_code in [200, 204]
+            error_msg = None
+            if response.status_code not in [200, 204]:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("message", "Unknown error")
+                except:
+                    error_msg = f"HTTP {response.status_code} error"
+            
+            log_api_call(
+                service="hotels",
+                endpoint="/bookings",
+                method="POST",
+                request_payload=booking_payload,
+                response_status=response.status_code,
+                response_time_ms=response_time_ms,
+                success=success,
+                error_message=error_msg
+            )
             print(f"[HOTEL BOOKING API] Response Headers: {dict(response.headers)}")
             print(f"[HOTEL BOOKING API] Response Length: {len(response.text)} bytes")
             print(f"[HOTEL BOOKING API] Response Text (first 1000 chars): {response.text[:1000]}")

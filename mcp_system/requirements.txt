@@ -29,3 +29,6 @@ sqlalchemy>=2.0.0  # Database ORM
 # Note: Flight tools use SerpAPI via direct HTTP requests (requests library), no separate package needed
 # Note: Hotel tools use LiteAPI via direct HTTP requests (httpx library)
 
+# Azure Blob Storage for API logging
+azure-storage-blob>=12.19.0
+
