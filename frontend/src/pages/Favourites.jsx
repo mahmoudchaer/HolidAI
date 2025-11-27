@@ -136,20 +136,18 @@ const Favourites = () => {
   const removeFavorite = useFavoritesStore((state) => state.removeFavorite)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState(null)
-  const [email, setEmail] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [emailStatus, setEmailStatus] = useState(null)
 
   const handleSendEmail = (plan) => {
     setSelectedPlan(plan)
     setShowEmailModal(true)
-    setEmail('')
     setEmailStatus(null)
   }
 
   const handleEmailSubmit = async (e) => {
     e.preventDefault()
-    if (!email || !selectedPlan) return
+    if (!selectedPlan) return
 
     setIsSending(true)
     setEmailStatus(null)
@@ -162,7 +160,6 @@ const Favourites = () => {
         },
         body: JSON.stringify({
           session_id: selectedPlan.sessionId,
-          recipient_email: email,
         }),
       })
 
@@ -247,26 +244,10 @@ const Favourites = () => {
               Send Plan Summary
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-              Enter your email address to receive a summary of "{selectedPlan?.title || 'this plan'}"
+              A summary of "{selectedPlan?.title || 'this plan'}" will be sent to your registered email address.
             </p>
 
             <form onSubmit={handleEmailSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="your.email@example.com"
-                  disabled={isSending}
-                />
-              </div>
-
               {emailStatus && (
                 <div
                   className={`p-3 rounded-lg text-sm ${
@@ -293,7 +274,7 @@ const Favourites = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSending || !email}
+                  disabled={isSending}
                   className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold hover:from-blue-600 hover:to-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSending ? 'Sending...' : 'Send Email'}

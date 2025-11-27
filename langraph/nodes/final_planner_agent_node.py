@@ -21,6 +21,7 @@ import os
 import time
 from pathlib import Path
 from typing import Dict, Any, List
+from datetime import datetime, timedelta
 
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -40,6 +41,177 @@ load_dotenv(dotenv_path=env_path)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+async def extract_hotel_details_with_llm(
+    user_message: str,
+    existing_details: Dict[str, Any],
+    hotel_result: Dict[str, Any],
+    travel_plan_items: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Use LLM to intelligently extract and fill hotel details from user message and available data.
+    
+    Args:
+        user_message: The user's message (may contain hotel details)
+        existing_details: Any existing hotel details from the tool call
+        hotel_result: Available hotel search results
+        travel_plan_items: Current travel plan items (for date context)
+    
+    Returns:
+        Extracted and structured hotel details
+    """
+    import json
+    
+    # Extract dates from travel plan if available
+    check_in_date = None
+    check_out_date = None
+    for item in travel_plan_items:
+        if item.get("type") == "flight":
+            # Try to extract dates from flight details
+            flight_details = item.get("details", {})
+            if "flights" in flight_details and flight_details["flights"]:
+                first_flight = flight_details["flights"][0]
+                dep_date = first_flight.get("departure_date") or first_flight.get("date")
+                if dep_date:
+                    check_in_date = dep_date
+                    # Default to 3 nights stay
+                    try:
+                        check_in = datetime.strptime(dep_date, "%Y-%m-%d")
+                        check_out = check_in + timedelta(days=3)
+                        check_out_date = check_out.strftime("%Y-%m-%d")
+                    except (ValueError, TypeError):
+                        pass
+            break
+    
+    # Prepare context for LLM
+    available_hotels = []
+    if hotel_result and hotel_result.get("hotels"):
+        # Include all hotels with their index numbers for option matching
+        for idx, hotel in enumerate(hotel_result["hotels"][:10], 1):
+            hotel_summary = {
+                "option_number": idx,
+                "name": hotel.get("name", ""),
+                "location": hotel.get("location") or hotel.get("address", ""),
+                "rating": hotel.get("rating"),
+                "price": None,
+                "roomTypes": []
+            }
+            # Extract price and room types from roomTypes if available
+            if "roomTypes" in hotel and hotel["roomTypes"]:
+                for room_type in hotel["roomTypes"]:
+                    room_info = {}
+                    if "name" in room_type:
+                        room_info["name"] = room_type.get("name", "")
+                    if "offerRetailRate" in room_type and "amount" in room_type["offerRetailRate"]:
+                        room_info["price"] = room_type["offerRetailRate"]["amount"]
+                        if hotel_summary["price"] is None:
+                            hotel_summary["price"] = room_type["offerRetailRate"]["amount"]
+                    if room_info:
+                        hotel_summary["roomTypes"].append(room_info)
+            available_hotels.append(hotel_summary)
+    
+    # Build LLM prompt
+    prompt = f"""You are a hotel data extraction assistant. Extract and structure hotel information from the user's message and available data.
+
+User message: {user_message}
+
+Existing hotel details (may be incomplete): {json.dumps(existing_details, indent=2) if existing_details else "None"}
+
+Available hotel search results (for reference):
+{json.dumps(available_hotels, indent=2) if available_hotels else "None"}
+
+Travel context:
+- Check-in date: {check_in_date or "Not specified"}
+- Check-out date: {check_out_date or "Not specified"}
+
+Your task:
+1. Extract hotel information from the user message (name, location, room type, price, rating, dates, etc.)
+2. If the user message contains hotel details (e.g., "Sea View Hotel – Dubai, Rating: 7.3, Deluxe Room, Price: $282.01"), extract ALL of them
+3. If the user references an option number (e.g., "3rd option", "option 2", "the third one"):
+   - Match "1st/first" → option_number 1
+   - Match "2nd/second" → option_number 2
+   - Match "3rd/third" → option_number 3
+   - Match "4th/fourth" → option_number 4
+   - etc.
+   - Find the hotel with matching option_number in available hotel results
+   - Extract ALL details from that hotel (name, location, rating, price, roomTypes, etc.)
+4. Merge information from user message, existing details, and available hotel results (prioritize user message details)
+5. Return a complete, structured hotel details object with ALL available information
+
+Return a JSON object with the following structure:
+{{
+    "name": "Hotel name (required)",
+    "location": "Full address or city (required)",
+    "city": "City name",
+    "country": "Country name",
+    "rating": "Rating number (e.g., 7.3)",
+    "check_in": "Check-in date in YYYY-MM-DD format",
+    "check_out": "Check-out date in YYYY-MM-DD format",
+    "room_type": "Room type name (e.g., 'Deluxe Room')",
+    "price": "Price as number (e.g., 282.01)",
+    "currency": "Currency code (e.g., 'USD')",
+    "room_only": true/false,
+    "cancellation_policy": "Any cancellation info mentioned",
+    "hotel_id": "Hotel ID if available from search results",
+    "roomTypes": [{{"name": "Room type name", "price": price}}] if room type info available
+}}
+
+IMPORTANT:
+- Extract ALL information from the user message (price, room type, rating, etc.)
+- If user says "3rd option" or similar, match with available hotels by position
+- Fill in missing fields from available hotel results if they match the hotel name
+- Preserve all extracted details - don't drop any information
+- Return only valid JSON, no additional text"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": "You are a precise data extraction assistant. Extract hotel information and return ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        
+        extracted_data = json.loads(response.choices[0].message.content)
+        
+        # Merge with existing details (existing takes precedence for fields that are already set)
+        merged_details = {}
+        if existing_details:
+            merged_details.update(existing_details)
+        
+        # Update with LLM-extracted data
+        # Priority: LLM-extracted data > existing details (LLM has more complete info from user message)
+        for key, value in extracted_data.items():
+            if value is not None and value != "":
+                # For nested structures, merge intelligently
+                if key == "roomTypes" and isinstance(value, list):
+                    # LLM-extracted roomTypes take precedence (they come from user message or matched hotel)
+                    merged_details["roomTypes"] = value
+                elif key == "price" and value:
+                    # Convert price to number if it's a string
+                    try:
+                        if isinstance(value, str):
+                            # Remove currency symbols and commas
+                            price_str = value.replace("$", "").replace(",", "").strip()
+                            merged_details["price"] = float(price_str)
+                        else:
+                            merged_details["price"] = float(value)
+                    except (ValueError, TypeError):
+                        merged_details["price"] = value
+                else:
+                    # LLM-extracted data takes precedence (it has parsed user message)
+                    merged_details[key] = value
+        
+        print(f"[FINAL PLANNER] LLM extracted hotel details: name={merged_details.get('name')}, price={merged_details.get('price')}, room_type={merged_details.get('room_type')}")
+        return merged_details
+        
+    except Exception as e:
+        print(f"[FINAL PLANNER] Error in LLM hotel extraction: {e}")
+        # Fallback to existing details if LLM extraction fails
+        return existing_details or {}
 
 
 def get_final_planner_prompt() -> str:
@@ -448,6 +620,17 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
             # Fix hotel data structure for frontend compatibility
             if tool_name == "agent_add_plan_item_tool" and args.get("type") == "hotel":
                 details = args.get("details", {})
+                
+                # Use LLM to intelligently extract and fill hotel details from user message and available data
+                hotel_result = collected_info.get("hotel_result", {})
+                print(f"[FINAL PLANNER] Using LLM to extract hotel details from user message and available data...")
+                details = await extract_hotel_details_with_llm(
+                    user_message=user_message,
+                    existing_details=details,
+                    hotel_result=hotel_result,
+                    travel_plan_items=travel_plan_items
+                )
+                
                 # Frontend expects details.name and details.location, but planner might save hotel_name and address
                 if details:
                     if "hotel_name" in details and "name" not in details:
@@ -462,6 +645,17 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
                     # Also ensure date is set if trip_month_year exists
                     if "trip_month_year" in details and "date" not in details:
                         details["date"] = details.get("trip_month_year", "")
+                    
+                    # Map room_type to roomTypes if room_type exists but roomTypes doesn't
+                    if "room_type" in details and details["room_type"]:
+                        if "roomTypes" not in details or not details["roomTypes"]:
+                            room_type_name = details["room_type"]
+                            room_info = {"name": room_type_name}
+                            if "price" in details:
+                                room_info["price"] = details["price"]
+                            details["roomTypes"] = [room_info]
+                            print(f"[FINAL PLANNER] Mapped room_type '{room_type_name}' to roomTypes")
+                    
                     args["details"] = details
                     print(f"[FINAL PLANNER] Fixed hotel data structure: mapped hotel_name->name, address->location, checkin->check_in, checkout->check_out")
                     

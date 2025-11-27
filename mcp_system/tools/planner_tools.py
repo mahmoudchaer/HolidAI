@@ -41,6 +41,18 @@ class Base(DeclarativeBase):
     pass
 
 
+class Chat(Base):
+    """Chat/Conversation model."""
+    __tablename__ = "chats"
+
+    email = Column(String, primary_key=True, index=True)
+    session_id = Column(String, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    messages = Column(JSONB, nullable=False, default=list)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class TravelPlanItem(Base):
     """Travel plan item model."""
     __tablename__ = "travel_plan_items"
@@ -185,25 +197,51 @@ except Exception as e:
     print(f"[PLANNER] Could not initialize tables on import: {e}")
 
 
+def _get_email_from_session(session_id: str) -> Optional[str]:
+    """Get user email from session_id by looking up in Chat table."""
+    if not session_id:
+        return None
+    db = SessionLocal()
+    try:
+        chat = db.query(Chat).filter(Chat.session_id == session_id).first()
+        if chat:
+            return chat.email
+        return None
+    except Exception as e:
+        print(f"[PLANNER TOOL] Error looking up email from session_id: {e}")
+        return None
+    finally:
+        db.close()
+
+
 def register_planner_tools(mcp):
     """Register all planner-related tools with the MCP server."""
     
     @mcp.tool(description="Add a new item to the travel plan. Use this when the user wants to save/select a flight, hotel, or other travel option.")
-    def agent_add_plan_item_tool(user_email: str, session_id: str, title: str, details: Dict, type: str, status: str = "not_booked") -> Dict:
+    def agent_add_plan_item_tool(session_id: str, title: str, details: Dict, type: str, user_email: Optional[str] = None, status: str = "not_booked") -> Dict:
         """Add a new item to the travel plan.
         
         Args:
-            user_email: User's email address
-            session_id: Session identifier
+            session_id: Session identifier (required)
             title: Title/name of the plan item (e.g., "Flight to Paris", "Hotel in Dubai")
             details: JSON object containing all details about the item (flight details, hotel info, etc.)
             type: Type of item (e.g., "flight", "hotel", "visa", "restaurant", "activity")
+            user_email: User's email address (optional - will be looked up from session_id if not provided)
             status: Status of the item (default: "not_booked", "booked", "cancelled")
         
         Returns:
             Dictionary with success status and message
         """
         try:
+            # Get email from session_id if not provided
+            if not user_email:
+                user_email = _get_email_from_session(session_id)
+                if not user_email:
+                    return {
+                        "success": False,
+                        "message": f"Could not determine user email from session_id: {session_id}"
+                    }
+                print(f"[PLANNER TOOL] Looked up email from session_id: {user_email}")
             # Try to create table if it doesn't exist (retry mechanism)
             try:
                 Base.metadata.create_all(bind=engine)
@@ -343,13 +381,13 @@ def register_planner_tools(mcp):
             }
     
     @mcp.tool(description="Update an existing travel plan item. Use this when the user wants to modify details or status of a saved item.")
-    def agent_update_plan_item_tool(user_email: str, session_id: str, title: str, details: Optional[Dict] = None, status: Optional[str] = None) -> Dict:
+    def agent_update_plan_item_tool(session_id: str, title: str, user_email: Optional[str] = None, details: Optional[Dict] = None, status: Optional[str] = None) -> Dict:
         """Update an existing travel plan item.
         
         Args:
-            user_email: User's email address
-            session_id: Session identifier
+            session_id: Session identifier (required)
             title: Title of the plan item to update
+            user_email: User's email address (optional - will be looked up from session_id if not provided)
             details: Optional new details to update (if None, keeps existing)
             status: Optional new status to update (if None, keeps existing)
         
@@ -357,6 +395,16 @@ def register_planner_tools(mcp):
             Dictionary with success status and message
         """
         try:
+            # Get email from session_id if not provided
+            if not user_email:
+                user_email = _get_email_from_session(session_id)
+                if not user_email:
+                    return {
+                        "success": False,
+                        "message": f"Could not determine user email from session_id: {session_id}"
+                    }
+                print(f"[PLANNER TOOL] Looked up email from session_id: {user_email}")
+            
             # Try to create table if it doesn't exist (retry mechanism)
             try:
                 Base.metadata.create_all(bind=engine)
@@ -407,18 +455,28 @@ def register_planner_tools(mcp):
             }
     
     @mcp.tool(description="Delete a travel plan item. Use this when the user wants to remove an item from their plan.")
-    def agent_delete_plan_item_tool(user_email: str, session_id: str, title: str) -> Dict:
+    def agent_delete_plan_item_tool(session_id: str, title: str, user_email: Optional[str] = None) -> Dict:
         """Delete a travel plan item.
         
         Args:
-            user_email: User's email address
-            session_id: Session identifier
+            session_id: Session identifier (required)
             title: Title of the plan item to delete
+            user_email: User's email address (optional - will be looked up from session_id if not provided)
         
         Returns:
             Dictionary with success status and message
         """
         try:
+            # Get email from session_id if not provided
+            if not user_email:
+                user_email = _get_email_from_session(session_id)
+                if not user_email:
+                    return {
+                        "success": False,
+                        "message": f"Could not determine user email from session_id: {session_id}"
+                    }
+                print(f"[PLANNER TOOL] Looked up email from session_id: {user_email}")
+            
             # Try to create table if it doesn't exist (retry mechanism)
             try:
                 Base.metadata.create_all(bind=engine)
@@ -459,12 +517,12 @@ def register_planner_tools(mcp):
             }
     
     @mcp.tool(description="Retrieve all travel plan items for a session. Use this to get the current travel plan.")
-    def agent_get_plan_items_tool(user_email: str, session_id: str, type: Optional[str] = None, status: Optional[str] = None) -> Dict:
+    def agent_get_plan_items_tool(session_id: str, user_email: Optional[str] = None, type: Optional[str] = None, status: Optional[str] = None) -> Dict:
         """Retrieve travel plan items for a session.
         
         Args:
-            user_email: User's email address
-            session_id: Session identifier
+            session_id: Session identifier (required)
+            user_email: User's email address (optional - will be looked up from session_id if not provided)
             type: Optional filter by type (e.g., "flight", "hotel")
             status: Optional filter by status (e.g., "not_booked", "booked")
         
@@ -472,6 +530,17 @@ def register_planner_tools(mcp):
             Dictionary with list of plan items
         """
         try:
+            # Get email from session_id if not provided
+            if not user_email:
+                user_email = _get_email_from_session(session_id)
+                if not user_email:
+                    return {
+                        "success": False,
+                        "message": f"Could not determine user email from session_id: {session_id}",
+                        "items": []
+                    }
+                print(f"[PLANNER TOOL] Looked up email from session_id: {user_email}")
+            
             # Try to create table if it doesn't exist (retry mechanism)
             try:
                 Base.metadata.create_all(bind=engine)

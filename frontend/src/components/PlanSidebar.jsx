@@ -103,25 +103,25 @@ const HotelSummary = ({ details }) => {
       
       {/* Show room type if available */}
       {roomType && (
-        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           Room: {roomType}
-        </div>
-      )}
+            </div>
+          )}
       
       {/* Show check-in/check-out dates if available */}
       {checkIn && checkOut && (
         <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           📅 {checkIn} → {checkOut}
-        </div>
-      )}
+            </div>
+          )}
       
       {/* Show price if available */}
       {price && (
         <div className="text-xs text-slate-700 dark:text-slate-200 font-semibold mt-1">
           💰 {price}
-          {details.currency && ` ${details.currency}`}
-        </div>
-      )}
+              {details.currency && ` ${details.currency}`}
+            </div>
+          )}
       
       {/* Show booking link as a button if available */}
       {details.booking_link && (
@@ -136,10 +136,10 @@ const HotelSummary = ({ details }) => {
       )}
       
       {/* Show board/meal plan if available */}
-      {details.board && (
+          {details.board && (
         <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           🍽️ {details.board}
-        </div>
+            </div>
       )}
       
       {/* Show date if no room details but date exists */}

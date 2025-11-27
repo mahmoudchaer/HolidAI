@@ -883,7 +883,6 @@ def send_plan_email():
     try:
         data = request.json
         session_id = data.get("session_id")
-        recipient_email = data.get("recipient_email", "").strip()
         user_email = session.get("user_email")
         
         if not user_email:
@@ -892,8 +891,8 @@ def send_plan_email():
         if not session_id:
             return jsonify({"success": False, "error": "session_id is required"}), 400
         
-        if not recipient_email or "@" not in recipient_email:
-            return jsonify({"success": False, "error": "Valid recipient email is required"}), 400
+        # Use the signed-in user's email as recipient
+        recipient_email = user_email
         
         # Get email credentials from .env
         email_user = os.getenv("EMAIL_USER")
