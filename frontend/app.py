@@ -19,6 +19,10 @@ import json
 import uuid
 import io
 import contextlib
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from openai import OpenAI
 
 # Add langraph and project root to path
 project_root = Path(__file__).parent.parent
@@ -869,6 +873,145 @@ def book_hotel():
         return jsonify({
             "error": True,
             "error_message": f"Booking failed: {str(e)}"
+        }), 500
+
+
+@app.route("/api/send-plan-email", methods=["POST"])
+@require_login
+def send_plan_email():
+    """Send a plan summary by email using LLM to generate the summary."""
+    try:
+        data = request.json
+        session_id = data.get("session_id")
+        recipient_email = data.get("recipient_email", "").strip()
+        user_email = session.get("user_email")
+        
+        if not user_email:
+            return jsonify({"success": False, "error": "Not authenticated"}), 401
+        
+        if not session_id:
+            return jsonify({"success": False, "error": "session_id is required"}), 400
+        
+        if not recipient_email or "@" not in recipient_email:
+            return jsonify({"success": False, "error": "Valid recipient email is required"}), 400
+        
+        # Get email credentials from .env
+        email_user = os.getenv("EMAIL_USER")
+        email_pass = os.getenv("EMAIL_PASS")
+        
+        if not email_user or not email_pass:
+            return jsonify({
+                "success": False,
+                "error": "Email service not configured. Please set EMAIL_USER and EMAIL_PASS in .env"
+            }), 500
+        
+        # Fetch plan items and chat title from database
+        db = SessionLocal()
+        try:
+            plan_items = db.query(TravelPlanItem).filter(
+                TravelPlanItem.email == user_email,
+                TravelPlanItem.session_id == session_id
+            ).order_by(TravelPlanItem.created_at.asc()).all()
+            
+            if not plan_items:
+                return jsonify({
+                    "success": False,
+                    "error": "No plan items found for this session"
+                }), 404
+            
+            # Get chat title if available
+            chat = db.query(Chat).filter(
+                Chat.email == user_email,
+                Chat.session_id == session_id
+            ).first()
+            plan_title = chat.title if chat else (plan_items[0].title if plan_items else "Travel Plan")
+            
+            # Serialize plan items
+            plan_data = []
+            for item in plan_items:
+                plan_data.append({
+                    "title": item.title,
+                    "type": item.type,
+                    "status": item.status,
+                    "details": item.details or {}
+                })
+        finally:
+            db.close()
+        
+        # Generate summary using LLM
+        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Create prompt for LLM
+        plan_json = json.dumps(plan_data, indent=2)
+        prompt = f"""You are a travel assistant. Generate a comprehensive, well-formatted email summary of the following travel plan.
+
+Travel Plan Data:
+{plan_json}
+
+Please create a professional, friendly email summary that includes:
+1. A welcoming introduction
+2. An organized overview of all plan items grouped by type (flights, hotels, restaurants, activities, etc.)
+3. Key details for each item (dates, locations, prices if available, etc.)
+4. A closing message
+
+Format the email in plain text (no markdown), but use clear sections and bullet points where appropriate. Make it easy to read and informative."""
+
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4.1",
+                messages=[
+                    {"role": "system", "content": "You are a helpful travel assistant that creates clear, organized email summaries of travel plans."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7
+            )
+            
+            email_body = response.choices[0].message.content
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to generate summary: {str(e)}"
+            }), 500
+        
+        # Send email
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = email_user
+            msg['To'] = recipient_email
+            msg['Subject'] = f"Travel Plan Summary: {plan_title}"
+            
+            # Add body
+            msg.attach(MIMEText(email_body, 'plain'))
+            
+            # Send email using SMTP
+            # For Gmail, use smtp.gmail.com with port 587
+            smtp_server = "smtp.gmail.com"
+            smtp_port = 587
+            
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(email_user, email_pass)
+            server.send_message(msg)
+            server.quit()
+            
+            return jsonify({
+                "success": True,
+                "message": "Email sent successfully"
+            })
+            
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to send email: {str(e)}"
+            }), 500
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": f"Server error: {str(e)}"
         }), 500
 
 

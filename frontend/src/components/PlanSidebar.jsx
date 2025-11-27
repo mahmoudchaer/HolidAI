@@ -58,46 +58,67 @@ const FlightSummary = ({ details }) => {
 const HotelSummary = ({ details }) => {
   if (!details) return null
   
-  // Check if this hotel has room booking details (check-in, check-out, price)
-  const hasRoomDetails = details.check_in && details.check_out && (details.price_total || details.price)
+  // Normalize field names - handle both checkin/checkout and check_in/check_out
+  const checkIn = details.check_in || details.checkin
+  const checkOut = details.check_out || details.checkout
+  const price = details.price_total || details.price
+  const roomType = details.room_type || details.roomType
+  
+  // Check if this hotel has room booking details
+  const hasRoomDetails = checkIn && checkOut && price
   
   return (
     <div className="text-sm text-slate-600 dark:text-slate-300">
       <div className="font-medium text-slate-800 dark:text-slate-100">{details.name || details.hotel_name || 'Hotel'}</div>
-      {(details.location || details.address) && <div>{details.location || details.address}</div>}
+      {(details.location || details.address) && <div className="text-xs text-slate-500 dark:text-slate-400">{details.location || details.address}</div>}
       
-      {/* Show room details if available */}
-      {hasRoomDetails && (
-        <>
-          {(details.room_type || details.roomType) && (
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Room: {details.room_type || details.roomType}
-            </div>
-          )}
-          {details.check_in && details.check_out && (
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              {details.check_in} → {details.check_out}
-            </div>
-          )}
-          {(details.price_total || details.price) && (
-            <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-              ${details.price_total || details.price}
-              {details.currency && ` ${details.currency}`}
-            </div>
-          )}
-          {details.board && (
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              {details.board}
-            </div>
-          )}
-        </>
+      {/* Show room type if available */}
+      {roomType && (
+        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          Room: {roomType}
+        </div>
+      )}
+      
+      {/* Show check-in/check-out dates if available */}
+      {checkIn && checkOut && (
+        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          📅 {checkIn} → {checkOut}
+        </div>
+      )}
+      
+      {/* Show price if available */}
+      {price && (
+        <div className="text-xs text-slate-700 dark:text-slate-200 font-semibold mt-1">
+          💰 {price}
+          {details.currency && ` ${details.currency}`}
+        </div>
+      )}
+      
+      {/* Show booking link as a button if available */}
+      {details.booking_link && (
+        <a
+          href={details.booking_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block mt-2 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+        >
+          Book Now →
+        </a>
+      )}
+      
+      {/* Show board/meal plan if available */}
+      {details.board && (
+        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          🍽️ {details.board}
+        </div>
       )}
       
       {/* Show date if no room details but date exists */}
       {!hasRoomDetails && (details.date || details.trip_month_year) && (
-        <div>{formatDateTime(details.date || details.trip_month_year)}</div>
+        <div className="mt-1">{formatDateTime(details.date || details.trip_month_year)}</div>
       )}
       
+      {/* Show ratings */}
       {details.star_rating && <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">⭐ {details.star_rating} stars</div>}
       {details.rating && !details.star_rating && <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">⭐ {details.rating}/10</div>}
     </div>

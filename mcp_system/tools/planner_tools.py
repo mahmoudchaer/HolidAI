@@ -217,6 +217,13 @@ def register_planner_tools(mcp):
             if isinstance(title, str):
                 title = title.replace('\x00', '')
             
+            # Normalize field names for hotels: checkin/checkout -> check_in/check_out
+            if type == "hotel":
+                if "checkin" in details and "check_in" not in details:
+                    details["check_in"] = details.pop("checkin")
+                if "checkout" in details and "check_out" not in details:
+                    details["check_out"] = details.pop("checkout")
+            
             # Round-trip through JSON to ensure proper encoding before storing in PostgreSQL
             # This catches any remaining encoding issues
             try:
@@ -262,6 +269,11 @@ def register_planner_tools(mcp):
                     # For hotels: If new details have room info (check_in, check_out, price) and existing doesn't, merge them
                     if type == "hotel" and existing.type == "hotel":
                         existing_details = existing.details or {}
+                        # Normalize existing details field names
+                        if "checkin" in existing_details and "check_in" not in existing_details:
+                            existing_details["check_in"] = existing_details.pop("checkin")
+                        if "checkout" in existing_details and "check_out" not in existing_details:
+                            existing_details["check_out"] = existing_details.pop("checkout")
                         # Merge room details if new details have them
                         if details.get("check_in") and not existing_details.get("check_in"):
                             existing_details["check_in"] = details.get("check_in")

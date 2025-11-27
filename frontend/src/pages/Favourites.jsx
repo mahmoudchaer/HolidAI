@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Navbar from '../components/Navbar'
@@ -63,7 +63,7 @@ const PlanPreview = ({ items }) => {
   )
 }
 
-const FavouriteCard = ({ plan, index, onRemove }) => {
+const FavouriteCard = ({ plan, index, onRemove, onSendEmail }) => {
   const stats = useMemo(() => {
     return plan.items.reduce((acc, item) => {
       const type = item.type && typeMeta[item.type] ? item.type : 'other'
@@ -90,12 +90,21 @@ const FavouriteCard = ({ plan, index, onRemove }) => {
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Saved {formatDate(plan.savedAt)}</p>
         </div>
-        <button
-          onClick={() => onRemove(plan.sessionId)}
-          className="text-sm font-medium text-rose-500 hover:text-rose-600 transition-colors"
-        >
-          Remove
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onSendEmail(plan)}
+            className="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors"
+            title="Send plan summary by email"
+          >
+            📧 Email
+          </button>
+          <button
+            onClick={() => onRemove(plan.sessionId)}
+            className="text-sm font-medium text-rose-500 hover:text-rose-600 transition-colors"
+          >
+            Remove
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -125,6 +134,55 @@ const FavouriteCard = ({ plan, index, onRemove }) => {
 const Favourites = () => {
   const favorites = useFavoritesStore((state) => state.favorites)
   const removeFavorite = useFavoritesStore((state) => state.removeFavorite)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState(null)
+  const [email, setEmail] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const [emailStatus, setEmailStatus] = useState(null)
+
+  const handleSendEmail = (plan) => {
+    setSelectedPlan(plan)
+    setShowEmailModal(true)
+    setEmail('')
+    setEmailStatus(null)
+  }
+
+  const handleEmailSubmit = async (e) => {
+    e.preventDefault()
+    if (!email || !selectedPlan) return
+
+    setIsSending(true)
+    setEmailStatus(null)
+
+    try {
+      const response = await fetch('/api/send-plan-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: selectedPlan.sessionId,
+          recipient_email: email,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setEmailStatus({ type: 'success', message: 'Email sent successfully!' })
+        setTimeout(() => {
+          setShowEmailModal(false)
+          setEmailStatus(null)
+        }, 2000)
+      } else {
+        setEmailStatus({ type: 'error', message: data.error || 'Failed to send email' })
+      }
+    } catch (error) {
+      setEmailStatus({ type: 'error', message: 'Failed to send email. Please try again.' })
+    } finally {
+      setIsSending(false)
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -164,12 +222,87 @@ const Favourites = () => {
           ) : (
             <motion.div layout className="grid gap-6 md:grid-cols-2">
               {favorites.map((plan, idx) => (
-                <FavouriteCard key={plan.sessionId} plan={plan} index={idx} onRemove={removeFavorite} />
+                <FavouriteCard
+                  key={plan.sessionId}
+                  plan={plan}
+                  index={idx}
+                  onRemove={removeFavorite}
+                  onSendEmail={handleSendEmail}
+                />
               ))}
             </motion.div>
           )}
         </div>
       </main>
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 max-w-md w-full"
+          >
+            <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-2">
+              Send Plan Summary
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              Enter your email address to receive a summary of "{selectedPlan?.title || 'this plan'}"
+            </p>
+
+            <form onSubmit={handleEmailSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="your.email@example.com"
+                  disabled={isSending}
+                />
+              </div>
+
+              {emailStatus && (
+                <div
+                  className={`p-3 rounded-lg text-sm ${
+                    emailStatus.type === 'success'
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                  }`}
+                >
+                  {emailStatus.message}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEmailModal(false)
+                    setEmailStatus(null)
+                  }}
+                  disabled={isSending}
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSending || !email}
+                  className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold hover:from-blue-600 hover:to-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSending ? 'Sending...' : 'Send Email'}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

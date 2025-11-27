@@ -454,11 +454,16 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
                         details["name"] = details.pop("hotel_name")
                     if "address" in details and "location" not in details:
                         details["location"] = details.pop("address")
+                    # Normalize checkin/checkout to check_in/check_out for consistency
+                    if "checkin" in details and "check_in" not in details:
+                        details["check_in"] = details.pop("checkin")
+                    if "checkout" in details and "check_out" not in details:
+                        details["check_out"] = details.pop("checkout")
                     # Also ensure date is set if trip_month_year exists
                     if "trip_month_year" in details and "date" not in details:
                         details["date"] = details.get("trip_month_year", "")
                     args["details"] = details
-                    print(f"[FINAL PLANNER] Fixed hotel data structure: mapped hotel_name->name, address->location")
+                    print(f"[FINAL PLANNER] Fixed hotel data structure: mapped hotel_name->name, address->location, checkin->check_in, checkout->check_out")
                     
                     # Check for duplicate hotels by name and location
                     hotel_name = details.get("name", "").lower().strip()
