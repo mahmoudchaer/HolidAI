@@ -528,8 +528,9 @@ Your role:
 - Take the user's original message and synthesize it with the information gathered from specialized agents
 - Generate a natural, conversational response that feels human and helpful
 - Present information in a clear, organized manner
-- Be friendly, professional, and concise
+- Be friendly, professional, and CONCISE - don't repeat information unnecessarily
 - Use the actual data provided in the collected_info section - do not make up information
+- Focus on answering what the user asked for - don't show everything if they asked for something specific (e.g., if they asked for cheapest, only show cheapest)
 
 CRITICAL RULES - READ CAREFULLY:
 1. NEVER include "Collected_info:" or any JSON structure in your response
@@ -552,6 +553,7 @@ IMPORTANT:
     * **Duration** - Flight duration if available (e.g., "8h 15m")
     * **Flight ID** - Each flight has a "flight_id" field (e.g., "F1", "F2"). Use this ID ONCE per flight as a booking placeholder.
   ⚠️ **IMPORTANT**: You do NOT need to include every detail (like legroom, aircraft type, seat class, airport IDs, etc.) unless the user specifically asks for them. Focus on the main information above.
+  ⚠️ **CRITICAL - CHEAPEST FLIGHTS**: If the user asks for "cheapest flights" or "cheapest flight", ONLY show the cheapest outbound and cheapest return flight. Do NOT show multiple options - just the single cheapest option for each direction. The filtered flight_result will already contain only the cheapest flights, so use what's provided.
   ⚠️ **BOOKING LINKS - CRITICAL**: 
     * When presenting a flight, mention the flight_id ONCE at the end of that flight's description
     * Format: "Flight details... Price: $450. Book: F1" or "Flight details... You can book this flight: F1"
@@ -598,21 +600,13 @@ IMPORTANT:
     * The booking link will take them to a secure page where they can enter payment information safely
   Only report an error if the result has "error": true AND no hotels data.
 
-- For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants you found.
-  ⚠️ CRITICAL - READ CAREFULLY: 
-    * Your response MUST be VERY SHORT - just 1 sentence maximum
-    * Example: "Here are some great restaurants in Paris!" or "I found some excellent restaurants in Paris for you!"
-    * DO NOT write ANY text about individual restaurants
-    * DO NOT list restaurant names, addresses, or descriptions
-    * DO NOT mention photos at all (even if photos are present in the data)
-    * DO NOT write anything else - just the simple greeting sentence
-    * The frontend will automatically display beautiful cards with ALL information (name, rating, address, photos if available)
-    * The [LOCATION_DATA] tag will be added automatically - you don't need to do anything
-    * If you write too much, the frontend won't display the cards properly
-    * IMPORTANT: Always return a greeting sentence even if photos are not present - locations should still be displayed
-    * Example GOOD response: "Here are some excellent restaurants in Paris!"
-    * Example BAD response: "I found 10 restaurants. Restaurant 1 is located at... Photo 1, Photo 2..."
-  Only report an error if the result has "error": true AND no data.
+- For tripadvisor_result: If it has a "data" array with items, those are real locations/restaurants/attractions you found.
+  * Present the locations naturally in your response, similar to how you present hotels or flights
+  * Include relevant details like name, address, rating (if available), and any notable features
+  * Format them in a clear, readable way (use bullet points or numbered lists if there are many)
+  * If there are many results, you can summarize the top options or group them by type
+  * Be conversational and helpful - describe what makes each location interesting or relevant to the user's query
+  * Only report an error if the result has "error": true AND no data.
 
 - For utilities_result: This contains utility information (weather, currency conversion, date/time, eSIM bundles, or holidays). Present the information naturally based on what tool was used:
   * **CRITICAL - MULTIPLE RESULTS**: If utilities_result has "multiple_results": true, it contains a "results" array where each item has "tool", "args", and "result". You MUST check each item in the "results" array:
@@ -931,74 +925,43 @@ Please revise your response based on this feedback to fix the issues mentioned."
     # Initialize final_response to avoid UnboundLocalError
     final_response = ""
     
-    # CRITICAL: For TripAdvisor results ONLY, skip LLM and generate greeting directly
-    # BUT: Skip this greeting if user is choosing/selecting an option (they're confirming, not searching)
-    tripadvisor_result = collected_info.get("tripadvisor_result")
-    if tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error") and not (is_choosing_option or needs_planner):
-        locations = tripadvisor_result.get("data", [])
-        if locations and len(locations) > 0:
-            # Skip LLM entirely - just generate a simple greeting
+    # Call LLM to generate response (TripAdvisor results are handled like any other data)
+    import traceback
+    try:
+        # Call OpenAI API (direct call - OpenAI client handles its own timeouts)
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=messages,
+            temperature=0.7
+        )
+        
+        message = response.choices[0].message
+        raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+        
+        # Clean the response to remove any JSON/Collected_info references
+        final_response = clean_response(raw_response)
+        
+        # Replace flight IDs with actual booking URLs in the response
+        if flight_url_mapping:
             import re
-            city_name = "this location"
-            city_match = re.search(r'\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', user_message)
-            if city_match:
-                city_name = city_match.group(1)
+            # Step 1: Remove any raw URLs that leaked through (long http/https links not in markdown)
+            # This pattern matches URLs that are NOT inside markdown links
+            # More aggressive: match any long URL that's not already in [text](url) format
+            url_pattern = r'(?<!\[)(?<!\]\()https?://[^\s\)]+(?!\))'
+            # But first, let's be more specific - match URLs that are clearly flight booking URLs
+            flight_url_pattern = r'https?://(www\.)?google\.com/travel/clk[^\s\)]+'
+            final_response = re.sub(flight_url_pattern, '', final_response)
+            # Then remove any remaining raw URLs
+            final_response = re.sub(url_pattern, '', final_response)
             
-            location_type = "recommendations"
-            user_msg_lower = user_message.lower()
-            if "restaurant" in user_msg_lower:
-                location_type = "restaurants"
-            elif "museum" in user_msg_lower:
-                location_type = "museums"
-            elif "attraction" in user_msg_lower:
-                location_type = "attractions"
+            # Step 2: Clean up any duplicate booking button patterns
+            # Remove patterns like "Book Now | View on Google Flights" that appear multiple times
+            duplicate_buttons = r'(\[Book Now\]\([^\)]+\)\s*\|\s*\[View on Google Flights\]\([^\)]+\)\s*){2,}'
+            final_response = re.sub(duplicate_buttons, lambda m: m.group(0).split('|')[0] + ' | ' + m.group(0).split('|')[1] if '|' in m.group(0) else m.group(0), final_response)
             
-            if location_type == "recommendations":
-                final_response = f"Here are some great recommendations in {city_name}!"
-            else:
-                final_response = f"Here are some great {location_type} in {city_name}!"
-            
-            print(f"[CONVERSATIONAL] ✅ SKIPPED LLM for TripAdvisor - generated greeting: '{final_response}'")
-        else:
-            # No locations, proceed with normal LLM call
-            tripadvisor_result = None
-    elif is_choosing_option or needs_planner:
-        # User is choosing an option - don't generate TripAdvisor greeting, let LLM handle confirmation
-        print(f"[CONVERSATIONAL] User is choosing/selecting an option, skipping TripAdvisor greeting")
-        tripadvisor_result = None  # Set to None so LLM handles the response
-    
-    # Call LLM to generate response (skip if we already generated TripAdvisor greeting)
-    if not (tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error") and tripadvisor_result.get("data")):
-        import traceback
-        try:
-            # Call OpenAI API (direct call - OpenAI client handles its own timeouts)
-            response = client.chat.completions.create(
-                model="gpt-4.1",
-                messages=messages,
-                temperature=0.7
-            )
-            
-            message = response.choices[0].message
-            raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
-            
-            # Clean the response to remove any JSON/Collected_info references
-            final_response = clean_response(raw_response)
-            
-            # Replace flight IDs with actual booking URLs in the response
-            if flight_url_mapping:
-                import re
-                # Step 1: Remove any raw URLs that leaked through (long http/https links not in markdown)
-                url_pattern = r'(?<!\[)(?<!\]\()https?://[^\s\)]+(?!\))'
-                final_response = re.sub(url_pattern, '', final_response)
-                
-                # Step 2: Clean up any duplicate booking button patterns
-                # Remove patterns like "Book Now | View on Google Flights" that appear multiple times
-                duplicate_buttons = r'(\[Book Now\]\([^\)]+\)\s*\|\s*\[View on Google Flights\]\([^\)]+\)\s*){2,}'
-                final_response = re.sub(duplicate_buttons, lambda m: m.group(0).split('|')[0] + ' | ' + m.group(0).split('|')[1] if '|' in m.group(0) else m.group(0), final_response)
-                
-                # Step 3: Replace each flight ID ONCE with booking links
-                replaced_count = 0
-                for flight_id, urls in flight_url_mapping.items():
+            # Step 3: Replace each flight ID ONCE with booking links
+            replaced_count = 0
+            for flight_id, urls in flight_url_mapping.items():
                     # Skip if no URLs available
                     if not urls.get("booking_link") and not urls.get("google_flights_url"):
                         print(f"[CONVERSATIONAL] Skipping {flight_id} - no URLs available")
@@ -1057,63 +1020,118 @@ Please revise your response based on this feedback to fix the issues mentioned."
                             final_response = final_response[:id_pos + len(flight_id)] + f' {links_text}' + final_response[id_pos + len(flight_id):]
                             replaced_count += 1
                             print(f"[CONVERSATIONAL] Inserted links after {flight_id} (fallback)")
-                
-                print(f"[CONVERSATIONAL] Replaced {replaced_count} out of {len(flight_url_mapping)} flight IDs with booking URLs")
             
-            # Check if booking intent is present and add booking URL
-            hotel_result = collected_info.get("hotel_result")
-            if hotel_result and isinstance(hotel_result, dict) and hotel_result.get("_booking_intent"):
-                booking_hotel_id = hotel_result.get("_booking_hotel_id")
-                booking_rate_id = hotel_result.get("_booking_rate_id")
-                booking_hotel_name = hotel_result.get("_booking_hotel_name", "Selected Hotel")
-                booking_checkin = hotel_result.get("_booking_checkin")
-                booking_checkout = hotel_result.get("_booking_checkout")
-                booking_price = hotel_result.get("_booking_price", "")
-                
-                if booking_hotel_id and booking_rate_id:
-                    # Generate secure booking URL
-                    from urllib.parse import quote
-                    booking_url = f"/booking?hotel_id={quote(booking_hotel_id)}&rate_id={quote(booking_rate_id)}&hotel_name={quote(booking_hotel_name)}&checkin={quote(booking_checkin)}&checkout={quote(booking_checkout)}"
-                    if booking_price and booking_price != "N/A":
-                        booking_url += f"&price={quote(str(booking_price))}"
-                    
-                    # Append booking link to response
-                    booking_message = f"\n\n🔒 **Secure Booking**\n\nI've prepared your booking for {booking_hotel_name}! For your security, please complete your reservation and payment details on our secure booking page:\n\n[Complete Your Booking →]({booking_url})\n\nThis secure page will allow you to enter your payment information safely."
-                    final_response += booking_message
-                    print(f"[CONVERSATIONAL] Added booking URL: {booking_url}")
-        except Exception as e:
-            error_msg = str(e)
-            error_trace = traceback.format_exc()
-            # Log the error for debugging
-            print(f"Error in conversational_agent_node: {error_msg}")
-            print(f"Traceback: {error_trace}")
+            # CRITICAL: Clean up any malformed markdown links (e.g., [Book Now](F5 Book Now | View on Google Flights))
+            # Fix patterns like [Text](F5 [Book Now](url)) or [Text](F5 Book Now | View on Google Flights)
+            malformed_pattern = r'\[([^\]]+)\]\(F\d+\s+\[([^\]]+)\]\([^\)]+\)[^\)]*\)'
+            final_response = re.sub(malformed_pattern, r'\2', final_response)
             
-            # Handle context length errors specifically
-            if "context_length" in error_msg.lower() or "maximum context length" in error_msg.lower():
-                # Try with simplified messages - just pass a summary
-                simplified_messages = [
-                    {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories, travel_plan_items=travel_plan_items)},
-                    {
-                        "role": "user",
-                        "content": f"""User's original message: {user_message}
+            # Also fix patterns where flight ID is inside markdown link text
+            malformed_pattern2 = r'\[([^\]]*F\d+[^\]]*)\]\(([^\)]+)\)'
+            def fix_malformed_link(match):
+                link_text = match.group(1)
+                # Extract flight ID if present
+                flight_id_match = re.search(r'F\d+', link_text)
+                if flight_id_match:
+                    flight_id = flight_id_match.group(0)
+                    # If URL is a flight URL, replace with proper format
+                    if flight_id in flight_url_mapping:
+                        urls = flight_url_mapping[flight_id]
+                        booking_links = []
+                        if urls.get("booking_link"):
+                            booking_links.append(f'[Book Now]({urls["booking_link"]})')
+                        if urls.get("google_flights_url"):
+                            booking_links.append(f'[View on Google Flights]({urls["google_flights_url"]})')
+                        if booking_links:
+                            return f"{flight_id} {' | '.join(booking_links)}"
+                return match.group(0)
+            final_response = re.sub(malformed_pattern2, fix_malformed_link, final_response)
+            
+            # CRITICAL: Clean up any remaining malformed URLs that might have leaked through
+            # Remove any very long URLs (over 200 chars) that aren't in markdown format
+            very_long_url_pattern = r'(?<!\[)(?<!\]\()https?://[^\s\)]{200,}(?!\))'
+            final_response = re.sub(very_long_url_pattern, '', final_response)
+            
+            # CRITICAL: Also check for any raw booking URLs or Google Flights URLs in the response and replace them
+            # This handles cases where the LLM might have included URLs directly (but not if already in markdown)
+            for flight_id, urls in flight_url_mapping.items():
+                # Build links text for this flight
+                flight_booking_links = []
+                if urls.get("booking_link"):
+                    flight_booking_links.append(f'[Book Now]({urls["booking_link"]})')
+                if urls.get("google_flights_url"):
+                    flight_booking_links.append(f'[View on Google Flights]({urls["google_flights_url"]})')
+                flight_links_text = f'{" | ".join(flight_booking_links)}' if flight_booking_links else ""
+                
+                if urls.get("booking_link") and urls["booking_link"] in final_response:
+                    # Only replace if not already in a markdown link
+                    if f"]({urls['booking_link']})" not in final_response:
+                        # Replace raw booking link with flight ID links
+                        final_response = final_response.replace(urls["booking_link"], f"{flight_id} {flight_links_text}")
+                        print(f"[CONVERSATIONAL] Replaced raw booking URL with {flight_id} links")
+                if urls.get("google_flights_url") and urls["google_flights_url"] in final_response:
+                    # Don't replace Google Flights URLs if they're already part of a markdown link
+                    if f"]({urls['google_flights_url']})" not in final_response:
+                        # Replace raw Google Flights URL with flight ID links
+                        final_response = final_response.replace(urls["google_flights_url"], f"{flight_id} {flight_links_text}")
+                        print(f"[CONVERSATIONAL] Replaced raw Google Flights URL with {flight_id} links")
+            
+            print(f"[CONVERSATIONAL] Replaced {replaced_count} out of {len(flight_url_mapping)} flight IDs with booking URLs")
+        
+        # Check if booking intent is present and add booking URL
+        hotel_result = collected_info.get("hotel_result")
+        if hotel_result and isinstance(hotel_result, dict) and hotel_result.get("_booking_intent"):
+            booking_hotel_id = hotel_result.get("_booking_hotel_id")
+            booking_rate_id = hotel_result.get("_booking_rate_id")
+            booking_hotel_name = hotel_result.get("_booking_hotel_name", "Selected Hotel")
+            booking_checkin = hotel_result.get("_booking_checkin")
+            booking_checkout = hotel_result.get("_booking_checkout")
+            booking_price = hotel_result.get("_booking_price", "")
+            
+            if booking_hotel_id and booking_rate_id:
+                # Generate secure booking URL
+                from urllib.parse import quote
+                booking_url = f"/booking?hotel_id={quote(booking_hotel_id)}&rate_id={quote(booking_rate_id)}&hotel_name={quote(booking_hotel_name)}&checkin={quote(booking_checkin)}&checkout={quote(booking_checkout)}"
+                if booking_price and booking_price != "N/A":
+                    booking_url += f"&price={quote(str(booking_price))}"
+                
+                # Append booking link to response
+                booking_message = f"\n\n🔒 **Secure Booking**\n\nI've prepared your booking for {booking_hotel_name}! For your security, please complete your reservation and payment details on our secure booking page:\n\n[Complete Your Booking →]({booking_url})\n\nThis secure page will allow you to enter your payment information safely."
+                final_response += booking_message
+                print(f"[CONVERSATIONAL] Added booking URL: {booking_url}")
+    except Exception as e:
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        # Log the error for debugging
+        print(f"Error in conversational_agent_node: {error_msg}")
+        print(f"Traceback: {error_trace}")
+        
+        # Handle context length errors specifically
+        if "context_length" in error_msg.lower() or "maximum context length" in error_msg.lower():
+            # Try with simplified messages - just pass a summary
+            simplified_messages = [
+                {"role": "system", "content": get_conversational_agent_prompt(memories=relevant_memories, travel_plan_items=travel_plan_items)},
+                {
+                    "role": "user",
+                    "content": f"""User's original message: {user_message}
 
 The system has collected information from specialized agents. Please provide a helpful, natural response based on the available information."""
-                    }
-                ]
+                }
+            ]
+            
+            try:
+                # Call OpenAI API (direct call - simplified messages)
+                response = client.chat.completions.create(
+                    model="gpt-4.1",
+                    messages=simplified_messages,
+                    temperature=0.7
+                )
+                message = response.choices[0].message
+                raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
+                final_response = clean_response(raw_response)
                 
-                try:
-                    # Call OpenAI API (direct call - simplified messages)
-                    response = client.chat.completions.create(
-                        model="gpt-4.1",
-                        messages=simplified_messages,
-                        temperature=0.7
-                    )
-                    message = response.choices[0].message
-                    raw_response = message.content or "I apologize, but I couldn't generate a response. Please try again."
-                    final_response = clean_response(raw_response)
-                    
-                    # Replace flight IDs with actual booking URLs in the response (simplified path)
-                    if flight_url_mapping:
+                # Replace flight IDs with actual booking URLs in the response (simplified path)
+                if flight_url_mapping:
                         import re
                         # Step 1: Remove raw URLs (not in markdown)
                         url_pattern = r'(?<!\]\()https?://[^\s\)]+(?!\))'
@@ -1175,30 +1193,30 @@ The system has collected information from specialized agents. Please provide a h
                                 if id_pos != -1:
                                     final_response = final_response[:id_pos + len(flight_id)] + f' {links_text}' + final_response[id_pos + len(flight_id):]
                                     replaced_count += 1
+                
+                # Check if booking intent is present and add booking URL (for simplified path too)
+                hotel_result = collected_info.get("hotel_result")
+                if hotel_result and isinstance(hotel_result, dict) and hotel_result.get("_booking_intent"):
+                    booking_hotel_id = hotel_result.get("_booking_hotel_id")
+                    booking_rate_id = hotel_result.get("_booking_rate_id")
+                    booking_hotel_name = hotel_result.get("_booking_hotel_name", "Selected Hotel")
+                    booking_checkin = hotel_result.get("_booking_checkin")
+                    booking_checkout = hotel_result.get("_booking_checkout")
+                    booking_price = hotel_result.get("_booking_price", "")
                     
-                    # Check if booking intent is present and add booking URL (for simplified path too)
-                    hotel_result = collected_info.get("hotel_result")
-                    if hotel_result and isinstance(hotel_result, dict) and hotel_result.get("_booking_intent"):
-                        booking_hotel_id = hotel_result.get("_booking_hotel_id")
-                        booking_rate_id = hotel_result.get("_booking_rate_id")
-                        booking_hotel_name = hotel_result.get("_booking_hotel_name", "Selected Hotel")
-                        booking_checkin = hotel_result.get("_booking_checkin")
-                        booking_checkout = hotel_result.get("_booking_checkout")
-                        booking_price = hotel_result.get("_booking_price", "")
-                        
-                        if booking_hotel_id and booking_rate_id:
-                            from urllib.parse import quote
-                            booking_url = f"/booking?hotel_id={quote(booking_hotel_id)}&rate_id={quote(booking_rate_id)}&hotel_name={quote(booking_hotel_name)}&checkin={quote(booking_checkin)}&checkout={quote(booking_checkout)}"
-                            if booking_price and booking_price != "N/A":
-                                booking_url += f"&price={quote(str(booking_price))}"
-                            booking_message = f"\n\n🔒 **Secure Booking**\n\nI've prepared your booking for {booking_hotel_name}! For your security, please complete your reservation and payment details on our secure booking page:\n\n[Complete Your Booking →]({booking_url})\n\nThis secure page will allow you to enter your payment information safely."
-                            final_response += booking_message
-                except Exception as inner_e:
-                    print(f"Error in simplified message retry: {str(inner_e)}")
-                    final_response = "I have the information you requested, but there was a technical issue formatting the response. Please try rephrasing your query or ask for specific details."
-            else:
-                # Other errors
-                final_response = f"I encountered an error while generating the response: {error_msg}. Please try again."
+                    if booking_hotel_id and booking_rate_id:
+                        from urllib.parse import quote
+                        booking_url = f"/booking?hotel_id={quote(booking_hotel_id)}&rate_id={quote(booking_rate_id)}&hotel_name={quote(booking_hotel_name)}&checkin={quote(booking_checkin)}&checkout={quote(booking_checkout)}"
+                        if booking_price and booking_price != "N/A":
+                            booking_url += f"&price={quote(str(booking_price))}"
+                        booking_message = f"\n\n🔒 **Secure Booking**\n\nI've prepared your booking for {booking_hotel_name}! For your security, please complete your reservation and payment details on our secure booking page:\n\n[Complete Your Booking →]({booking_url})\n\nThis secure page will allow you to enter your payment information safely."
+                        final_response += booking_message
+            except Exception as inner_e:
+                print(f"Error in simplified message retry: {str(inner_e)}")
+                final_response = "I have the information you requested, but there was a technical issue formatting the response. Please try rephrasing your query or ask for specific details."
+        else:
+            # Other errors
+            final_response = f"I encountered an error while generating the response: {error_msg}. Please try again."
     
     # Prepend filtered message if any non-travel parts were filtered
     if rfi_filtered_message and final_response:
@@ -1207,46 +1225,8 @@ The system has collected information from specialized agents. Please provide a h
             final_response = f"{rfi_filtered_message}\n\n{final_response}"
     
     # Add structured data markers for frontend rendering
-    # This allows the frontend to display rich UI components for flights and locations
-    # CRITICAL: Only show tripadvisor_result if user is searching/browsing, not when confirming an add operation
-    if collected_info.get("tripadvisor_result"):
-        tripadvisor_result = collected_info["tripadvisor_result"]
-        print(f"[CONVERSATIONAL] DEBUG: tripadvisor_result exists: {tripadvisor_result is not None}")
-        print(f"[CONVERSATIONAL] DEBUG: tripadvisor_result type: {type(tripadvisor_result)}")
-        
-        # Check if user is just confirming an add operation (not searching)
-        user_msg_lower = user_message.lower()
-        add_keywords = ["add", "added", "save", "saved", "select", "selected", "choose", "chosen", "to my plan", "to the plan"]
-        search_keywords = ["find", "search", "show", "get", "list", "recommend", "suggest", "browse"]
-        
-        is_add_operation = any(keyword in user_msg_lower for keyword in add_keywords)
-        is_search_operation = any(keyword in user_msg_lower for keyword in search_keywords)
-        
-        # Only show location data if user is searching/browsing, not when confirming an add
-        if is_add_operation and not is_search_operation:
-            print(f"[CONVERSATIONAL] User is confirming add operation, excluding tripadvisor_result from response")
-        elif isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error"):
-            locations = tripadvisor_result.get("data", [])
-            print(f"[CONVERSATIONAL] DEBUG: locations count: {len(locations) if locations else 0}, type: {type(locations)}")
-            
-            if locations and len(locations) > 0:
-                import json
-                print(f"[CONVERSATIONAL] ✅ Adding {len(locations)} locations to [LOCATION_DATA] tag")
-                print(f"[CONVERSATIONAL] DEBUG: First location keys: {list(locations[0].keys()) if locations else 'N/A'}")
-                
-                # ALWAYS add the location data tag AFTER the greeting - this is CRITICAL for frontend display
-                location_json = json.dumps(locations, ensure_ascii=False)
-                final_response += f"\n\n[LOCATION_DATA]{location_json}[/LOCATION_DATA]"
-                print(f"[CONVERSATIONAL] ✅ Successfully added [LOCATION_DATA] tag with {len(locations)} locations")
-                print(f"[CONVERSATIONAL] DEBUG: Tag length: {len(location_json)} chars, final_response length: {len(final_response)} chars")
-            else:
-                print(f"[CONVERSATIONAL] ⚠️ WARNING: tripadvisor_result has no locations data (data={locations}, type={type(locations)})")
-                print(f"[CONVERSATIONAL] Full tripadvisor_result: {json.dumps(tripadvisor_result, indent=2, default=str)}")
-        else:
-            print(f"[CONVERSATIONAL] ⚠️ WARNING: tripadvisor_result is invalid or has error: {tripadvisor_result.get('error') if isinstance(tripadvisor_result, dict) else 'not a dict'}")
-    else:
-        print(f"[CONVERSATIONAL] DEBUG: No tripadvisor_result in collected_info. Keys: {list(collected_info.keys())}")
-    
+    # TripAdvisor results are handled by the LLM like any other data (flights, hotels, etc.)
+    # No special handling needed - the LLM will describe them naturally in the response
     if collected_info.get("flight_result"):
         flight_result = collected_info["flight_result"]
         if isinstance(flight_result, dict) and not flight_result.get("error"):

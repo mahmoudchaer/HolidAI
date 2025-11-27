@@ -131,11 +131,12 @@ Example 2c:
 - Action: Do NOT call any tools.
 
 Example 3:
-- user_message: "add the cheapest flight to my plan"
+- user_message: "add the cheapest flight to my plan" or "plan me a trip with cheapest flights"
 - last_response: "Here are your flight options..."
 - flight_result: Has outbound flights with prices
-- Reasoning: User wants to add the cheapest flight. I need to find the cheapest from flight_result and save it.
-- Action: Call agent_add_plan_item_tool with the cheapest flight.
+- Reasoning: User wants to add the cheapest flight(s). I need to find the cheapest outbound AND cheapest return flight from flight_result and save BOTH (one outbound, one return).
+- Action: Call agent_add_plan_item_tool TWICE - once for the cheapest outbound flight, once for the cheapest return flight.
+- CRITICAL: When user requests "cheapest", only add ONE cheapest outbound and ONE cheapest return - do NOT add multiple flights.
 
 Example 4:
 - user_message: "remove the MEA flight"
@@ -304,9 +305,42 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
     }
     
     # Include MINIMAL flight data if available (for LLM to identify which flight to save)
+    # CRITICAL: If user requests "cheapest", filter flights BEFORE passing to LLM
     if flight_result_data and isinstance(flight_result_data, dict) and not flight_result_data.get("error"):
         outbound = flight_result_data.get("outbound", [])
         returns = flight_result_data.get("return", [])
+        
+        # Check if user wants cheapest flights
+        user_msg_lower = user_message.lower()
+        wants_cheapest = any(keyword in user_msg_lower for keyword in [
+            "cheapest", "lowest price", "cheapest flight", "cheapest flights", 
+            "cheapest one", "cheapest option", "cheapest hotel", "cheapest hotels"
+        ])
+        
+        # Filter to cheapest if user requested it
+        if wants_cheapest:
+            def _parse_price(price):
+                """Parse price from various formats."""
+                if price is None:
+                    return float('inf')
+                if isinstance(price, (int, float)):
+                    return float(price)
+                if isinstance(price, str):
+                    try:
+                        # Remove currency symbols and commas
+                        cleaned = price.replace('$', '').replace(',', '').replace('USD', '').strip()
+                        return float(cleaned)
+                    except:
+                        return float('inf')
+                return float('inf')
+            
+            # Sort by price and take cheapest
+            if outbound:
+                outbound = sorted(outbound, key=lambda f: _parse_price(f.get("price", float('inf'))))[:1]
+            if returns:
+                returns = sorted(returns, key=lambda f: _parse_price(f.get("price", float('inf'))))[:1]
+            print(f"[FINAL PLANNER] Filtered flights to cheapest: {len(outbound)} outbound, {len(returns)} return")
+        
         llm_context["available_flights"] = {
             "outbound_count": len(outbound),
             "return_count": len(returns),
@@ -397,6 +431,22 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
                         details["date"] = details.get("trip_month_year", "")
                     args["details"] = details
                     print(f"[FINAL PLANNER] Fixed hotel data structure: mapped hotel_name->name, address->location")
+                    
+                    # Check for duplicate hotels by name and location
+                    hotel_name = details.get("name", "").lower().strip()
+                    hotel_location = details.get("location", "").lower().strip()
+                    if hotel_name:
+                        is_duplicate = False
+                        for existing_item in travel_plan_items:
+                            if existing_item.get("type") == "hotel":
+                                existing_name = existing_item.get("details", {}).get("name", "").lower().strip()
+                                existing_location = existing_item.get("details", {}).get("location", "").lower().strip()
+                                if hotel_name == existing_name and (not hotel_location or not existing_location or hotel_location == existing_location):
+                                    print(f"[FINAL PLANNER] ⚠️ Hotel '{details.get('name')}' already exists in plan, skipping duplicate")
+                                    is_duplicate = True
+                                    break
+                        if is_duplicate:
+                            continue  # Skip this tool call
             
             # Fix flight data structure for frontend compatibility
             if tool_name == "agent_add_plan_item_tool" and args.get("type") == "flight":
@@ -505,12 +555,52 @@ async def final_planner_agent_node(state: AgentState) -> AgentState:
                         if "price" in first_flight:
                             details["price"] = first_flight["price"]
                             print(f"[FINAL PLANNER] Moved price to top level")
+            
+            # Fix restaurant data structure - ensure name and location are properly extracted
+            if tool_name == "agent_add_plan_item_tool" and args.get("type") == "restaurant":
+                details = args.get("details", {})
+                if details:
+                    # Check if we have restaurant data from tripadvisor_result
+                    tripadvisor_result = collected_info.get("tripadvisor_result", {})
+                    if tripadvisor_result and isinstance(tripadvisor_result, dict) and not tripadvisor_result.get("error"):
+                        restaurants = tripadvisor_result.get("data", [])
+                        # If details only has a name or partial info, try to find full restaurant data
+                        restaurant_name = details.get("name", "").lower().strip() if details.get("name") else ""
+                        if restaurant_name:
+                            # Find matching restaurant in tripadvisor results
+                            for restaurant in restaurants:
+                                if restaurant.get("name", "").lower().strip() == restaurant_name:
+                                    # Use full restaurant data
+                                    details["name"] = restaurant.get("name", "")
+                                    details["location"] = restaurant.get("address") or restaurant.get("location", "")
+                                    details["rating"] = restaurant.get("rating")
+                                    details["type"] = restaurant.get("type", "restaurant")
+                                    if "location_id" in restaurant:
+                                        details["location_id"] = restaurant["location_id"]
+                                    print(f"[FINAL PLANNER] Fixed restaurant data: extracted name='{details.get('name')}', location='{details.get('location')}'")
+                                    break
+                    
+                    # Ensure name and location are present
+                    if not details.get("name") or not details.get("location"):
+                        print(f"[FINAL PLANNER] ⚠️ Restaurant data missing name or location: name={details.get('name')}, location={details.get('location')}")
+                        # Try to extract from title if name is missing
+                        if not details.get("name") and args.get("title"):
+                            details["name"] = args["title"]
+                    
+                    args["details"] = details
 
             try:
                 result = await PlannerAgentClient.invoke(tool_name, **args)
                 print(f"[FINAL PLANNER] Tool {tool_name} result: {result}")
             except Exception as e:
                 print(f"[FINAL PLANNER] ERROR invoking {tool_name}: {e}")
+                # If it's a duplicate key error, that's okay - item already exists
+                error_str = str(e).lower()
+                if "duplicate" in error_str or "unique constraint" in error_str or "uq_travel_plan_normalized" in error_str:
+                    print(f"[FINAL PLANNER] Duplicate detected by database, skipping")
+                    continue
+                # Re-raise if it's a different error
+                raise
 
     except Exception as e:
         print(f"[FINAL PLANNER] ERROR in LLM planner call: {e}")

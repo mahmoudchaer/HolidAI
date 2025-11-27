@@ -25,92 +25,57 @@ MAX_FEEDBACK_RETRIES = 2
 
 def get_tripadvisor_agent_feedback_prompt() -> str:
     """Get the system prompt for the TripAdvisor Agent Feedback Validator."""
-    return """You are a TripAdvisor Agent Feedback Validator that ensures location/attraction/restaurant search results meet quality standards.
+    return """You are a TripAdvisor Agent Feedback Validator. Your job is simple: check if the TripAdvisor search results make logical sense given what the user asked for and what TripAdvisor typically returns.
 
-Your role:
-- Validate that TripAdvisor search was properly executed
-- Check if results contain necessary information
-- Verify that any errors are legitimate and properly handled
-- Ensure results align with user's request
+VALIDATION APPROACH (BE LENIENT):
+- Look at the user's request and the results returned
+- Ask yourself: "Do these results make sense for what TripAdvisor would return for this query?"
+- If the results are reasonable (even if some fields are missing), PASS
+- Only retry if results are clearly wrong or completely empty without explanation
 
-VALIDATION RULES:
+GENERAL RULES:
+1. If results have names and seem relevant to the user's query → PASS
+2. If results are empty but there's an error message explaining why → PASS
+3. If results are completely wrong (e.g., user asked for restaurants but got hotels) → RETRY
+4. If results are empty with no explanation → RETRY
+5. Missing address/location fields are OK if names are present and results seem valid
+6. Missing ratings are always OK
+7. Missing type fields are always OK
 
-1. Result structure validation:
-   - If error=true, must have error_message explaining the issue
-   - If error=false, must have data array with locations/attractions/restaurants
-   - Each item should have: name, address/location, rating (optional)
-
-2. Data quality checks:
-   - Items should have valid names
-   - Location information should be present
-   - Ratings should be reasonable if present
-   - At least 1 result should be returned (if no error)
-
-3. Search type validation:
-   - If user searched for restaurants, results should be restaurants
-   - If user searched for attractions, results should be attractions
-   - If user searched for locations/cities, results should be locations
-   - Results should match the search query
-
-4. Error legitimacy:
-   - Valid errors: location not found, no results, API timeout
-   - Invalid errors: missing search query (should not happen at this stage)
-
-5. Alignment with user request:
-   - Results should match the location user asked about
-   - If user requested specific type (restaurants/attractions), results should match
-   - If user requested specific criteria (e.g., "best", "top-rated"), results should reflect that
+BE GENEROUS - TripAdvisor results can vary in structure. If the results seem usable, pass them through.
 
 Respond with JSON:
 {
   "validation_status": "pass" | "need_retry",
-  "feedback_message": "explanation of issue (if any)",
-  "suggested_action": "what should be done to fix (if needed)"
+  "feedback_message": "brief explanation"
 }
 
 Examples:
 
-Example 1 - Valid restaurant results (PASS):
-User: "Find restaurants in Paris"
-Result: {"error": false, "data": [{"name": "Le Restaurant", "rating": 4.5, "address": "..."}], ...}
-Response: {
-  "validation_status": "pass",
-  "feedback_message": "TripAdvisor search completed successfully with valid restaurant results"
-}
+Example 1 - Results make sense (PASS):
+User: "Find restaurants in Dubai"
+Result: {"error": false, "data": [{"name": "Restaurant A"}, {"name": "Restaurant B"}]}
+Response: {"validation_status": "pass", "feedback_message": "Results are valid restaurant names for Dubai"}
 
-Example 2 - Valid attraction results (PASS):
-User: "Find attractions in Rome"
-Result: {"error": false, "data": [{"name": "Colosseum", "rating": 4.8, "location": "..."}], ...}
-Response: {
-  "validation_status": "pass",
-  "feedback_message": "TripAdvisor search completed successfully with valid attraction results"
-}
+Example 2 - Results make sense even with minimal data (PASS):
+User: "Find restaurants in Dubai"
+Result: {"error": false, "data": [{"name": "Restaurant X"}]}
+Response: {"validation_status": "pass", "feedback_message": "Results contain restaurant names, which is sufficient"}
 
-Example 3 - Empty results without explanation (RETRY):
-User: "Find restaurants in Paris"
+Example 3 - Completely wrong results (RETRY):
+User: "Find restaurants in Dubai"
+Result: {"error": false, "data": [{"name": "Dubai Airport", "type": "airport"}]}
+Response: {"validation_status": "need_retry", "feedback_message": "Results don't match query - got airports instead of restaurants"}
+
+Example 4 - Empty with no explanation (RETRY):
+User: "Find restaurants in Dubai"
 Result: {"error": false, "data": []}
-Response: {
-  "validation_status": "need_retry",
-  "feedback_message": "No results found but no error explanation provided",
-  "suggested_action": "Retry search with broader criteria or provide clear explanation"
-}
+Response: {"validation_status": "need_retry", "feedback_message": "No results found without explanation"}
 
-Example 4 - Wrong result type (RETRY):
-User: "Find restaurants in Paris"
-Result: {"error": false, "data": [{"name": "Eiffel Tower", "type": "attraction"}]}
-Response: {
-  "validation_status": "need_retry",
-  "feedback_message": "Results do not match requested type - user asked for restaurants but got attractions",
-  "suggested_action": "Retry search with correct search type parameter"
-}
-
-Example 5 - Valid error (PASS):
-User: "Find restaurants in invalid-xyz-location"
+Example 5 - Error properly reported (PASS):
+User: "Find restaurants in invalid-location"
 Result: {"error": true, "error_message": "Location not found"}
-Response: {
-  "validation_status": "pass",
-  "feedback_message": "Error properly reported - location not found"
-}"""
+Response: {"validation_status": "pass", "feedback_message": "Error properly handled"}"""
 
 
 async def tripadvisor_agent_feedback_node(state: AgentState) -> AgentState:
@@ -140,40 +105,49 @@ async def tripadvisor_agent_feedback_node(state: AgentState) -> AgentState:
         print("TripAdvisor Feedback: No result to validate")
         return {}
     
-    # Prepare validation context (truncate large data)
+    # Prepare simple validation context - just what the LLM needs to make a logical decision
     data_sample = []
     if tripadvisor_result.get("data"):
-        for item in tripadvisor_result.get("data", [])[:3]:
+        # Show first 3-5 results with whatever fields they have
+        for item in tripadvisor_result.get("data", [])[:5]:
             sample = {
                 "name": item.get("name", ""),
-                "rating": item.get("rating", ""),
-                "address": item.get("address", item.get("location", "")),
-                "type": item.get("type", "")
+                "address": item.get("address") or item.get("location", ""),
+                "rating": item.get("rating"),  # Optional
+                "type": item.get("type", "")  # Optional
             }
-            data_sample.append(sample)
+            # Only include non-empty fields
+            sample = {k: v for k, v in sample.items() if v}
+            if sample:  # Only add if there's at least name
+                data_sample.append(sample)
     
     validation_context = {
         "user_request": user_message,
-        "result_summary": {
+        "tripadvisor_result": {
             "has_error": tripadvisor_result.get("error", False),
             "error_message": tripadvisor_result.get("error_message", ""),
             "result_count": len(tripadvisor_result.get("data", [])),
-            "sample_results": data_sample,
+            "sample_results": data_sample[:3],  # Just first 3 for context
             "search_type": tripadvisor_result.get("search_type", "")
         }
     }
     
-    # Call LLM for validation
+    # Call LLM for validation - simple, agentic approach
     messages = [
         {"role": "system", "content": get_tripadvisor_agent_feedback_prompt()},
-        {"role": "user", "content": f"Validate these TripAdvisor search results:\n\n{json.dumps(validation_context, indent=2)}"}
+        {"role": "user", "content": f"""User asked: "{user_message}"
+
+TripAdvisor returned:
+{json.dumps(validation_context, indent=2)}
+
+Do these results make logical sense? If yes, pass. Only retry if results are clearly wrong or empty without explanation."""}
     ]
     
     try:
         response = client.chat.completions.create(
             model="gpt-4.1",
             messages=messages,
-            temperature=0.3,
+            temperature=0.2,  # Lower temperature for more consistent decisions
             response_format={"type": "json_object"}
         )
         

@@ -57,12 +57,49 @@ const FlightSummary = ({ details }) => {
 
 const HotelSummary = ({ details }) => {
   if (!details) return null
+  
+  // Check if this hotel has room booking details (check-in, check-out, price)
+  const hasRoomDetails = details.check_in && details.check_out && (details.price_total || details.price)
+  
   return (
     <div className="text-sm text-slate-600 dark:text-slate-300">
       <div className="font-medium text-slate-800 dark:text-slate-100">{details.name || details.hotel_name || 'Hotel'}</div>
       {(details.location || details.address) && <div>{details.location || details.address}</div>}
-      {(details.date || details.trip_month_year) && <div>{formatDateTime(details.date || details.trip_month_year)}</div>}
+      
+      {/* Show room details if available */}
+      {hasRoomDetails && (
+        <>
+          {(details.room_type || details.roomType) && (
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Room: {details.room_type || details.roomType}
+            </div>
+          )}
+          {details.check_in && details.check_out && (
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {details.check_in} → {details.check_out}
+            </div>
+          )}
+          {(details.price_total || details.price) && (
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+              ${details.price_total || details.price}
+              {details.currency && ` ${details.currency}`}
+            </div>
+          )}
+          {details.board && (
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {details.board}
+            </div>
+          )}
+        </>
+      )}
+      
+      {/* Show date if no room details but date exists */}
+      {!hasRoomDetails && (details.date || details.trip_month_year) && (
+        <div>{formatDateTime(details.date || details.trip_month_year)}</div>
+      )}
+      
       {details.star_rating && <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">⭐ {details.star_rating} stars</div>}
+      {details.rating && !details.star_rating && <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">⭐ {details.rating}/10</div>}
     </div>
   )
 }

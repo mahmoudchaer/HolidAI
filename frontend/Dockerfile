@@ -55,6 +55,9 @@ COPY stm/ ./stm/
 # Copy mcp_system/clients directory (needed by Flask app)
 COPY mcp_system/clients/ ./mcp_system/clients/
 
+# Copy mcp_system/tool_docs directory (needed by langraph nodes)
+COPY mcp_system/tool_docs/ ./mcp_system/tool_docs/
+
 # Set working directory to frontend
 WORKDIR /app/frontend
 

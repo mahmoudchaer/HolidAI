@@ -230,14 +230,61 @@ def register_planner_tools(mcp):
 
             db = SessionLocal()
             try:
-                # Check if item already exists
+                # Check if item already exists by normalized_key
                 existing = db.query(TravelPlanItem).filter(
                     TravelPlanItem.email == user_email,
                     TravelPlanItem.session_id == session_id,
                     TravelPlanItem.normalized_key == normalized_key
                 ).first()
                 
+                # For hotels: Also check if same hotel exists (by name and location) even if normalized_key differs
+                # This handles cases where hotel is added first without room details, then with room details
+                if type == "hotel" and not existing:
+                    hotel_name = details.get("name") or details.get("hotel_name", "").lower().strip()
+                    hotel_location = (details.get("location") or details.get("address", "")).lower().strip()
+                    if hotel_name:
+                        # Find existing hotels with same name and location
+                        all_hotels = db.query(TravelPlanItem).filter(
+                            TravelPlanItem.email == user_email,
+                            TravelPlanItem.session_id == session_id,
+                            TravelPlanItem.type == "hotel"
+                        ).all()
+                        for hotel_item in all_hotels:
+                            existing_name = (hotel_item.details.get("name") or hotel_item.details.get("hotel_name", "")).lower().strip()
+                            existing_location = (hotel_item.details.get("location") or hotel_item.details.get("address", "")).lower().strip()
+                            if hotel_name == existing_name and (not hotel_location or not existing_location or hotel_location == existing_location):
+                                existing = hotel_item
+                                print(f"[PLANNER TOOL] Found existing hotel '{hotel_name}' - will merge room details")
+                                break
+                
                 if existing:
+                    # Merge/update existing item
+                    # For hotels: If new details have room info (check_in, check_out, price) and existing doesn't, merge them
+                    if type == "hotel" and existing.type == "hotel":
+                        existing_details = existing.details or {}
+                        # Merge room details if new details have them
+                        if details.get("check_in") and not existing_details.get("check_in"):
+                            existing_details["check_in"] = details.get("check_in")
+                        if details.get("check_out") and not existing_details.get("check_out"):
+                            existing_details["check_out"] = details.get("check_out")
+                        if (details.get("price_total") or details.get("price")) and not (existing_details.get("price_total") or existing_details.get("price")):
+                            if details.get("price_total"):
+                                existing_details["price_total"] = details.get("price_total")
+                            if details.get("price"):
+                                existing_details["price"] = details.get("price")
+                        if details.get("room_type") or details.get("roomType"):
+                            existing_details["room_type"] = details.get("room_type") or details.get("roomType")
+                        if details.get("board"):
+                            existing_details["board"] = details.get("board")
+                        if details.get("currency"):
+                            existing_details["currency"] = details.get("currency")
+                        # Merge other fields
+                        for key, value in details.items():
+                            if key not in existing_details or not existing_details[key]:
+                                existing_details[key] = value
+                        details = existing_details
+                        print(f"[PLANNER TOOL] Merged room details into existing hotel")
+                    
                     # Update existing item
                     existing.details = details
                     existing.type = type
