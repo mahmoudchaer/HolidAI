@@ -16,8 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from state import AgentState
 from clients.visa_agent_client import VisaAgentClient
 # Import memory_filter from the same directory
-import sys
-import os
 _nodes_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _nodes_dir)
 from memory_filter import filter_memories_for_agent

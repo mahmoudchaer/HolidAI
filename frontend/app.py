@@ -987,7 +987,6 @@ def chat():
         # Log user interaction
         try:
             # Import agent_logger from langraph
-            import sys
             from pathlib import Path
             langraph_path = Path(__file__).parent.parent / "langraph"
             sys.path.insert(0, str(langraph_path))

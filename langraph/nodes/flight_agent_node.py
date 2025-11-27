@@ -14,8 +14,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from state import AgentState
 from clients.flight_agent_client import FlightAgentClient
 # Import memory_filter from the same directory
-import sys
-import os
 import time
 _nodes_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _nodes_dir)
