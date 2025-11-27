@@ -37,7 +37,7 @@ def _get_blob_service_client():
         with _blob_client_lock:
             if _blob_service_client is None:
                 try:
-                    from azure.storage.blob import BlobServiceClient
+                    from azure.storage.blob import BlobServiceClient, ContentSettings
                     if not AZURE_BLOB_CONNECTION_STRING:
                         print("[API_LOGGER] Warning: AZURE_BLOB_CONNECTION_STRING not set, logging will use fallback")
                         return None
@@ -104,16 +104,19 @@ def _upload_to_blob(log_data: Dict, blob_path: str) -> bool:
     # Retry once if it fails
     for attempt in range(2):
         try:
+            from azure.storage.blob import ContentSettings
+            
             blob_client = client.get_blob_client(
                 container=AZURE_BLOB_CONTAINER,
                 blob=blob_path
             )
             
             log_json = json.dumps(log_data, indent=2, ensure_ascii=False)
+            content_settings = ContentSettings(content_type="application/json")
             blob_client.upload_blob(
                 log_json,
                 overwrite=True,
-                content_settings={"content_type": "application/json"}
+                content_settings=content_settings
             )
             return True
         except Exception as e:
