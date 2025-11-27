@@ -945,6 +945,15 @@ def register_utilities_tools(mcp):
                         "country": country
                     }
                 
+                # Debug: Check what tables exist in the HTML
+                all_tables = soup.find_all("table")
+                print(f"eSIM Tool: Found {len(all_tables)} table(s) in HTML")
+                if all_tables:
+                    for idx, tbl in enumerate(all_tables[:3]):  # Show first 3 tables
+                        tbl_id = tbl.get("id", "no-id")
+                        tbl_class = tbl.get("class", [])
+                        print(f"eSIM Tool: Table {idx}: id='{tbl_id}', class={tbl_class}")
+                
                 # Find the table with eSIM bundles - try multiple possible table IDs
                 table = soup.find("table", id="table_1")
                 
@@ -954,17 +963,21 @@ def register_utilities_tools(mcp):
                     for table_id in ["table_1", "esim-table", "bundles-table", "data-table"]:
                         table = soup.find("table", id=table_id)
                         if table:
+                            print(f"eSIM Tool: Found table with id='{table_id}'")
                             break
                     
                     # If still not found, try to find any table with class or data attributes
                     if not table:
                         table = soup.find("table", class_=lambda x: x and ("esim" in str(x).lower() or "bundle" in str(x).lower()))
+                        if table:
+                            print(f"eSIM Tool: Found table with esim/bundle class")
                     
                     # Last resort: find any table
                     if not table:
                         tables = soup.find_all("table")
                         if tables:
                             table = tables[0]  # Use first table found
+                            print(f"eSIM Tool: Using first available table (id='{table.get('id', 'no-id')}')")
                 
                 if not table:
                     # No table - check if this is Nomad (different structure)
@@ -1117,7 +1130,156 @@ def register_utilities_tools(mcp):
                         else:
                             print("eSIM Tool: Nomad page loaded but couldn't extract plan data")
                     
-                    # No table and not Nomad, or Nomad parsing failed
+                    # No table and not Nomad - try parsing div-based structures (common on esimradar.com)
+                    if "esimradar.com" in url:
+                        print("eSIM Tool: No table found, trying to parse div-based structure for esimradar.com...")
+                        bundles = []
+                        
+                        # Try to find plan cards/divs - common patterns on esimradar.com
+                        # Look for divs that might contain plan information
+                        plan_divs = soup.find_all("div", class_=lambda x: x and (
+                            "plan" in str(x).lower() or 
+                            "bundle" in str(x).lower() or 
+                            "card" in str(x).lower() or
+                            "offer" in str(x).lower() or
+                            "product" in str(x).lower()
+                        ))
+                        
+                        # Also try data attributes
+                        if not plan_divs:
+                            plan_divs = soup.find_all("div", attrs={"data-plan": True}) or \
+                                       soup.find_all("div", attrs={"data-bundle": True})
+                        
+                        # Try finding by text patterns (divs containing "GB" or "MB" with prices)
+                        if not plan_divs:
+                            all_divs = soup.find_all("div")
+                            for div in all_divs:
+                                text = div.get_text()
+                                # Look for divs that contain both data size (GB/MB) and price indicators
+                                if (re.search(r'\d+\s*(GB|MB)', text, re.IGNORECASE) and 
+                                    (re.search(r'[\$€£]\s*\d+', text) or re.search(r'\d+\.\d+', text))):
+                                    # Check if it's not too large (likely a container)
+                                    if len(text) < 500:  # Reasonable size for a plan card
+                                        plan_divs.append(div)
+                                        if len(plan_divs) >= 20:  # Limit search
+                                            break
+                        
+                        print(f"eSIM Tool: Found {len(plan_divs)} potential plan divs")
+                        
+                        # Try to extract data from divs
+                        for idx, div in enumerate(plan_divs[:limit]):
+                            try:
+                                text = div.get_text()
+                                
+                                # Extract data amount
+                                data_match = None
+                                gb_match = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB)', text, re.IGNORECASE)
+                                if gb_match:
+                                    data_match = f"{gb_match.group(1)} {gb_match.group(2).upper()}"
+                                
+                                # Extract price
+                                price_match = None
+                                # Try USD/EUR/GBP symbols
+                                price_patterns = [
+                                    r'[\$€£]\s*(\d+(?:\.\d+)?)',
+                                    r'(\d+(?:\.\d+)?\s*USD',
+                                    r'(\d+(?:\.\d+)?)\s*EUR',
+                                    r'(\d+(?:\.\d+)?)\s*GBP'
+                                ]
+                                for pattern in price_patterns:
+                                    match = re.search(pattern, text, re.IGNORECASE)
+                                    if match:
+                                        price_match = f"USD {match.group(1)}"
+                                        break
+                                
+                                # Extract validity
+                                validity_match = ""
+                                validity_patterns = [
+                                    r'(\d+)\s*(?:day|days)',
+                                    r'valid\s*(?:for|:)\s*(\d+)',
+                                    r'duration[:\s]+(\d+)'
+                                ]
+                                for pattern in validity_patterns:
+                                    match = re.search(pattern, text, re.IGNORECASE)
+                                    if match:
+                                        validity_match = f"{match.group(1)} days"
+                                        break
+                                
+                                # Find provider name (look for common provider names)
+                                provider_match = None
+                                providers = ["airalo", "holafly", "nomad", "ubigi", "orange", "vodafone", "t-mobile", "three"]
+                                for provider in providers:
+                                    if provider in text.lower():
+                                        provider_match = provider.capitalize()
+                                        break
+                                
+                                # Find link
+                                link_elem = div.find("a")
+                                purchase_link = url
+                                if link_elem:
+                                    href = link_elem.get("href", "")
+                                    if href:
+                                        if href.startswith("http"):
+                                            purchase_link = href
+                                        elif href.startswith("/"):
+                                            purchase_link = f"https://esimradar.com{href}"
+                                        else:
+                                            purchase_link = f"https://esimradar.com/{href}"
+                                
+                                # Only add if we have essential data
+                                if data_match and price_match:
+                                    plan_name = f"{data_match}"
+                                    if validity_match:
+                                        plan_name += f" - {validity_match}"
+                                    
+                                    bundle = {
+                                        "provider": provider_match or "Unknown",
+                                        "plan": plan_name,
+                                        "validity": validity_match or "",
+                                        "price": price_match,
+                                        "link": purchase_link
+                                    }
+                                    bundles.append(bundle)
+                                    
+                                    if idx < 3:
+                                        print(f"eSIM Tool: Extracted plan {idx}: {bundle}")
+                            except Exception as e:
+                                print(f"eSIM Tool: Error parsing div {idx}: {str(e)}")
+                                continue
+                        
+                        if bundles:
+                            print(f"eSIM Tool: Successfully parsed {len(bundles)} plans from div structure")
+                            return {
+                                "error": False,
+                                "country": country,
+                                "bundles": bundles[:limit],
+                                "total": len(bundles),
+                                "source": url
+                            }
+                        else:
+                            print("eSIM Tool: Could not extract plan data from div structure")
+                    
+                    # If we got a 200 response, return success even if parsing failed
+                    # User can check the URL directly
+                    if response.status_code == 200:
+                        print(f"eSIM Tool: Got 200 response but couldn't parse structure. Returning success with URL.")
+                        return {
+                            "error": False,
+                            "country": country,
+                            "bundles": [],  # Empty but successful fetch
+                            "total": 0,
+                            "source": url,
+                            "note": "Page loaded successfully but data structure could not be parsed. Please check the source URL directly.",
+                            "recommended_providers": [
+                                {"name": "Airalo", "url": "https://www.airalo.com"},
+                                {"name": "Holafly", "url": "https://esim.holafly.com"},
+                                {"name": "Nomad", "url": "https://www.getnomad.app"},
+                                {"name": "Ubigi", "url": "https://www.ubigi.com"}
+                            ]
+                        }
+                    
+                    # Only return error if we didn't get 200
+                    print(f"eSIM Tool: Failed to fetch or parse data. URL: {url}, Status: {response.status_code if response else 'No response'}")
                     return {
                         "error": True,
                         "error_message": f"eSIM data not available for '{country}' in our database.",
@@ -1393,6 +1555,23 @@ def register_utilities_tools(mcp):
                 
                 if not bundles:
                     print(f"eSIM Tool: No bundles extracted from {len(rows)} rows")
+                    # If we got 200, return success even if no bundles parsed
+                    if response.status_code == 200:
+                        return {
+                            "error": False,
+                            "country": country,
+                            "bundles": [],
+                            "total": 0,
+                            "source": url,
+                            "note": f"Page loaded successfully but no bundles could be extracted from {len(rows)} table rows. Please check the source URL directly.",
+                            "recommended_providers": [
+                                {"name": "Airalo", "url": "https://www.airalo.com"},
+                                {"name": "Holafly", "url": "https://esim.holafly.com"},
+                                {"name": "Nomad", "url": "https://www.getnomad.app"},
+                                {"name": "Ubigi", "url": "https://www.ubigi.com"}
+                            ]
+                        }
+                    # Only return error if we didn't get 200
                     return {
                         "error": True,
                         "error_message": f"No eSIM bundles found for {country}. The page may not have any available bundles or the structure is different.",
