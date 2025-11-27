@@ -34,3 +34,5 @@ langchain-openai>=0.2.0
 # Redis for short-term memory
 redis>=5.0.0
 
+# Azure Blob Storage for agent logging
+azure-storage-blob>=12.19.0

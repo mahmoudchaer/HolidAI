@@ -273,7 +273,7 @@ IMPORTANT: Review the tool documentation carefully and ensure all parameters are
         response_preview=response_preview,
         token_usage=token_usage,
         latency_ms=llm_latency_ms
-    )
+        )
     
     message = response.choices[0].message
     updated_state = state.copy()
