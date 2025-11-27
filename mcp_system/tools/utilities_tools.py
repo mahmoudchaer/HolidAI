@@ -845,11 +845,18 @@ def register_utilities_tools(mcp):
             
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate, br",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language": "en-US,en;q=0.9",
+                # Let httpx handle encoding automatically - don't specify Accept-Encoding
                 "Connection": "keep-alive",
-                "Upgrade-Insecure-Requests": "1"
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Cache-Control": "max-age=0",
+                "DNT": "1",
+                "Referer": "https://www.google.com/"
             }
             
             # Try multiple URL formats
@@ -934,6 +941,15 @@ def register_utilities_tools(mcp):
                 # Debug: Check response status and content length
                 print(f"eSIM Tool: Response status: {response.status_code}, Content length: {len(response.text)}")
                 
+                # Debug: Check if we got a bot detection page or JavaScript requirement
+                html_preview = response.text[:500].lower()
+                if "javascript" in html_preview and ("required" in html_preview or "enable" in html_preview):
+                    print("eSIM Tool: WARNING - Page may require JavaScript to load content")
+                if "cloudflare" in html_preview or "checking your browser" in html_preview:
+                    print("eSIM Tool: WARNING - Cloudflare protection detected")
+                if "captcha" in html_preview or "robot" in html_preview:
+                    print("eSIM Tool: WARNING - Bot detection page detected")
+                
                 # Parse HTML with BeautifulSoup
                 try:
                     soup = BeautifulSoup(response.text, "html.parser")
@@ -980,6 +996,25 @@ def register_utilities_tools(mcp):
                             print(f"eSIM Tool: Using first available table (id='{table.get('id', 'no-id')}')")
                 
                 if not table:
+                    # Try to find JSON data in script tags (many sites include data as JSON for SEO)
+                    print("eSIM Tool: No table found, checking for JSON data in script tags...")
+                    script_tags = soup.find_all("script", type=lambda x: x and "json" in x.lower())
+                    if not script_tags:
+                        script_tags = soup.find_all("script")
+                    
+                    for script in script_tags:
+                        script_text = script.string or ""
+                        # Look for JSON that might contain table data
+                        if "table" in script_text.lower() or "bundle" in script_text.lower() or "esim" in script_text.lower():
+                            try:
+                                # Look for JSON-like structures (table data might be in script tags)
+                                json_matches = re.findall(r'\{[^{}]*"table"[^{}]*\}', script_text)
+                                if json_matches:
+                                    print("eSIM Tool: Found potential JSON data in script tag")
+                                    # Could parse JSON here if needed in the future
+                            except Exception:
+                                pass
+                    
                     # No table - check if this is Nomad (different structure)
                     if "getnomad.app" in url:
                         print("eSIM Tool: Parsing Nomad page structure...")
@@ -1262,14 +1297,22 @@ def register_utilities_tools(mcp):
                     # If we got a 200 response, return success even if parsing failed
                     # User can check the URL directly
                     if response.status_code == 200:
-                        print(f"eSIM Tool: Got 200 response but couldn't parse structure. Returning success with URL.")
+                        content_length = len(response.text)
+                        print(f"eSIM Tool: Got 200 response but couldn't parse structure. Content length: {content_length}")
+                        
+                        # Check if response seems too small (might be bot detection page)
+                        note = "Page loaded successfully but data structure could not be parsed. Please check the source URL directly."
+                        if content_length < 200000:  # Less than 200KB is suspicious for a data table page
+                            note += f" Note: Response size ({content_length} bytes) is smaller than expected - the site may be serving different content to servers (bot detection)."
+                        
                         return {
                             "error": False,
                             "country": country,
                             "bundles": [],  # Empty but successful fetch
                             "total": 0,
                             "source": url,
-                            "note": "Page loaded successfully but data structure could not be parsed. Please check the source URL directly.",
+                            "note": note,
+                            "content_length": content_length,
                             "recommended_providers": [
                                 {"name": "Airalo", "url": "https://www.airalo.com"},
                                 {"name": "Holafly", "url": "https://esim.holafly.com"},
