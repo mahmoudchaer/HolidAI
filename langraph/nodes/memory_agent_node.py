@@ -60,7 +60,9 @@ IMPORTANT WORKFLOW:
 3. ALWAYS call agent_get_relevant_memories_tool to retrieve relevant memories for the query
 4. The retrieved memories will be passed to other agents (RFI, main agent, etc.)
 
-You must complete ALL steps: analyze, store/update/delete if needed, and retrieve relevant memories."""
+You must complete ALL steps: analyze, store/update/delete if needed, and retrieve relevant memories.
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
     
     return base_prompt
 

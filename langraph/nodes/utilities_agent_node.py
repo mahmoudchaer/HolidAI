@@ -134,7 +134,9 @@ IMPORTANT:
 - ALWAYS call a tool - do not ask for clarification unless absolutely critical information is missing
 - You have access to the full tool documentation through function calling - use it to understand parameter requirements
 
-You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
+You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters.
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
     
     return base_prompt + memory_section + docs_text
 

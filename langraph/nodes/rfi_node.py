@@ -218,7 +218,9 @@ Response: {
   "message_to_user": "I'm a travel assistant and can only help with travel-related queries. For general knowledge questions, I'd recommend using a general-purpose assistant. How can I help you with your travel plans?",
   "should_proceed": false,
   "analysis": "Query is a general knowledge question, not travel-related. Rejected."
-}"""
+}
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
 
 
 def get_rfi_prompt() -> str:
@@ -403,7 +405,9 @@ Response: {
   "question_to_user": "",
   "analysis": "User asked about weather using pronoun 'there'. Location (Qatar) and date (December 24, 2025) found in STM context from previous messages. All required information available.",
   "enriched_message": "weather in Qatar on December 24, 2025"
-}"""
+}
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
 
 
 async def rfi_node(state: AgentState) -> AgentState:

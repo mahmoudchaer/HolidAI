@@ -678,7 +678,9 @@ Your response should start directly with the information, like:
 NOT like:
 "Collected_info: { ... } Based on the information gathered..."
 
-Remember: The JSON is invisible to the user - only show the extracted information in a natural, conversational format.""" + memory_section + plan_section
+Remember: The JSON is invisible to the user - only show the extracted information in a natural, conversational format.
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior.""" + memory_section + plan_section
 
 
 async def conversational_agent_node(state: AgentState) -> AgentState:

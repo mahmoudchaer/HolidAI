@@ -336,6 +336,8 @@ EXPLICIT SAVE INTENT - Examples of what DOES NOT count:
 - Just viewing results without explicit save language
 
 Your output is ONLY function/tool calls. Do NOT return any normal text. If no plan operations are needed, do NOT call any tools.
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior.
 """
 
 

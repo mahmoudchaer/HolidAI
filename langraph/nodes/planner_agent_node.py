@@ -92,7 +92,9 @@ CRITICAL RULES:
 - If the user wants to see saved items → Call agent_get_plan_items_tool
 - If the user wants to save an item → Call agent_add_plan_item_tool
 
-CRITICAL: You MUST use the tools to perform operations. Do NOT just respond without calling tools UNLESS it's a search request (in which case you should not be handling it at all)."""
+CRITICAL: You MUST use the tools to perform operations. Do NOT just respond without calling tools UNLESS it's a search request (in which case you should not be handling it at all).
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
 
 
 async def planner_agent_node(state: AgentState) -> AgentState:

@@ -102,7 +102,9 @@ Plan:
   Step 2: [flight_agent, hotel_agent, utilities_agent] - book + eSIM/weather (all parallel!)
   Step 3: [utilities_agent] - convert prices to AED
 
-Respond with a JSON object containing the execution plan."""
+Respond with a JSON object containing the execution plan.
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
 
 
 async def main_agent_node(state: AgentState) -> AgentState:

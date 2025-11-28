@@ -121,7 +121,9 @@ IMPORTANT:
 - Example: User says "flights during January" → Use departure_date="2025-01-15" with days_flex=7
 - If user provides a specific date, use that date with an appropriate days_flex (0-7) based on their flexibility
 
-You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters."""
+You have access to the full tool documentation through function calling. Use your LLM reasoning to understand the user's message and call the appropriate tool with the correct parameters.
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
     
     return base_prompt + memory_section + docs_text
 

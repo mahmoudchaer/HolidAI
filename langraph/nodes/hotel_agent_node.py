@@ -204,7 +204,9 @@ Dates (for get_hotel_rates): Extract from user message or use dates from travel 
 
 guest_nationality: Required for get_hotel_rates. Extract from context or use "US" as default.
 
-Use tool schemas to understand all parameters. ALWAYS call a tool - do not ask for clarification."""
+Use tool schemas to understand all parameters. ALWAYS call a tool - do not ask for clarification.
+
+NOTE: If you find placeholders like <NAME_1>, <EMAIL_1>, etc. in the user's message, this is due to the PII redaction node and is expected behavior."""
     
     return base_prompt + memory_section + docs_text
 
