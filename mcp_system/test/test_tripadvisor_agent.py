@@ -1148,12 +1148,91 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Error in initial search: {scenario2_result.get('error_message')}")
         
+        # Test 9: Search locations by rating
+        print("\n9. Testing search_locations_by_rating (restaurants in Paris, min rating 4.0)...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "search_locations_by_rating",
+            search_query="restaurants Paris",
+            min_rating=4.0,
+            category="restaurants"
+        )
+        if not result.get("error"):
+            locations_count = len(result.get("data", []))
+            print(f"✓ Found {locations_count} highly-rated restaurants (rating ≥ 4.0)")
+            if locations_count > 0:
+                first = result['data'][0]
+                name = first.get('name', 'N/A')
+                rating = (first.get("rating") or 
+                         first.get("ratingValue") or 
+                         first.get("averageRating") or 
+                         "N/A")
+                print(f"  First: {name} (Rating: {rating})")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 10: Search nearby by rating
+        print("\n10. Testing search_nearby_by_rating (attractions near NYC, min rating 4.5)...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "search_nearby_by_rating",
+            lat_long="40.7128,-74.0060",
+            min_rating=4.5,
+            category="attractions",
+            radius=10,
+            radius_unit="km"
+        )
+        if not result.get("error"):
+            locations_count = len(result.get("data", []))
+            print(f"✓ Found {locations_count} highly-rated attractions nearby (rating ≥ 4.5)")
+            if locations_count > 0:
+                first = result['data'][0]
+                name = first.get('name', 'N/A')
+                rating = (first.get("rating") or 
+                         first.get("ratingValue") or 
+                         first.get("averageRating") or 
+                         "N/A")
+                print(f"  First: {name} (Rating: {rating})")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
+        # Test 11: Get top rated locations
+        print("\n11. Testing get_top_rated_locations (top restaurants in Rome)...")
+        result = await TripAdvisorAgentClient.call_tool(
+            "get_top_rated_locations",
+            search_query="restaurants Rome",
+            category="restaurants",
+            top_n=5
+        )
+        if not result.get("error"):
+            locations = result.get("data", [])
+            locations_count = len(locations)
+            print(f"✓ Found top {locations_count} rated restaurants")
+            if locations_count > 0:
+                print("  Top restaurants:")
+                for i, loc in enumerate(locations[:3], 1):
+                    name = loc.get('name', 'N/A')
+                    rating = (loc.get("rating") or 
+                             loc.get("ratingValue") or 
+                             loc.get("averageRating") or 
+                             "N/A")
+                    print(f"    {i}. {name} (Rating: {rating})")
+        else:
+            error_msg = result.get('error_message') or result.get('error') or "Unknown error"
+            print(f"✗ Error: {error_msg}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
         # Test error handling
         print("\n" + "=" * 60)
         print("Testing Error Handling")
         print("=" * 60)
         
-        # Test 9: Validation error - empty search query
+        # Test 12: Validation error - empty search query
         print("\n9. Testing validation error (empty search query)...")
         result = await TripAdvisorAgentClient.call_tool(
             "search_locations",
@@ -1167,8 +1246,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 10: Validation error - invalid category
-        print("\n10. Testing validation error (invalid category)...")
+        # Test 13: Validation error - invalid category
+        print("\n13. Testing validation error (invalid category)...")
         result = await TripAdvisorAgentClient.call_tool(
             "search_locations",
             search_query="Paris",
@@ -1180,8 +1259,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 11: Validation error - invalid lat_long format
-        print("\n11. Testing validation error (invalid lat_long format)...")
+        # Test 14: Validation error - invalid lat_long format
+        print("\n14. Testing validation error (invalid lat_long format)...")
         result = await TripAdvisorAgentClient.call_tool(
             "search_locations",
             search_query="Paris",
@@ -1193,8 +1272,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 12: Validation error - invalid location_id
-        print("\n12. Testing validation error (invalid location_id - negative)...")
+        # Test 15: Validation error - invalid location_id
+        print("\n15. Testing validation error (invalid location_id - negative)...")
         result = await TripAdvisorAgentClient.call_tool(
             "get_location_details",
             location_id=-1
@@ -1205,8 +1284,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 13: Validation error - invalid limit (too high)
-        print("\n13. Testing validation error (invalid limit - too high for reviews)...")
+        # Test 16: Validation error - invalid limit (too high)
+        print("\n16. Testing validation error (invalid limit - too high for reviews)...")
         result = await TripAdvisorAgentClient.call_tool(
             "get_location_reviews",
             location_id=60763,
@@ -1218,8 +1297,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 14: Validation error - invalid offset (negative)
-        print("\n14. Testing validation error (invalid offset - negative)...")
+        # Test 17: Validation error - invalid offset (negative)
+        print("\n17. Testing validation error (invalid offset - negative)...")
         result = await TripAdvisorAgentClient.call_tool(
             "get_location_reviews",
             location_id=60763,
@@ -1231,8 +1310,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 15: Validation error - missing lat_long for search_nearby
-        print("\n15. Testing validation error (missing lat_long for search_nearby)...")
+        # Test 18: Validation error - missing lat_long for search_nearby
+        print("\n18. Testing validation error (missing lat_long for search_nearby)...")
         result = await TripAdvisorAgentClient.call_tool(
             "search_nearby",
             lat_long=""
@@ -1243,8 +1322,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 16: Validation error - invalid radius unit
-        print("\n16. Testing validation error (invalid radius unit)...")
+        # Test 19: Validation error - invalid radius unit
+        print("\n19. Testing validation error (invalid radius unit)...")
         result = await TripAdvisorAgentClient.call_tool(
             "search_nearby",
             lat_long="40.7128,-74.0060",
@@ -1256,8 +1335,8 @@ async def test_tripadvisor_agent():
         else:
             print(f"✗ Expected validation error but got: {result}")
         
-        # Test 17: Validation error - invalid photo source
-        print("\n17. Testing validation error (invalid photo source)...")
+        # Test 20: Validation error - invalid photo source
+        print("\n20. Testing validation error (invalid photo source)...")
         result = await TripAdvisorAgentClient.call_tool(
             "get_location_photos",
             location_id=60763,

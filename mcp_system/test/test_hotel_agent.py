@@ -259,6 +259,30 @@ async def test_hotel_agent():
             if result.get("suggestion"):
                 print(f"  Suggestion: {result.get('suggestion')}")
         
+        # Test 4.75: get_list_of_hotels
+        print("\n4.75. Testing get_list_of_hotels (browse hotels in Paris)...")
+        result = await HotelAgentClient.call_tool(
+            "get_list_of_hotels",
+            city_name="Paris",
+            country_code="FR",
+            limit=5
+        )
+        if not result.get("error"):
+            hotels = result.get("hotels", [])
+            hotels_count = len(hotels)
+            print(f"✓ Found {hotels_count} hotels (browsing without dates)")
+            if hotels_count > 0:
+                first_hotel = hotels[0]
+                hotel_name = first_hotel.get("name", "N/A")
+                hotel_id = first_hotel.get("id", "N/A")
+                print(f"  First hotel: {hotel_name} (ID: {hotel_id})")
+                if "rating" in first_hotel:
+                    print(f"  Rating: {first_hotel.get('rating')}")
+        else:
+            print(f"✗ Error: {result.get('error_message')}")
+            if result.get("suggestion"):
+                print(f"  Suggestion: {result.get('suggestion')}")
+        
         # Test 5: get_hotel_details
         print("\n5. Testing get_hotel_details (by hotel ID)...")
         result = await HotelAgentClient.call_tool(

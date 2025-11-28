@@ -54,10 +54,10 @@ async def test_flight_agent():
         print("=" * 60)
         
         # Test 1: One-way flight search
-        print("\n1. Testing agent_get_flights (one-way, JFK to LAX)...")
+        print("\n1. Testing agent_get_flights_tool (one-way, JFK to LAX)...")
         print("   Note: This test uses SerpAPI and may take 10-30 seconds")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights",
+            "agent_get_flights_tool",
             trip_type="one-way",
             departure="JFK",
             arrival="LAX",
@@ -88,10 +88,10 @@ async def test_flight_agent():
                 print(f"  Suggestion: {result.get('suggestion')}")
         
         # Test 2: Round-trip flight search
-        print("\n2. Testing agent_get_flights (round-trip, NYC to LHR)...")
+        print("\n2. Testing agent_get_flights_tool (round-trip, NYC to LHR)...")
         print("   Note: This test uses SerpAPI and may take 10-30 seconds")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights",
+            "agent_get_flights_tool",
             trip_type="round-trip",
             departure="NYC",
             arrival="LHR",
@@ -115,10 +115,10 @@ async def test_flight_agent():
                 print(f"  Suggestion: {result.get('suggestion')}")
         
         # Test 3: Flexible flight search
-        print("\n3. Testing agent_get_flights_flexible (one-way, JFK to LAX, ±3 days)...")
+        print("\n3. Testing agent_get_flights_flexible_tool (one-way, JFK to LAX, ±3 days)...")
         print("   Note: This test uses SerpAPI and may take 30-60 seconds (searches multiple dates)")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights_flexible",
+            "agent_get_flights_flexible_tool",
             trip_type="one-way",
             departure="JFK",
             arrival="LAX",
@@ -152,7 +152,7 @@ async def test_flight_agent():
         # Test 4: Validation error - missing departure
         print("\n4. Testing validation error (missing departure)...")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights",
+            "agent_get_flights_tool",
             trip_type="one-way",
             departure="",
             arrival="LAX",
@@ -169,7 +169,7 @@ async def test_flight_agent():
         # Test 5: Validation error - missing arrival_date for round-trip
         print("\n5. Testing validation error (missing arrival_date for round-trip)...")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights",
+            "agent_get_flights_tool",
             trip_type="round-trip",
             departure="JFK",
             arrival="LAX",
@@ -185,7 +185,7 @@ async def test_flight_agent():
         # Test 6: Validation error - invalid trip_type
         print("\n6. Testing validation error (invalid trip_type)...")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights",
+            "agent_get_flights_tool",
             trip_type="invalid",
             departure="JFK",
             arrival="LAX",
@@ -200,7 +200,7 @@ async def test_flight_agent():
         # Test 7: Validation error - invalid date format
         print("\n7. Testing validation error (invalid date format)...")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights",
+            "agent_get_flights_tool",
             trip_type="one-way",
             departure="JFK",
             arrival="LAX",
@@ -213,9 +213,9 @@ async def test_flight_agent():
             print(f"✗ Expected validation error but got: {result}")
         
         # Test 8: Validation error - invalid days_flex
-        print("\n8. Testing agent_get_flights_flexible validation error (days_flex > 7)...")
+        print("\n8. Testing agent_get_flights_flexible_tool validation error (days_flex > 7)...")
         result = await FlightAgentClient.call_tool(
-            "agent_get_flights_flexible",
+            "agent_get_flights_flexible_tool",
             trip_type="one-way",
             departure="JFK",
             arrival="LAX",
