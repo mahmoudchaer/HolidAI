@@ -23,6 +23,7 @@ from nodes.conversational_agent_feedback_node import conversational_agent_feedba
 from nodes.final_planner_agent_node import final_planner_agent_node
 from nodes.join_node import join_node
 from nodes.memory_agent_node import memory_agent_node
+from nodes.pii_redaction_node import pii_redaction_node
 from node_wrapper import wrap_node
 
 
@@ -84,6 +85,7 @@ def create_graph() -> StateGraph:
     graph = StateGraph(AgentState)
     
     # Add nodes - main workflow nodes (wrapped for logging)
+    graph.add_node("pii_redaction", wrap_node(pii_redaction_node, "pii_redaction"))
     graph.add_node("memory_agent", wrap_node(memory_agent_node, "memory_agent"))
     graph.add_node("rfi_node", wrap_node(rfi_node, "rfi_node"))
     graph.add_node("main_agent", wrap_node(main_agent_node, "main_agent"))
@@ -105,8 +107,11 @@ def create_graph() -> StateGraph:
     graph.add_node("conversational_agent_feedback", wrap_node(conversational_agent_feedback_node, "conversational_agent_feedback"))
     graph.add_node("final_planner_agent", wrap_node(final_planner_agent_node, "final_planner_agent"))
     
-    # Set entry point - Memory agent runs first!
-    graph.set_entry_point("memory_agent")
+    # Set entry point - PII redaction runs first!
+    graph.set_entry_point("pii_redaction")
+    
+    # PII redaction always routes to memory agent
+    graph.add_edge("pii_redaction", "memory_agent")
     
     # Memory agent always routes to RFI node
     graph.add_edge("memory_agent", "rfi_node")
@@ -281,7 +286,7 @@ async def run(user_message: str, config: dict = None, user_email: str = None, se
     initial_state = {
         "user_message": user_message,
         "context": {},
-        "route": "memory_agent",  # Start with Memory agent to retrieve/store memories
+        "route": "pii_redaction",  # Start with PII redaction to sanitize user message
         "last_response": "",
         "collected_info": {},
         "agents_called": [],
