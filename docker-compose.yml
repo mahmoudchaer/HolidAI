@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: holidai-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=adminpassword
+      - DOCKER_INFLUXDB_INIT_ORG=holidai
+      - DOCKER_INFLUXDB_INIT_BUCKET=holidai-logs
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=holidai-admin-token-change-in-production
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    networks:
+      - holidai-network
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: holidai-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - holidai-network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  log-ingester:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingester
+    container_name: holidai-log-ingester
+    environment:
+      - AZURE_BLOB_CONNECTION_STRING=${AZURE_BLOB_CONNECTION_STRING}
+      - AZURE_BLOB_ACCOUNT_NAME=${AZURE_BLOB_ACCOUNT_NAME:-holidailogs}
+      - AZURE_BLOB_CONTAINER=${AZURE_BLOB_CONTAINER:-holidai-logs}
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=holidai-admin-token-change-in-production
+      - INFLUXDB_ORG=holidai
+      - INFLUXDB_BUCKET=holidai-logs
+      - INGEST_INTERVAL=${INGEST_INTERVAL:-60}
+    networks:
+      - holidai-network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
+  grafana-data:
+
+networks:
+  holidai-network:
+    driver: bridge
+

@@ -1,0 +1,109 @@
+{
+  "api_call_example": {
+    "timestamp": "2025-11-27T17:44:19.123456Z",
+    "service": "flights",
+    "endpoint": "/search",
+    "method": "GET",
+    "request_payload": {
+      "departure": "BEY",
+      "arrival": "DXB",
+      "departure_date": "2026-01-16",
+      "trip_type": "one-way"
+    },
+    "response_status": 200,
+    "response_time_ms": 1234.56,
+    "success": true,
+    "error_message": null,
+    "user_id": "mahmoudchaerps@gmail.com",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "trace_id": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  "node_enter_example": {
+    "type": "node_enter",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "user_email": "mahmoudchaerps@gmail.com",
+    "node_name": "flight_agent",
+    "timestamp": "2025-11-27T17:44:19.123456Z"
+  },
+  "node_exit_example": {
+    "type": "node_exit",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "user_email": "mahmoudchaerps@gmail.com",
+    "node_name": "flight_agent",
+    "latency_ms": 2345.67,
+    "timestamp": "2025-11-27T17:44:21.468912Z"
+  },
+  "interaction_example": {
+    "type": "interaction",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "user_email": "mahmoudchaerps@gmail.com",
+    "user_message": "hello can u get me flights from beirut to dubai jan 16 2026 to jan 19 2026",
+    "agent_response": "I found several flight options for your trip from Beirut to Dubai. Here are the best options...",
+    "latency_ms": 12345.67,
+    "token_usage": null,
+    "timestamp": "2025-11-27T17:44:45.123456Z"
+  },
+  "feedback_failure_example": {
+    "type": "feedback_failure",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "user_email": "mahmoudchaerps@gmail.com",
+    "feedback_node": "flight_agent_feedback",
+    "reason": "Status: need_retry, Message: Flight results are incomplete, missing return flights for the specified dates",
+    "timestamp": "2025-11-27T17:44:25.123456Z"
+  },
+  "llm_call_example": {
+    "type": "llm_call",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "user_email": "mahmoudchaerps@gmail.com",
+    "agent_name": "flight_agent",
+    "model": "gpt-4.1",
+    "prompt_preview": "You are the Flight Agent. Analyze the user's request and call the appropriate flight search tool. User message: hello can u get me flights from beirut to dubai jan 16 2026 to jan 19 2026",
+    "response_preview": "I'll search for flights from Beirut to Dubai for your travel dates. Let me call the flight search tool...",
+    "token_usage": {
+      "prompt_tokens": 1250,
+      "completion_tokens": 350,
+      "total_tokens": 1600
+    },
+    "latency_ms": 2345.67,
+    "timestamp": "2025-11-27T17:44:20.123456Z"
+  },
+  "api_call_error_example": {
+    "timestamp": "2025-11-27T17:44:19.123456Z",
+    "service": "hotels",
+    "endpoint": "/rates",
+    "method": "POST",
+    "request_payload": {
+      "location": "Dubai",
+      "checkin": "2026-01-16",
+      "checkout": "2026-01-19"
+    },
+    "response_status": 500,
+    "response_time_ms": 5678.90,
+    "success": false,
+    "error_message": "Internal server error: Database connection timeout",
+    "user_id": "mahmoudchaerps@gmail.com",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "trace_id": "660e8400-e29b-41d4-a716-446655440001"
+  },
+  "node_exit_without_email_example": {
+    "type": "node_exit",
+    "session_id": "unknown",
+    "user_email": null,
+    "node_name": "rfi_node",
+    "latency_ms": 123.45,
+    "timestamp": "2025-11-27T17:44:15.123456Z"
+  },
+  "llm_call_without_tokens_example": {
+    "type": "llm_call",
+    "session_id": "efbd5f6d-6ba1-401d-9d47-e533d8d58bfb",
+    "user_email": "mahmoudchaerps@gmail.com",
+    "agent_name": "conversational_agent",
+    "model": "gpt-4.1",
+    "prompt_preview": "Generate a natural response based on the following flight and hotel data...",
+    "response_preview": "I've found great options for your trip! Here are the flights...",
+    "token_usage": null,
+    "latency_ms": 3456.78,
+    "timestamp": "2025-11-27T17:44:35.123456Z"
+  }
+}
+
