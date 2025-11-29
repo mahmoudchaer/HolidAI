@@ -111,9 +111,23 @@ HolidAI follows a microservices architecture with the following components:
 
 2. **Create environment file**
    
-   Create a `.env` file in the project root:
+   Create a `.env` file in the project root with the following required environment variables:
    ```env
+   # API Keys
    OPENAI_API_KEY=your_openai_api_key_here
+   LITEAPI_KEY=your_liteapi_key_here
+   TRIPADVISOR_KEY=your_tripadvisor_key_here
+   SERPAPI_KEY=your_serpapi_key_here
+   CALENDARIFIC_API_KEY=your_calendarific_api_key_here
+   
+   # Azure Blob Storage (for logging)
+   AZURE_BLOB_CONNECTION_STRING=your_azure_blob_connection_string
+   AZURE_BLOB_ACCOUNT_NAME=holidailogs
+   AZURE_BLOB_CONTAINER=holidai-logs
+   
+   # Email Configuration
+   EMAIL_USER=your_email@gmail.com
+   EMAIL_PASS=your_email_app_password
    ```
 
 3. **Start the application**
