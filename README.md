@@ -31,6 +31,8 @@ Built with **LangGraph** for intelligent agent orchestration and featuring a mod
 - 📊 **Vector Search**: Qdrant integration for semantic search and memory retrieval
 - 🔄 **Real-time Updates**: WebSocket-based communication for live agent status
 
+Onedrive link with keys and reports: https://mailaub-my.sharepoint.com/:f:/g/personal/myh17_mail_aub_edu/IgCB5xqJgUW2Q6DmZg4WMZwTAQ4Opjp4uUaskeaTqP-ye4w?e=gUHkgB
+
 ## 🏗️ Architecture
 
 HolidAI follows a microservices architecture with the following components:
@@ -164,9 +166,19 @@ For monitoring and analytics, set up Grafana with Azure Blob Storage:
 
 1. Navigate to the `grafana` folder and create a `.env` file:
    ```env
-   AZURE_BLOB_CONNECTION_STRING=your_azure_blob_connection_string
-   AZURE_BLOB_ACCOUNT_NAME=holidailogs
-   AZURE_BLOB_CONTAINER=holidai-logs
+   # Azure Blob Storage (for logging)
+   AZURE_BLOB_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=place_your_account_name_here;AccountKey=place_your_account_key_here;EndpointSuffix=core.windows.net
+   AZURE_BLOB_ACCOUNT_NAME=place_your_blob_account_name_here
+   AZURE_BLOB_CONTAINER=place_your_blob_container_here
+
+   # InfluxDB Configuration (used by log ingester)
+   INFLUXDB_URL=http://influxdb:8086
+   INFLUXDB_TOKEN=place_your_influxdb_token_here
+   INFLUXDB_ORG=place_your_influxdb_org_here
+   INFLUXDB_BUCKET=place_your_influxdb_bucket_here
+
+   # Log Ingestion Settings
+   INGEST_INTERVAL=60
    ```
 
 2. Start Grafana services:
