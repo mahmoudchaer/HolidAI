@@ -98,6 +98,8 @@ HolidAI follows a microservices architecture with the following components:
 
 ## 🚀 Getting Started
 
+> **Note**: HolidAI is deployed and available online at [http://holidai.rest](http://holidai.rest), but we **recommend running it locally** for the best experience, full control, and access to all features.
+
 ### Prerequisites
 
 - [Docker](https://www.docker.com/get-started) and Docker Compose
