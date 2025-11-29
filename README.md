@@ -144,6 +144,25 @@ docker compose ps
 
 All services should show as "healthy" or "running".
 
+### 📊 Grafana Logging (Optional)
+
+For monitoring and analytics, set up Grafana with Azure Blob Storage:
+
+1. Navigate to the `grafana` folder and create a `.env` file:
+   ```env
+   AZURE_BLOB_CONNECTION_STRING=your_azure_blob_connection_string
+   AZURE_BLOB_ACCOUNT_NAME=holidailogs
+   AZURE_BLOB_CONTAINER=holidai-logs
+   ```
+
+2. Start Grafana services:
+   ```bash
+   cd grafana
+   docker compose up -d
+   ```
+
+3. Access Grafana at `http://localhost:3000` (admin/admin)
+
 ## 📝 Usage
 
 1. **Start a conversation**: Enter your travel requirements in natural language

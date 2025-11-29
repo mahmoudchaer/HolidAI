@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    isDefault: true
+    jsonData:
+      version: Flux
+      organization: holidai
+      defaultBucket: holidai-logs
+      tlsSkipVerify: true
+    secureJsonData:
+      token: holidai-admin-token-change-in-production
+    editable: true
+

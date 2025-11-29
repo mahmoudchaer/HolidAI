@@ -1,0 +1,320 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "ms"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "table", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"response_time_ms\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> group(columns: [\"service\"])\n  |> yield(name: \"mean\")",
+        "refId": "A"
+      }],
+      "title": "API Response Time by Service (Average)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 80},
+              {"color": "green", "value": 95}
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "id": 2,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "success = from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"success\")\n  |> filter(fn: (r) => r[\"_value\"] == 1)\n  |> count()\n\ntotal = from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"success\")\n  |> count()\n\njoin(tables: {success: success, total: total}, on: [\"_time\"])\n  |> map(fn: (r) => ({r with _value: float(v: r.success) / float(v: r.total) * 100.0}))\n  |> yield(name: \"rate\")",
+        "refId": "A"
+      }],
+      "title": "Overall API Success Rate",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "hideFrom": {"tooltip": false, "viz": false, "legend": false}
+          },
+          "mappings": [],
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "id": 3,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "showUnfilled": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"response_time_ms\")\n  |> group(columns: [\"service\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: false)\n  |> yield(name: \"count\")",
+        "refId": "A"
+      }],
+      "title": "API Calls per Service",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "ms"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 4,
+      "options": {
+        "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right"},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"response_time_ms\")\n  |> group(columns: [\"service\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: (tables=<-) => tables |> quantile(column: \"_value\", q: 0.95), createEmpty: false)\n  |> yield(name: \"p95\")",
+        "refId": "A"
+      }],
+      "title": "P95 Response Time by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 10},
+              {"color": "red", "value": 50}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 5,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"error_count\")\n  |> filter(fn: (r) => r[\"_value\"] > 0)\n  |> aggregateWindow(every: v.windowPeriod, fn: sum, createEmpty: false)\n  |> group(columns: [\"service\"])\n  |> yield(name: \"sum\")",
+        "refId": "A"
+      }],
+      "title": "API Errors Over Time by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "hideFrom": {"tooltip": false, "viz": false, "legend": false}
+          },
+          "mappings": [],
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 6,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+        "showUnfilled": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"error_count\")\n  |> filter(fn: (r) => r[\"_value\"] > 0)\n  |> group(columns: [\"service\"])\n  |> sum()\n  |> sort(columns: [\"_value\"], desc: true)\n  |> yield(name: \"sum\")",
+        "refId": "A"
+      }],
+      "title": "Total Errors by Service",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": null}]
+          }
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
+        "showHeader": true,
+        "sortBy": []
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"error_count\")\n  |> filter(fn: (r) => r[\"_value\"] > 0)\n  |> group(columns: [\"service\", \"error_message\"])\n  |> sum()\n  |> sort(columns: [\"_value\"], desc: true)\n  |> limit(n: 20)\n  |> yield(name: \"errors\")",
+        "refId": "A"
+      }],
+      "title": "API Errors by Service and Error Message",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": null}]
+          },
+          "unit": "ms"
+        }
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
+        "showHeader": true,
+        "sortBy": []
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "InfluxDB"},
+        "query": "from(bucket: \"holidai-logs\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"api_calls\")\n  |> filter(fn: (r) => r[\"_field\"] == \"response_time_ms\")\n  |> group(columns: [\"service\", \"endpoint\", \"method\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+        "refId": "A"
+      }],
+      "title": "API Performance Summary by Endpoint",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["holidai", "api", "performance"],
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {
+    "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+  },
+  "timezone": "",
+  "title": "API Performance Dashboard",
+  "uid": "api-performance-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
+
